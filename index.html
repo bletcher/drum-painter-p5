@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Drum Painter</title>
+  <script src="https://cdn.jsdelivr.net/npm/p5@1.7.0/lib/p5.js"></script>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #f0f0f0;
+    }
+    canvas {
+      display: block;
+    }
+    #controls {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      background: rgba(255, 255, 255, 0.9);
+      padding: 15px;
+      border-radius: 8px;
+      font-family: monospace;
+      font-size: 12px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      max-width: 300px;
+    }
+    #controls h3 {
+      margin: 0 0 10px 0;
+      font-size: 14px;
+    }
+    #controls .status {
+      color: #666;
+      margin: 5px 0;
+    }
+    #controls .connected {
+      color: #00aa00;
+      font-weight: bold;
+    }
+    #controls .mouse-mode {
+      color: #0088cc;
+      font-weight: bold;
+    }
+    #controls .key {
+      display: inline-block;
+      background: #333;
+      color: white;
+      padding: 2px 6px;
+      border-radius: 3px;
+      margin: 2px;
+    }
+  </style>
+</head>
+<body>
+  <div id="controls">
+    <h3>🥁 DRUM PAINTER</h3>
+    <div class="status" id="midi-status">MIDI: Checking...</div>
+    <div class="status" id="mode-status">Mode: Classic Pointillism</div>
+    <hr style="margin: 10px 0; border: none; border-top: 1px solid #ddd;">
+    <div style="margin-top: 10px;">
+      <strong>Controls:</strong><br>
+      <span class="key">SPACE</span> Clear canvas<br>
+      <span class="key">S</span> Save painting<br>
+      <span class="key">1-5</span> Change mode<br>
+      <span class="key">B</span> Blend mode<br>
+      <span class="key">Z</span> Undo<br>
+      <span class="key">Y</span> Redo<br>
+      <span class="key">H</span> Hide/show UI
+    </div>
+    <div style="margin-top: 10px; border-top: 1px solid #ddd; padding-top: 10px;">
+      <strong>Mouse Testing:</strong><br>
+      <span class="key">M</span> Toggle mouse mode<br>
+      <span class="key">[ ]</span> Change drum<br>
+      <span class="key">Click/Drag</span> Paint
+    </div>
+  </div>
+  
+  <script src="sketch.js"></script>
+</body>
+</html>
