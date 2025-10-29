@@ -73,7 +73,7 @@ let growthPoints = [];
 
 // Blend mode state
 let currentBlendMode = 0;
-const BLEND_MODES = [BLEND, MULTIPLY, SCREEN, OVERLAY, DODGE, BURN];
+let BLEND_MODES = []; // Will be initialized in setup() when p5 constants are available
 const BLEND_MODE_NAMES = ['Normal', 'Multiply', 'Screen', 'Overlay', 'Dodge', 'Burn'];
 
 // Undo/Redo system
@@ -134,6 +134,9 @@ const MODE_NAMES = [
 function setup() {
   createCanvas(windowWidth, windowHeight);
 
+  // Initialize blend modes (p5 constants are now available)
+  BLEND_MODES = [BLEND, MULTIPLY, SCREEN, OVERLAY, DODGE, BURN];
+
   // Create high-res painting canvas
   paintCanvas = createGraphics(PAINT_CANVAS_WIDTH, PAINT_CANVAS_HEIGHT);
   paintCanvas.background(255);
@@ -167,18 +170,18 @@ function draw() {
   background(240);
   
   // Display painting canvas scaled to window
-  let scale = min(width / paintCanvas.width, height / paintCanvas.height);
-  let w = paintCanvas.width * scale;
-  let h = paintCanvas.height * scale;
+  let scaleFactor = min(width / paintCanvas.width, height / paintCanvas.height);
+  let w = paintCanvas.width * scaleFactor;
+  let h = paintCanvas.height * scaleFactor;
   let x = (width - w) / 2;
   let y = (height - h) / 2;
-  
+
   image(paintCanvas, x, y, w, h);
-  
+
   // Update and draw particles (visual feedback)
   for (let i = particles.length - 1; i >= 0; i--) {
     particles[i].update();
-    particles[i].display(x, y, scale);
+    particles[i].display(x, y, scaleFactor);
     if (particles[i].isDead()) {
       particles.splice(i, 1);
     }
@@ -198,10 +201,27 @@ function draw() {
 // ===== MIDI SETUP =====
 
 function setupMIDI() {
+  // Set a timeout to fallback to mouse mode if MIDI doesn't respond
+  let midiTimeout = setTimeout(() => {
+    if (!midiReady && midiStatusEl) {
+      console.warn('MIDI setup timed out - Enabling mouse mode');
+      midiStatusEl.textContent = 'Mouse Mode: Active (MIDI timeout)';
+      midiStatusEl.className = 'status mouse-mode';
+    }
+  }, 2000); // 2 second timeout
+
   if (navigator.requestMIDIAccess) {
     navigator.requestMIDIAccess()
-      .then(onMIDISuccess, onMIDIFailure);
+      .then((midi) => {
+        clearTimeout(midiTimeout);
+        onMIDISuccess(midi);
+      })
+      .catch((error) => {
+        clearTimeout(midiTimeout);
+        onMIDIFailure(error);
+      });
   } else {
+    clearTimeout(midiTimeout);
     console.error('WebMIDI not supported in this browser - Mouse mode active');
     if (midiStatusEl) {
       midiStatusEl.textContent = 'Mouse Mode: Active (WebMIDI not supported)';
@@ -580,11 +600,11 @@ class Particle {
     this.life--;
   }
 
-  display(offsetX, offsetY, scale) {
+  display(offsetX, offsetY, scaleFactor) {
     let alpha = map(this.life, 0, PARTICLE_LIFETIME, 0, 255);
-    let x = offsetX + this.x * scale;
-    let y = offsetY + this.y * scale;
-    let s = this.size * scale * (1 + (PARTICLE_LIFETIME - this.life) * PARTICLE_SIZE_GROWTH);
+    let x = offsetX + this.x * scaleFactor;
+    let y = offsetY + this.y * scaleFactor;
+    let s = this.size * scaleFactor * (1 + (PARTICLE_LIFETIME - this.life) * PARTICLE_SIZE_GROWTH);
     let r = red(this.col), g = green(this.col), b = blue(this.col);
 
     push();
@@ -711,7 +731,6 @@ function mousePressed() {
   if (!midiReady || mouseTestEnabled) {
     prevMouseX = mouseX;
     prevMouseY = mouseY;
-    console.log(`Mouse test: ${MOUSE_DRUM_NAMES[currentMouseDrum]} (use [ ] to change drum)`);
   }
 }
 
