@@ -66,6 +66,12 @@ let particles = [];
 let currentMode = 0;
 let strokeCount = 0;
 let showUI = true;
+let showHelp = false;
+let globalSizeMultiplier = 1.0; // 0.3 to 3.0 range
+
+// Notification flash state
+let notificationText = '';
+let notificationAlpha = 0;
 
 // Mode-specific state
 let spiralAngle = 0;
@@ -75,6 +81,11 @@ let growthPoints = [];
 let currentBlendMode = 0;
 let BLEND_MODES = []; // Will be initialized in setup() when p5 constants are available
 const BLEND_MODE_NAMES = ['Normal', 'Multiply', 'Screen', 'Overlay', 'Dodge', 'Burn'];
+
+// Background color state
+let currentBgColor = 0;
+const BG_COLORS = [255, 0, 32, 240, 200]; // White, Black, Dark gray, Light gray, Beige
+const BG_COLOR_NAMES = ['White', 'Black', 'Dark Gray', 'Light Gray', 'Beige'];
 
 // Undo/Redo system
 const MAX_HISTORY = 2;
@@ -105,23 +116,42 @@ const MIDI_NOTES = {
   RIDE: 51
 };
 
-// Mouse testing drum selection
-const MOUSE_DRUM_NOTES = [
-  MIDI_NOTES.KICK,
-  MIDI_NOTES.SNARE,
-  MIDI_NOTES.CLOSED_HAT,
-  MIDI_NOTES.OPEN_HAT,
-  MIDI_NOTES.TOM_LOW,
-  MIDI_NOTES.TOM_MID,
-  MIDI_NOTES.TOM_HIGH,
-  MIDI_NOTES.CRASH,
-  MIDI_NOTES.RIDE
+// Drum customization system
+let showCustomization = false;
+let midiLearnMode = false;
+let midiLearnDrumId = null;
+
+// Drum IDs (independent of MIDI notes)
+const DRUM_IDS = {
+  KICK: 'kick',
+  SNARE: 'snare',
+  RACK_TOM: 'rack_tom',
+  FLOOR_TOM: 'floor_tom'
+};
+
+let drumSettings = {
+  [DRUM_IDS.KICK]: { midiNote: 36, color: '#141E50', shape: 'circle', opacity: 1.0 },
+  [DRUM_IDS.SNARE]: { midiNote: 38, color: '#C82832', shape: 'circle', opacity: 1.0 },
+  [DRUM_IDS.RACK_TOM]: { midiNote: 50, color: '#64A0DC', shape: 'circle', opacity: 1.0 },
+  [DRUM_IDS.FLOOR_TOM]: { midiNote: 45, color: '#DC6428', shape: 'circle', opacity: 1.0 }
+};
+
+// Mouse testing drum selection (maps to the 4 custom drums)
+const MOUSE_DRUM_IDS = [
+  DRUM_IDS.KICK,
+  DRUM_IDS.SNARE,
+  DRUM_IDS.RACK_TOM,
+  DRUM_IDS.FLOOR_TOM
 ];
 
 const MOUSE_DRUM_NAMES = [
-  'Kick', 'Snare', 'Closed Hat', 'Open Hat',
-  'Tom Low', 'Tom Mid', 'Tom High', 'Crash', 'Ride'
+  'Kick',
+  'Snare',
+  'Rack Tom',
+  'Floor Tom'
 ];
+
+const SHAPE_OPTIONS = ['circle', 'square', 'triangle', 'diamond', 'star', 'hexagon'];
 
 const MODE_NAMES = [
   'Classic Pointillism',
@@ -187,15 +217,179 @@ function draw() {
     }
   }
 
-  // Show mouse drum indicator when mouse testing is active
-  if (mouseTestEnabled && mouseX > 0 && mouseY > 0) {
+  // Limit particle count for performance
+  const MAX_PARTICLES = 50;
+  while (particles.length > MAX_PARTICLES) {
+    particles.shift(); // Remove oldest
+  }
+
+  // Show mouse drum indicator when mouse testing is active (and either no MIDI or mouse mode explicitly enabled)
+  if (mouseTestEnabled && (!midiReady || mouseTestEnabled) && mouseX > 0 && mouseY > 0) {
     drawMouseIndicator();
+  }
+
+  // Notification flash
+  if (notificationAlpha > 0) {
+    drawNotification();
+    notificationAlpha -= 5; // Fade out
+  }
+
+  // Help overlay
+  if (showHelp) {
+    drawHelpOverlay();
   }
 
   // UI
   if (showUI) {
     updateUIStatus();
   }
+}
+
+// ===== NOTIFICATION SYSTEM =====
+
+function showNotification(text) {
+  notificationText = text;
+  notificationAlpha = 255;
+}
+
+function drawNotification() {
+  push();
+
+  // Center text
+  textAlign(CENTER, CENTER);
+  textSize(48);
+  textStyle(BOLD);
+
+  // Background shadow
+  fill(0, 0, 0, notificationAlpha * 0.7);
+  text(notificationText, width / 2 + 3, height / 2 + 3);
+
+  // Main text
+  fill(255, 255, 255, notificationAlpha);
+  text(notificationText, width / 2, height / 2);
+
+  pop();
+}
+
+// ===== HELP OVERLAY =====
+
+function drawHelpOverlay() {
+  push();
+
+  // Semi-transparent background
+  fill(0, 0, 0, 220);
+  noStroke();
+  rect(0, 0, width, height);
+
+  // Help panel
+  let panelWidth = min(600, width - 40);
+  let panelHeight = min(550, height - 40);
+  let panelX = (width - panelWidth) / 2;
+  let panelY = (height - panelHeight) / 2;
+
+  fill(255, 255, 255, 250);
+  rect(panelX, panelY, panelWidth, panelHeight, 10);
+
+  // Title
+  fill(0);
+  textAlign(CENTER, TOP);
+  textSize(24);
+  textStyle(BOLD);
+  text('🥁 DRUM PAINTER - CONTROLS', width / 2, panelY + 20);
+
+  // Content
+  textAlign(LEFT, TOP);
+  textSize(14);
+  textStyle(NORMAL);
+  let x = panelX + 30;
+  let y = panelY + 70;
+  let lineHeight = 25;
+  let col1 = x;
+  let col2 = x + 200;
+
+  // Painting Controls
+  fill(100, 50, 150);
+  textStyle(BOLD);
+  text('PAINTING MODES:', col1, y);
+  y += lineHeight + 5;
+
+  fill(0);
+  textStyle(NORMAL);
+  text('1-5', col1, y);
+  text('Switch painting modes (Classic, Fibonacci, etc.)', col2, y);
+  y += lineHeight;
+
+  // Canvas Controls
+  y += 10;
+  fill(100, 50, 150);
+  textStyle(BOLD);
+  text('CANVAS:', col1, y);
+  y += lineHeight + 5;
+
+  fill(0);
+  textStyle(NORMAL);
+  text('SPACE', col1, y);
+  text('Clear canvas', col2, y);
+  y += lineHeight;
+  text('S', col1, y);
+  text('Save painting (PNG)', col2, y);
+  y += lineHeight;
+  text('Z', col1, y);
+  text('Undo (2 levels)', col2, y);
+  y += lineHeight;
+  text('Y', col1, y);
+  text('Redo', col2, y);
+  y += lineHeight;
+
+  // Visual Controls
+  y += 10;
+  fill(100, 50, 150);
+  textStyle(BOLD);
+  text('VISUAL EFFECTS:', col1, y);
+  y += lineHeight + 5;
+
+  fill(0);
+  textStyle(NORMAL);
+  text('B', col1, y);
+  text('Cycle blend modes (Normal, Multiply, etc.)', col2, y);
+  y += lineHeight;
+  text('G', col1, y);
+  text('Change background color (White, Black, etc.)', col2, y);
+  y += lineHeight;
+  text('+ / -', col1, y);
+  text('Adjust brush size (30% - 300%)', col2, y);
+  y += lineHeight;
+  text('H', col1, y);
+  text('Hide/show UI panel', col2, y);
+  y += lineHeight;
+
+  // Mouse Testing
+  y += 10;
+  fill(100, 50, 150);
+  textStyle(BOLD);
+  text('MOUSE TESTING:', col1, y);
+  y += lineHeight + 5;
+
+  fill(0);
+  textStyle(NORMAL);
+  text('M', col1, y);
+  text('Toggle mouse mode on/off', col2, y);
+  y += lineHeight;
+  text('[ ]', col1, y);
+  text('Change drum (9 drums available)', col2, y);
+  y += lineHeight;
+  text('Click/Drag', col1, y);
+  text('Paint with mouse (velocity-sensitive)', col2, y);
+  y += lineHeight;
+
+  // Footer
+  y = panelY + panelHeight - 35;
+  fill(150);
+  textAlign(CENTER, TOP);
+  textSize(12);
+  text('Press ? to close this help | Press ESC to toggle help & UI', width / 2, y);
+
+  pop();
 }
 
 // ===== MIDI SETUP =====
@@ -273,6 +467,21 @@ function handleMIDIMessage(message) {
 
     // Note On message (144) with velocity > 0
     if (command === 144 && velocity > 0) {
+      // Handle MIDI learn mode
+      if (midiLearnMode && midiLearnDrumId) {
+        drumSettings[midiLearnDrumId].midiNote = note;
+        console.log(`MIDI Learn: Assigned note ${note} to ${midiLearnDrumId}`);
+
+        // Update UI
+        buildDrumSettingsUI();
+
+        // Exit learn mode
+        midiLearnMode = false;
+        midiLearnDrumId = null;
+        return;
+      }
+
+      // Normal painting
       const vel = map(velocity, 0, 127, 0.3, 1.0);
       paintDrum(note, vel);
     }
@@ -324,12 +533,14 @@ function paintDrum(note, velocity) {
 function paintClassic(note, velocity) {
   let x = random(paintCanvas.width);
   let y = random(paintCanvas.height);
-  let size = BASE_SIZE_CLASSIC + velocity * VELOCITY_MULT_CLASSIC;
+  let size = (BASE_SIZE_CLASSIC + velocity * VELOCITY_MULT_CLASSIC) * globalSizeMultiplier;
   let col = getDrumColor(note);
+  let shape = getDrumShape(note);
+  let opacityMult = getDrumOpacity(note);
 
   paintCanvas.push();
   paintCanvas.noStroke();
-  paintDot(x, y, size, col, ALPHA_CLASSIC * velocity);
+  paintDot(x, y, size, col, ALPHA_CLASSIC * velocity * opacityMult, shape);
   paintCanvas.pop();
 
   particles.push(new Particle(x, y, size, col));
@@ -344,17 +555,19 @@ function paintFibonacci(note, velocity) {
   let radius = sqrt(strokeCount) * FIBONACCI_RADIUS_MULT;
   let x = paintCanvas.width / 2 + cos(spiralAngle) * radius;
   let y = paintCanvas.height / 2 + sin(spiralAngle) * radius;
-  let size = BASE_SIZE_FIBONACCI + velocity * VELOCITY_MULT_FIBONACCI;
+  let size = (BASE_SIZE_FIBONACCI + velocity * VELOCITY_MULT_FIBONACCI) * globalSizeMultiplier;
 
   // Keep within bounds
   x = constrain(x, 0, paintCanvas.width);
   y = constrain(y, 0, paintCanvas.height);
 
   let col = getDrumColor(note);
+  let shape = getDrumShape(note);
+  let opacityMult = getDrumOpacity(note);
 
   paintCanvas.push();
   paintCanvas.noStroke();
-  paintDot(x, y, size, col, ALPHA_FIBONACCI * velocity);
+  paintDot(x, y, size, col, ALPHA_FIBONACCI * velocity * opacityMult, shape);
   paintCanvas.pop();
 
   particles.push(new Particle(x, y, size, col));
@@ -365,8 +578,10 @@ function paintFibonacci(note, velocity) {
 function paintSymmetry(note, velocity) {
   let angle = random(TWO_PI / SYMMETRY_ORDER);
   let radius = random(SYMMETRY_RADIUS_MIN, SYMMETRY_RADIUS_MAX);
-  let size = BASE_SIZE_SYMMETRY + velocity * VELOCITY_MULT_SYMMETRY;
+  let size = (BASE_SIZE_SYMMETRY + velocity * VELOCITY_MULT_SYMMETRY) * globalSizeMultiplier;
   let col = getDrumColor(note);
+  let shape = getDrumShape(note);
+  let opacityMult = getDrumOpacity(note);
 
   paintCanvas.push();
   paintCanvas.noStroke();
@@ -376,7 +591,7 @@ function paintSymmetry(note, velocity) {
     let x = paintCanvas.width / 2 + cos(a) * radius;
     let y = paintCanvas.height / 2 + sin(a) * radius;
 
-    paintDot(x, y, size, col, ALPHA_SYMMETRY * velocity);
+    paintDot(x, y, size, col, ALPHA_SYMMETRY * velocity * opacityMult, shape);
 
     if (i === 0) {
       particles.push(new Particle(x, y, size, col));
@@ -390,8 +605,10 @@ function paintSymmetry(note, velocity) {
 function paintGravity(note, velocity) {
   let x = random(paintCanvas.width);
   let y = random(paintCanvas.height * 0.3);
-  let size = BASE_SIZE_GRAVITY + velocity * VELOCITY_MULT_GRAVITY;
+  let size = (BASE_SIZE_GRAVITY + velocity * VELOCITY_MULT_GRAVITY) * globalSizeMultiplier;
   let col = getDrumColor(note);
+  let shape = getDrumShape(note);
+  let opacityMult = getDrumOpacity(note);
 
   paintCanvas.push();
   paintCanvas.noStroke();
@@ -401,8 +618,8 @@ function paintGravity(note, velocity) {
     y += random(GRAVITY_STEP_MIN, GRAVITY_STEP_MAX);
     x += random(GRAVITY_DRIFT_MIN, GRAVITY_DRIFT_MAX);
 
-    let alpha = map(i, 0, steps, ALPHA_GRAVITY * velocity, ALPHA_GRAVITY_MIN * velocity);
-    paintDot(x, y, size, col, alpha);
+    let alpha = map(i, 0, steps, ALPHA_GRAVITY * velocity * opacityMult, ALPHA_GRAVITY_MIN * velocity * opacityMult);
+    paintDot(x, y, size, col, alpha, shape);
 
     if (y > paintCanvas.height) break;
   }
@@ -432,16 +649,18 @@ function paintOrganic(note, velocity) {
   let distance = randomGaussian() * ORGANIC_DISTANCE_SPREAD + ORGANIC_DISTANCE_BASE;
   let x = nearest.x + cos(angle) * distance;
   let y = nearest.y + sin(angle) * distance;
-  let size = BASE_SIZE_ORGANIC + velocity * VELOCITY_MULT_ORGANIC;
+  let size = (BASE_SIZE_ORGANIC + velocity * VELOCITY_MULT_ORGANIC) * globalSizeMultiplier;
 
   x = constrain(x, 0, paintCanvas.width);
   y = constrain(y, 0, paintCanvas.height);
 
   let col = getDrumColor(note);
+  let shape = getDrumShape(note);
+  let opacityMult = getDrumOpacity(note);
 
   paintCanvas.push();
   paintCanvas.noStroke();
-  paintDot(x, y, size, col, ALPHA_ORGANIC * velocity);
+  paintDot(x, y, size, col, ALPHA_ORGANIC * velocity * opacityMult, shape);
   paintCanvas.pop();
 
   // Occasionally move growth point
@@ -467,11 +686,62 @@ function paintOrganic(note, velocity) {
  * @param {number} size - Circle size
  * @param {p5.Color} col - Color object
  * @param {number} alpha - Alpha/opacity value
+ * @param {string} shape - Shape type ('circle', 'square', etc.)
  */
-function paintDot(x, y, size, col, alpha) {
+function paintDot(x, y, size, col, alpha, shape = 'circle') {
   let r = red(col), g = green(col), b = blue(col);
   paintCanvas.fill(r, g, b, alpha);
-  paintCanvas.circle(x, y, size);
+
+  switch (shape) {
+    case 'circle':
+      paintCanvas.circle(x, y, size);
+      break;
+    case 'square':
+      paintCanvas.rectMode(CENTER);
+      paintCanvas.square(x, y, size);
+      break;
+    case 'triangle':
+      let h = size * 0.866; // height of equilateral triangle
+      paintCanvas.triangle(x, y - size / 2, x - size / 2, y + h / 2, x + size / 2, y + h / 2);
+      break;
+    case 'diamond':
+      paintCanvas.quad(x, y - size / 2, x + size / 2, y, x, y + size / 2, x - size / 2, y);
+      break;
+    case 'star':
+      drawStar(paintCanvas, x, y, size / 3, size / 2, 5);
+      break;
+    case 'hexagon':
+      drawHexagon(paintCanvas, x, y, size / 2);
+      break;
+    default:
+      paintCanvas.circle(x, y, size);
+  }
+}
+
+function drawStar(canvas, x, y, radius1, radius2, npoints) {
+  let angle = TWO_PI / npoints;
+  let halfAngle = angle / 2.0;
+  canvas.beginShape();
+  for (let a = -PI / 2; a < TWO_PI - PI / 2; a += angle) {
+    let sx = x + cos(a) * radius2;
+    let sy = y + sin(a) * radius2;
+    canvas.vertex(sx, sy);
+    sx = x + cos(a + halfAngle) * radius1;
+    sy = y + sin(a + halfAngle) * radius1;
+    canvas.vertex(sx, sy);
+  }
+  canvas.endShape(CLOSE);
+}
+
+function drawHexagon(canvas, x, y, radius) {
+  canvas.beginShape();
+  for (let i = 0; i < 6; i++) {
+    let angle = (TWO_PI / 6) * i - PI / 2;
+    let sx = x + cos(angle) * radius;
+    let sy = y + sin(angle) * radius;
+    canvas.vertex(sx, sy);
+  }
+  canvas.endShape(CLOSE);
 }
 
 /**
@@ -535,7 +805,9 @@ function redo() {
  * Draw visual indicator for mouse testing mode
  */
 function drawMouseIndicator() {
-  let drumColor = getDrumColor(MOUSE_DRUM_NOTES[currentMouseDrum]);
+  const drumId = MOUSE_DRUM_IDS[currentMouseDrum];
+  const midiNote = drumSettings[drumId].midiNote;
+  let drumColor = getDrumColor(midiNote);
   let r = red(drumColor), g = green(drumColor), b = blue(drumColor);
 
   push();
@@ -561,28 +833,41 @@ function drawMouseIndicator() {
 }
 
 function getDrumColor(note) {
-  switch (note) {
-    case MIDI_NOTES.KICK:
-      return color(20, 30, 80);
-    case MIDI_NOTES.SNARE:
-      return color(200, 40, 50);
-    case MIDI_NOTES.CLOSED_HAT:
-      return color(240, 220, 60);
-    case MIDI_NOTES.OPEN_HAT:
-      return color(250, 240, 100);
-    case MIDI_NOTES.TOM_LOW:
-      return color(220, 100, 40);
-    case MIDI_NOTES.TOM_MID:
-      return color(180, 70, 120);
-    case MIDI_NOTES.TOM_HIGH:
-      return color(100, 160, 220);
-    case MIDI_NOTES.CRASH:
-      return color(255, 200, 50);
-    case MIDI_NOTES.RIDE:
-      return color(80, 200, 200);
-    default:
-      return color(150, 150, 150);
+  // Find drum by MIDI note
+  const drumId = findDrumByMidiNote(note);
+  if (drumId && drumSettings[drumId]) {
+    return color(drumSettings[drumId].color);
   }
+  // Fallback to gray
+  return color(150, 150, 150);
+}
+
+function getDrumShape(note) {
+  const drumId = findDrumByMidiNote(note);
+  if (drumId && drumSettings[drumId]) {
+    return drumSettings[drumId].shape;
+  }
+  return 'circle';
+}
+
+function getDrumOpacity(note) {
+  const drumId = findDrumByMidiNote(note);
+  if (drumId && drumSettings[drumId]) {
+    return drumSettings[drumId].opacity;
+  }
+  return 1.0;
+}
+
+/**
+ * Find which drum ID is mapped to a given MIDI note
+ */
+function findDrumByMidiNote(midiNote) {
+  for (let drumId in drumSettings) {
+    if (drumSettings[drumId].midiNote === midiNote) {
+      return drumId;
+    }
+  }
+  return null;
 }
 
 // ===== PARTICLE CLASS (visual feedback) =====
@@ -624,7 +909,14 @@ class Particle {
 
 function updateUIStatus() {
   if (modeStatusEl) {
-    let statusText = `Mode: ${MODE_NAMES[currentMode]} | Blend: ${BLEND_MODE_NAMES[currentBlendMode]} | Strokes: ${strokeCount}`;
+    let statusText = `Mode: ${MODE_NAMES[currentMode]} | Blend: ${BLEND_MODE_NAMES[currentBlendMode]}`;
+
+    // Show brush size if not at 100%
+    if (globalSizeMultiplier !== 1.0) {
+      statusText += ` | Size: ${(globalSizeMultiplier * 100).toFixed(0)}%`;
+    }
+
+    statusText += ` | Strokes: ${strokeCount}`;
 
     // Show mouse test info if enabled
     if (mouseTestEnabled) {
@@ -669,7 +961,17 @@ function keyPressed() {
     // Cycle blend modes
     currentBlendMode = (currentBlendMode + 1) % BLEND_MODES.length;
     paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
+    showNotification(`Blend: ${BLEND_MODE_NAMES[currentBlendMode]}`);
     console.log(`Blend Mode: ${BLEND_MODE_NAMES[currentBlendMode]}`);
+  }
+
+  if (key === 'g' || key === 'G') {
+    // Cycle background colors
+    currentBgColor = (currentBgColor + 1) % BG_COLORS.length;
+    paintCanvas.background(BG_COLORS[currentBgColor]);
+    saveCanvasState(); // Save after background change
+    showNotification(`Background: ${BG_COLOR_NAMES[currentBgColor]}`);
+    console.log(`Background: ${BG_COLOR_NAMES[currentBgColor]}`);
   }
 
   if (key === 'z' || key === 'Z') {
@@ -709,12 +1011,46 @@ function keyPressed() {
     console.log(`Mouse drum: ${MOUSE_DRUM_NAMES[currentMouseDrum]}`);
   }
 
+  if (key === '?' || key === '/') {
+    // Toggle help overlay (? or / key)
+    showHelp = !showHelp;
+  }
+
+  if (key === '+' || key === '=') {
+    // Increase brush size
+    globalSizeMultiplier = constrain(globalSizeMultiplier + 0.1, 0.3, 3.0);
+    showNotification(`Size: ${(globalSizeMultiplier * 100).toFixed(0)}%`);
+    console.log(`Brush size: ${(globalSizeMultiplier * 100).toFixed(0)}%`);
+  }
+
+  if (key === '-' || key === '_') {
+    // Decrease brush size
+    globalSizeMultiplier = constrain(globalSizeMultiplier - 0.1, 0.3, 3.0);
+    showNotification(`Size: ${(globalSizeMultiplier * 100).toFixed(0)}%`);
+    console.log(`Brush size: ${(globalSizeMultiplier * 100).toFixed(0)}%`);
+  }
+
+  if (keyCode === ESCAPE) {
+    // ESC toggles both help and UI
+    showHelp = !showHelp;
+    showUI = !showUI;
+    if (controlsEl) {
+      controlsEl.style.display = showUI ? 'block' : 'none';
+    }
+  }
+
   // Mode switching (1-5)
   if (key >= '1' && key <= '5') {
     currentMode = parseInt(key) - 1;
     strokeCount = 0;
     spiralAngle = 0;
-    resetGrowthPoints();
+
+    // Only reset growth points when switching TO organic mode (mode 4)
+    if (currentMode === 4) {
+      resetGrowthPoints();
+    }
+
+    showNotification(MODE_NAMES[currentMode]);
     console.log(`Mode: ${MODE_NAMES[currentMode]}`);
   }
 
@@ -728,6 +1064,9 @@ function windowResized() {
 // ===== MOUSE PAINTING (for testing without MIDI) =====
 
 function mousePressed() {
+  // Don't paint if customization panel is open
+  if (showCustomization) return;
+
   if (!midiReady || mouseTestEnabled) {
     prevMouseX = mouseX;
     prevMouseY = mouseY;
@@ -735,14 +1074,19 @@ function mousePressed() {
 }
 
 function mouseDragged() {
+  // Don't paint if customization panel is open
+  if (showCustomization) return;
+
   // Allow painting with mouse if no MIDI connected OR if mouse test enabled
   if (!midiReady || mouseTestEnabled) {
     // Calculate velocity based on mouse speed
     let speed = dist(mouseX, mouseY, prevMouseX, prevMouseY);
     let vel = constrain(map(speed, 0, 50, 0.3, 1.0), 0.3, 1.0);
 
-    // Paint with currently selected drum
-    paintDrum(MOUSE_DRUM_NOTES[currentMouseDrum], vel);
+    // Paint with currently selected drum (use its assigned MIDI note)
+    const drumId = MOUSE_DRUM_IDS[currentMouseDrum];
+    const midiNote = drumSettings[drumId].midiNote;
+    paintDrum(midiNote, vel);
 
     // Update previous position
     prevMouseX = mouseX;
@@ -751,9 +1095,343 @@ function mouseDragged() {
 }
 
 function mouseClicked() {
+  // Don't paint if customization panel is open
+  if (showCustomization) return;
+
   // Single click for single stroke
   if (!midiReady || mouseTestEnabled) {
     let vel = 0.7; // Medium velocity for clicks
-    paintDrum(MOUSE_DRUM_NOTES[currentMouseDrum], vel);
+    const drumId = MOUSE_DRUM_IDS[currentMouseDrum];
+    const midiNote = drumSettings[drumId].midiNote;
+    paintDrum(midiNote, vel);
   }
+}
+
+// ===== CUSTOMIZATION PANEL =====
+
+/**
+ * Toggle the customization panel visibility
+ */
+function toggleCustomization() {
+  showCustomization = !showCustomization;
+  const panel = document.getElementById('customization-panel');
+  const backdrop = document.getElementById('customization-backdrop');
+
+  if (showCustomization) {
+    buildDrumSettingsUI();
+    panel.style.display = 'block';
+    backdrop.style.display = 'block';
+  } else {
+    panel.style.display = 'none';
+    backdrop.style.display = 'none';
+  }
+}
+
+/**
+ * Build the drum customization UI dynamically
+ */
+function buildDrumSettingsUI() {
+  const container = document.getElementById('drum-settings-container');
+  container.innerHTML = '';
+
+  // Only show these 4 drums
+  const drumsToShow = [
+    { id: DRUM_IDS.KICK, name: 'Kick' },
+    { id: DRUM_IDS.SNARE, name: 'Snare' },
+    { id: DRUM_IDS.RACK_TOM, name: 'Rack Tom' },
+    { id: DRUM_IDS.FLOOR_TOM, name: 'Floor Tom' }
+  ];
+
+  // Create settings for each drum
+  drumsToShow.forEach(({ id: drumId, name: drumName }) => {
+    const settings = drumSettings[drumId];
+
+    // Create drum section
+    const section = document.createElement('div');
+    section.style.cssText = `
+      margin-bottom: 15px;
+      padding: 15px;
+      background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+      border-radius: 8px;
+      border-left: 4px solid ${settings.color};
+    `;
+
+    // Collapsible header
+    const header = document.createElement('div');
+    header.style.cssText = `
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      font-weight: bold;
+      color: #333;
+      font-size: 15px;
+    `;
+
+    const headerTitle = document.createElement('span');
+    headerTitle.textContent = `${drumName}`;
+
+    const toggleIcon = document.createElement('span');
+    toggleIcon.textContent = '▼';
+    toggleIcon.style.transition = 'transform 0.3s';
+
+    header.appendChild(headerTitle);
+    header.appendChild(toggleIcon);
+
+    // Settings content (initially visible)
+    const content = document.createElement('div');
+    content.style.cssText = `
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid rgba(0,0,0,0.1);
+    `;
+    content.id = `drum-${drumId}-content`;
+
+    // MIDI Note selector
+    const midiNoteGroup = createSettingGroup('MIDI Note',
+      `<div style="display: flex; align-items: center; gap: 10px;">
+        <input type="number" min="0" max="127" value="${settings.midiNote}"
+          onchange="updateDrumSetting('${drumId}', 'midiNote', parseInt(this.value))"
+          style="flex: 1; padding: 8px; border: 2px solid #ddd; border-radius: 5px; font-size: 13px;">
+        <button onclick="learnMIDINote('${drumId}')" style="
+          padding: 8px 12px;
+          background: #667eea;
+          color: white;
+          border: none;
+          border-radius: 5px;
+          cursor: pointer;
+          font-size: 12px;
+          font-weight: bold;
+          white-space: nowrap;
+        " onmouseover="this.style.background='#5568d3'" onmouseout="this.style.background='#667eea'">Learn</button>
+      </div>
+      <div style="font-size: 11px; color: #888; margin-top: 4px;">Click "Learn" then hit your drum pad</div>`
+    );
+
+    // Color picker
+    const colorGroup = createSettingGroup('Color',
+      `<input type="color" value="${settings.color}"
+        onchange="updateDrumSetting('${drumId}', 'color', this.value)"
+        style="width: 100%; height: 40px; border: 2px solid #ddd; border-radius: 5px; cursor: pointer;">`
+    );
+
+    // Shape selector
+    const shapeOptions = SHAPE_OPTIONS.map(shape =>
+      `<option value="${shape}" ${settings.shape === shape ? 'selected' : ''}>${shape.charAt(0).toUpperCase() + shape.slice(1)}</option>`
+    ).join('');
+
+    const shapeGroup = createSettingGroup('Shape',
+      `<select onchange="updateDrumSetting('${drumId}', 'shape', this.value)"
+        style="width: 100%; padding: 8px; border: 2px solid #ddd; border-radius: 5px; font-size: 13px; cursor: pointer;">
+        ${shapeOptions}
+      </select>`
+    );
+
+    // Opacity slider (multiplier with velocity)
+    const opacityPercent = Math.round(settings.opacity * 100);
+    const opacityGroup = createSettingGroup('Opacity Multiplier',
+      `<div style="display: flex; align-items: center; gap: 10px;">
+        <input type="range" min="10" max="100" value="${opacityPercent}"
+          oninput="updateDrumSetting('${drumId}', 'opacity', this.value / 100); document.getElementById('opacity-${drumId}').textContent = this.value + '%';"
+          style="flex: 1; cursor: pointer;">
+        <span id="opacity-${drumId}" style="min-width: 45px; font-weight: bold; color: #666;">${opacityPercent}%</span>
+      </div>
+      <div style="font-size: 11px; color: #888; margin-top: 4px;">Multiplies with MIDI velocity</div>`
+    );
+
+    // Shape preview
+    const preview = document.createElement('div');
+    preview.innerHTML = `
+      <div style="margin-top: 10px; text-align: center; padding: 10px; background: white; border-radius: 5px;">
+        <small style="color: #666; display: block; margin-bottom: 5px;">Preview</small>
+        <div id="preview-${drumId}" style="display: inline-block;"></div>
+      </div>
+    `;
+
+    content.appendChild(midiNoteGroup);
+    content.appendChild(colorGroup);
+    content.appendChild(shapeGroup);
+    content.appendChild(opacityGroup);
+    content.appendChild(preview);
+
+    // Toggle collapse functionality
+    let isOpen = true;
+    header.onclick = () => {
+      isOpen = !isOpen;
+      content.style.display = isOpen ? 'block' : 'none';
+      toggleIcon.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(-90deg)';
+    };
+
+    section.appendChild(header);
+    section.appendChild(content);
+    container.appendChild(section);
+
+    // Draw preview
+    updateDrumPreview(drumId);
+  });
+}
+
+/**
+ * Helper to create a setting group with label
+ */
+function createSettingGroup(label, inputHTML) {
+  const group = document.createElement('div');
+  group.style.marginBottom = '12px';
+  group.innerHTML = `
+    <label style="display: block; font-size: 12px; color: #666; margin-bottom: 5px; font-weight: 600;">
+      ${label}
+    </label>
+    ${inputHTML}
+  `;
+  return group;
+}
+
+/**
+ * Update a drum setting and refresh preview
+ */
+function updateDrumSetting(drumId, property, value) {
+  if (drumSettings[drumId]) {
+    drumSettings[drumId][property] = value;
+    updateDrumPreview(drumId);
+    console.log(`Updated ${drumId}: ${property} = ${value}`);
+  }
+}
+
+/**
+ * Update the preview for a drum
+ */
+function updateDrumPreview(drumId) {
+  const previewEl = document.getElementById(`preview-${drumId}`);
+  if (!previewEl) return;
+
+  const settings = drumSettings[drumId];
+  const size = 30;
+
+  // Create a small canvas for preview
+  let previewCanvas = document.createElement('canvas');
+  previewCanvas.width = 60;
+  previewCanvas.height = 60;
+  previewCanvas.style.display = 'block';
+  previewCanvas.style.margin = '0 auto';
+
+  let ctx = previewCanvas.getContext('2d');
+  ctx.clearRect(0, 0, 60, 60);
+
+  // Parse color
+  let hex = settings.color;
+  let r = parseInt(hex.slice(1, 3), 16);
+  let g = parseInt(hex.slice(3, 5), 16);
+  let b = parseInt(hex.slice(5, 7), 16);
+  let alpha = settings.opacity;
+
+  ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  ctx.strokeStyle = 'none';
+
+  let cx = 30, cy = 30;
+
+  // Draw shape
+  switch (settings.shape) {
+    case 'circle':
+      ctx.beginPath();
+      ctx.arc(cx, cy, size / 2, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    case 'square':
+      ctx.fillRect(cx - size / 2, cy - size / 2, size, size);
+      break;
+    case 'triangle':
+      ctx.beginPath();
+      let h = size * 0.866;
+      ctx.moveTo(cx, cy - size / 2);
+      ctx.lineTo(cx - size / 2, cy + h / 2);
+      ctx.lineTo(cx + size / 2, cy + h / 2);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    case 'diamond':
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - size / 2);
+      ctx.lineTo(cx + size / 2, cy);
+      ctx.lineTo(cx, cy + size / 2);
+      ctx.lineTo(cx - size / 2, cy);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    case 'star':
+      drawStarCanvas(ctx, cx, cy, size / 3, size / 2, 5);
+      break;
+    case 'hexagon':
+      drawHexagonCanvas(ctx, cx, cy, size / 2);
+      break;
+  }
+
+  previewEl.innerHTML = '';
+  previewEl.appendChild(previewCanvas);
+}
+
+/**
+ * Draw star on 2D canvas context
+ */
+function drawStarCanvas(ctx, x, y, radius1, radius2, npoints) {
+  let angle = (Math.PI * 2) / npoints;
+  let halfAngle = angle / 2.0;
+  ctx.beginPath();
+  for (let a = -Math.PI / 2; a < Math.PI * 2 - Math.PI / 2; a += angle) {
+    let sx = x + Math.cos(a) * radius2;
+    let sy = y + Math.sin(a) * radius2;
+    ctx.lineTo(sx, sy);
+    sx = x + Math.cos(a + halfAngle) * radius1;
+    sy = y + Math.sin(a + halfAngle) * radius1;
+    ctx.lineTo(sx, sy);
+  }
+  ctx.closePath();
+  ctx.fill();
+}
+
+/**
+ * Draw hexagon on 2D canvas context
+ */
+function drawHexagonCanvas(ctx, x, y, radius) {
+  ctx.beginPath();
+  for (let i = 0; i < 6; i++) {
+    let angle = ((Math.PI * 2) / 6) * i - Math.PI / 2;
+    let sx = x + Math.cos(angle) * radius;
+    let sy = y + Math.sin(angle) * radius;
+    if (i === 0) {
+      ctx.moveTo(sx, sy);
+    } else {
+      ctx.lineTo(sx, sy);
+    }
+  }
+  ctx.closePath();
+  ctx.fill();
+}
+
+// ===== MIDI LEARN SYSTEM =====
+
+/**
+ * Enable MIDI learn mode for a specific drum
+ */
+function learnMIDINote(drumId) {
+  midiLearnMode = true;
+  midiLearnDrumId = drumId;
+
+  // Visual feedback
+  const btn = event.target;
+  const originalText = btn.textContent;
+  btn.textContent = 'Listening...';
+  btn.style.background = '#ff6b6b';
+
+  console.log(`MIDI Learn: Hit your ${drumId} drum pad now...`);
+
+  // Timeout after 5 seconds
+  setTimeout(() => {
+    if (midiLearnMode && midiLearnDrumId === drumId) {
+      midiLearnMode = false;
+      midiLearnDrumId = null;
+      btn.textContent = originalText;
+      btn.style.background = '#667eea';
+      console.log('MIDI Learn: Timed out');
+    }
+  }, 5000);
 }
