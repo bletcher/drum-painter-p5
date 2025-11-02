@@ -225,8 +225,22 @@
         font-weight: bold;
         cursor: pointer;
         font-size: 13px;
+        margin-bottom: 8px;
       ">
         🎨 Customize Drums
+      </button>
+      <button id="midi-mapping-btn" onclick="toggleMidiMapping()" style="
+        width: 100%;
+        padding: 8px;
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        color: white;
+        border: none;
+        border-radius: 5px;
+        font-weight: bold;
+        cursor: pointer;
+        font-size: 13px;
+      ">
+        🎹 MIDI Mapping
       </button>
     </div>
   </div>
@@ -372,7 +386,145 @@
   <!-- Hidden file input for importing -->
   <input type="file" id="import-file-input" accept=".json" style="display: none;" onchange="handleFileImport(event)">
 
-  <!-- Overlay backdrop -->
+  <!-- MIDI Mapping Panel -->
+  <div id="midi-mapping-panel" style="
+    display: none;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+    max-width: 650px;
+    width: 90vw;
+    max-height: 80vh;
+    overflow: hidden;
+    z-index: 1000;
+  ">
+    <!-- Header -->
+    <div style="
+      position: sticky;
+      top: 0;
+      background: white;
+      z-index: 10;
+      padding: 20px;
+      border-bottom: 2px solid #e9ecef;
+      border-radius: 12px 12px 0 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    ">
+      <h2 style="margin: 0; color: #333;">🎹 MIDI Mapping Setup</h2>
+      <button onclick="toggleMidiMapping()" style="
+        background: #f0f0f0;
+        border: none;
+        border-radius: 50%;
+        width: 35px;
+        height: 35px;
+        cursor: pointer;
+        font-size: 20px;
+        font-weight: bold;
+        color: #666;
+        transition: all 0.2s;
+      " onmouseover="this.style.background='#e0e0e0'" onmouseout="this.style.background='#f0f0f0'">×</button>
+    </div>
+
+    <!-- Scrollable Content -->
+    <div style="
+      max-height: calc(80vh - 210px);
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 20px;
+    ">
+      <div id="midi-mapping-container"></div>
+    </div>
+
+    <!-- Sticky Footer with Save/Load Controls -->
+    <div style="
+      position: sticky;
+      bottom: 0;
+      background: #f8f9fa;
+      border-top: 2px solid #e9ecef;
+      padding: 15px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    ">
+      <div style="display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;">
+        <button onclick="saveAsDefault()" style="
+          padding: 8px 16px;
+          background: #28a745;
+          color: white;
+          border: none;
+          border-radius: 5px;
+          font-weight: bold;
+          cursor: pointer;
+          font-size: 12px;
+          transition: all 0.2s;
+        " onmouseover="this.style.background='#218838'" onmouseout="this.style.background='#28a745'">
+          💾 Save as Default
+        </button>
+        <button onclick="loadDefault()" style="
+          padding: 8px 16px;
+          background: #007bff;
+          color: white;
+          border: none;
+          border-radius: 5px;
+          font-weight: bold;
+          cursor: pointer;
+          font-size: 12px;
+          transition: all 0.2s;
+        " onmouseover="this.style.background='#0056b3'" onmouseout="this.style.background='#007bff'">
+          📂 Load Default
+        </button>
+        <button onclick="exportToFile()" style="
+          padding: 8px 16px;
+          background: #6c757d;
+          color: white;
+          border: none;
+          border-radius: 5px;
+          font-weight: bold;
+          cursor: pointer;
+          font-size: 12px;
+          transition: all 0.2s;
+        " onmouseover="this.style.background='#5a6268'" onmouseout="this.style.background='#6c757d'">
+          📥 Export to File
+        </button>
+        <button onclick="importFromFile()" style="
+          padding: 8px 16px;
+          background: #6c757d;
+          color: white;
+          border: none;
+          border-radius: 5px;
+          font-weight: bold;
+          cursor: pointer;
+          font-size: 12px;
+          transition: all 0.2s;
+        " onmouseover="this.style.background='#5a6268'" onmouseout="this.style.background='#6c757d'">
+          📤 Import from File
+        </button>
+        <button onclick="resetToFactory()" style="
+          padding: 8px 16px;
+          background: #dc3545;
+          color: white;
+          border: none;
+          border-radius: 5px;
+          font-weight: bold;
+          cursor: pointer;
+          font-size: 12px;
+          transition: all 0.2s;
+        " onmouseover="this.style.background='#c82333'" onmouseout="this.style.background='#dc3545'">
+          🔄 Reset to Factory
+        </button>
+      </div>
+      <div style="text-align: center; font-size: 10px; color: #666;">
+        Save all settings including Bank Mode configuration
+      </div>
+    </div>
+  </div>
+
+  <!-- Overlay backdrops -->
   <div id="customization-backdrop" style="
     display: none;
     position: fixed;
@@ -383,6 +535,17 @@
     background: rgba(0,0,0,0.5);
     z-index: 999;
   " onclick="toggleCustomization()"></div>
+
+  <div id="midi-mapping-backdrop" style="
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.5);
+    z-index: 999;
+  " onclick="toggleMidiMapping()"></div>
 
   <script>
     // Global flag to prevent painting while dragging controls

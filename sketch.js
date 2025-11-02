@@ -203,6 +203,27 @@ let ccLearnParameter = null; // 'size', 'opacity', 'hueVariation', 'rotation', '
 let ccLearnCalibrationValues = []; // Track CC values during learn for auto-calibration
 let ccLearnStartTime = 0;
 
+// Bank Mode (pad selects drum, faders control variables)
+let bankModeEnabled = false; // Toggle between Bank Mode and Direct Mode
+let activeDrumBank = 'kick'; // Currently selected drum for control
+
+// Pad → Drum mapping (for bank selection)
+let bankPadAssignments = {};
+
+// Fader → Variable mapping (global for selected drum)
+let globalVariableAssignments = {
+  size: { cc: null, ccMin: 0, ccMax: 127 },
+  opacity: { cc: null, ccMin: 0, ccMax: 127 },
+  hueVariation: { cc: null, ccMin: 0, ccMax: 127 },
+  rotation: { cc: null, ccMin: 0, ccMax: 127 },
+  strokeWeight: { cc: null, ccMin: 0, ccMax: 127 }
+};
+
+// Bank mode learn state
+let bankLearnMode = false; // true when learning pad or global variable
+let bankLearnType = null; // 'pad' or 'variable'
+let bankLearnTarget = null; // drumId (for pad) or paramKey (for variable)
+
 // Scaling curve types
 const SCALING_CURVES = {
   LINEAR: 'linear',
@@ -344,11 +365,19 @@ function setup() {
   }
   console.log('CC migration check complete');
 
+  // Initialize bank mode pad assignments for all drums
+  for (const drum of DRUM_KIT_CONFIG) {
+    bankPadAssignments[drum.id] = { note: null };
+  }
+
   // Save initial blank canvas state
   saveCanvasState();
 
   // Initialize timeline controls visibility
   updateTimelineControlsVisibility();
+
+  // Update active drum indicator if bank mode is enabled
+  updateActiveDrumIndicator();
 
   console.log('🎨 Drum Painter Ready!');
   console.log('Controls: SPACE=clear, S=save, 1-6=modes, H=hide UI, B=blend mode, Z=undo, Y=redo');
@@ -356,6 +385,7 @@ function setup() {
 
   // Make HTML callback functions globally accessible
   window.toggleCustomization = toggleCustomization;
+  window.toggleMidiMapping = toggleMidiMapping;
   window.updateDrumSetting = updateDrumSetting;
   window.learnMIDINote = learnMIDINote;
   window.updateTimelineBPM = updateTimelineBPM;
@@ -665,7 +695,35 @@ function handleMIDIMessage(message) {
 
     // Note On message (144) with velocity > 0
     if (command === 144 && velocity > 0) {
-      // Handle MIDI learn mode
+      // Handle bank mode pad learn
+      if (bankLearnMode && bankLearnType === 'pad' && bankLearnTarget) {
+        bankPadAssignments[bankLearnTarget].note = note;
+        console.log(`Bank Pad Learn: Assigned note ${note} to ${bankLearnTarget}`);
+
+        // Exit learn mode
+        bankLearnMode = false;
+        bankLearnType = null;
+        bankLearnTarget = null;
+
+        // Rebuild UI to show the new assignment
+        buildMidiMappingUI();
+        return;
+      }
+
+      // Handle bank mode pad selection (switch active drum)
+      if (bankModeEnabled) {
+        // Check if this note is assigned to a drum
+        for (const drumId in bankPadAssignments) {
+          if (bankPadAssignments[drumId].note === note) {
+            activeDrumBank = drumId;
+            console.log(`Bank Mode: Selected ${drumId} for control`);
+            updateActiveDrumIndicator();
+            return; // Don't paint, just select
+          }
+        }
+      }
+
+      // Handle MIDI learn mode (for drum note mapping)
       if (midiLearnMode && midiLearnDrumId) {
         drumSettings[midiLearnDrumId].midiNote = note;
         console.log(`MIDI Learn: Assigned note ${note} to ${midiLearnDrumId}`);
@@ -692,7 +750,49 @@ function handleMIDIMessage(message) {
       const ccNumber = note; // Second byte is CC number
       const ccValue = velocity; // Third byte is CC value (0-127)
 
-      // Handle CC learn mode with calibration
+      // Handle bank mode variable learn with calibration
+      if (bankLearnMode && bankLearnType === 'variable' && bankLearnTarget) {
+        // Collect CC values for calibration (first message starts the timer)
+        if (ccLearnCalibrationValues.length === 0) {
+          ccLearnStartTime = millis();
+          console.log(`Bank Variable Calibration: Move controller through FULL range for 3 seconds...`);
+        }
+
+        ccLearnCalibrationValues.push(ccValue);
+
+        // After 3 seconds, calculate min/max and assign
+        const elapsed = millis() - ccLearnStartTime;
+        if (elapsed >= 3000) {
+          const ccMin = Math.min(...ccLearnCalibrationValues);
+          const ccMax = Math.max(...ccLearnCalibrationValues);
+
+          globalVariableAssignments[bankLearnTarget].cc = ccNumber;
+          globalVariableAssignments[bankLearnTarget].ccMin = ccMin;
+          globalVariableAssignments[bankLearnTarget].ccMax = ccMax;
+
+          console.log(`Bank Variable Learn Complete: CC ${ccNumber} assigned to ${bankLearnTarget}`);
+          console.log(`  Detected range: ${ccMin}-${ccMax} (${ccMax === 127 ? 'full range' : 'limited range'})`);
+
+          // Exit learn mode
+          bankLearnMode = false;
+          bankLearnType = null;
+          bankLearnTarget = null;
+          ccLearnCalibrationValues = [];
+
+          // Rebuild UI to show the new CC mapping
+          buildMidiMappingUI();
+          return;
+        }
+        return; // Stay in learn mode until timeout
+      }
+
+      // Handle bank mode CC processing (route to active drum)
+      if (bankModeEnabled) {
+        handleBankModeCC(ccNumber, ccValue);
+        return;
+      }
+
+      // Handle direct mode CC learn with calibration
       if (ccLearnMode && ccLearnDrumId && ccLearnParameter) {
         // Collect CC values for calibration (first message starts the timer)
         if (ccLearnCalibrationValues.length === 0) {
@@ -741,7 +841,43 @@ function handleMIDIMessage(message) {
       const channel = command - 224 + 1; // MIDI channel 1-16
       const pseudoCC = 1000 + channel; // Use 1001-1016 as "CC numbers" for pitch bend
 
-      // Handle CC learn mode with calibration (treat pitch bend like a CC)
+      // Handle bank mode variable learn with calibration (treat pitch bend like a CC)
+      if (bankLearnMode && bankLearnType === 'variable' && bankLearnTarget) {
+        // Collect pitch bend values for calibration (first message starts the timer)
+        if (ccLearnCalibrationValues.length === 0) {
+          ccLearnStartTime = millis();
+          console.log(`Bank Variable Calibration (Pitch Bend): Move fader through FULL range for 3 seconds...`);
+        }
+
+        ccLearnCalibrationValues.push(ccValue);
+
+        // After 3 seconds, calculate min/max and assign
+        const elapsed = millis() - ccLearnStartTime;
+        if (elapsed >= 3000) {
+          const ccMin = Math.min(...ccLearnCalibrationValues);
+          const ccMax = Math.max(...ccLearnCalibrationValues);
+
+          globalVariableAssignments[bankLearnTarget].cc = pseudoCC;
+          globalVariableAssignments[bankLearnTarget].ccMin = ccMin;
+          globalVariableAssignments[bankLearnTarget].ccMax = ccMax;
+
+          console.log(`Bank Variable Learn Complete (Pitch Bend): Pitch Bend (ch${channel}) assigned to ${bankLearnTarget}`);
+          console.log(`  Detected range: ${ccMin}-${ccMax}`);
+
+          // Exit learn mode
+          bankLearnMode = false;
+          bankLearnType = null;
+          bankLearnTarget = null;
+          ccLearnCalibrationValues = [];
+
+          // Rebuild UI to show the new CC mapping
+          buildMidiMappingUI();
+          return;
+        }
+        return; // Stay in learn mode until timeout
+      }
+
+      // Handle direct mode CC learn with calibration (treat pitch bend like a CC)
       if (ccLearnMode && ccLearnDrumId && ccLearnParameter) {
         // Collect pitch bend values for calibration (first message starts the timer)
         if (ccLearnCalibrationValues.length === 0) {
@@ -776,7 +912,13 @@ function handleMIDIMessage(message) {
         }
       }
 
-      // Normal pitch bend processing - treat like CC
+      // Handle bank mode pitch bend processing (route to active drum)
+      if (bankModeEnabled) {
+        handleBankModeCC(pseudoCC, ccValue);
+        return;
+      }
+
+      // Normal pitch bend processing (direct mode) - treat like CC
       handleCCValue(pseudoCC, ccValue);
     }
 
@@ -862,6 +1004,78 @@ function handleCCValue(ccNumber, ccValue) {
         console.log(`CC ${ccNumber} -> ${drumId}.${param} = ${sliderValue.toFixed(1)} (internal: ${drumSettings[drumId][param]})`);
         return; // Found and processed, exit
       }
+    }
+  }
+}
+
+// ===== BANK MODE CC HANDLING =====
+
+/**
+ * Handle CC messages in bank mode (route to active drum's variable)
+ */
+function handleBankModeCC(ccNumber, ccValue) {
+  // Find which global variable uses this CC number
+  for (const paramKey in globalVariableAssignments) {
+    const assignment = globalVariableAssignments[paramKey];
+
+    if (assignment.cc === ccNumber) {
+      // Map CC value using detected range to parameter range
+      const ccMin = assignment.ccMin || 0;
+      const ccMax = assignment.ccMax || 127;
+      const normalizedValue = (ccValue - ccMin) / (ccMax - ccMin);
+
+      // Get parameter ranges from the active drum's midiCC settings
+      const drumSettings_active = drumSettings[activeDrumBank];
+      if (!drumSettings_active || !drumSettings_active.midiCC || !drumSettings_active.midiCC[paramKey]) {
+        console.warn(`Bank mode: ${activeDrumBank} doesn't have midiCC settings for ${paramKey}`);
+        return;
+      }
+
+      const min = drumSettings_active.midiCC[paramKey].min;
+      const max = drumSettings_active.midiCC[paramKey].max;
+      const sliderValue = min + normalizedValue * (max - min);
+
+      // Update the parameter and UI for the active drum
+      if (paramKey === 'size') {
+        const sizePercent = Math.round(sliderValue);
+        drumSettings[activeDrumBank].size = sliderValue / 100;
+        const sliderEl = document.querySelector(`input[oninput*="size-${activeDrumBank}"]`);
+        const displayEl = document.getElementById(`size-${activeDrumBank}`);
+        if (sliderEl) sliderEl.value = sizePercent;
+        if (displayEl) displayEl.textContent = sizePercent + '%';
+      } else if (paramKey === 'opacity') {
+        const opacityPercent = Math.round(sliderValue);
+        drumSettings[activeDrumBank].opacity = sliderValue / 100;
+        const sliderEl = document.querySelector(`input[oninput*="opacity-${activeDrumBank}"]`);
+        const displayEl = document.getElementById(`opacity-${activeDrumBank}`);
+        if (sliderEl) sliderEl.value = opacityPercent;
+        if (displayEl) displayEl.textContent = opacityPercent + '%';
+      } else if (paramKey === 'hueVariation') {
+        drumSettings[activeDrumBank].hueVariation = Math.round(sliderValue);
+        const sliderEl = document.querySelector(`input[oninput*="huevar-${activeDrumBank}"]`);
+        const displayEl = document.getElementById(`huevar-${activeDrumBank}`);
+        if (sliderEl) sliderEl.value = Math.round(sliderValue);
+        if (displayEl) displayEl.textContent = Math.round(sliderValue) + '°';
+      } else if (paramKey === 'rotation') {
+        drumSettings[activeDrumBank].rotation = Math.round(sliderValue);
+        const sliderEl = document.querySelector(`input[oninput*="rotation-${activeDrumBank}"]`);
+        const displayEl = document.getElementById(`rotation-${activeDrumBank}`);
+        if (sliderEl) sliderEl.value = Math.round(sliderValue);
+        if (displayEl) displayEl.textContent = Math.round(sliderValue) + '°';
+      } else if (paramKey === 'strokeWeight') {
+        drumSettings[activeDrumBank].strokeWeight = Math.round(sliderValue);
+        const sliderEl = document.getElementById(`strokeweight-slider-${activeDrumBank}`);
+        const displayEl = document.getElementById(`strokeweight-${activeDrumBank}`);
+        if (sliderEl) sliderEl.value = Math.round(sliderValue);
+        if (displayEl) displayEl.textContent = Math.round(sliderValue) + 'px';
+      }
+
+      // Update preview
+      updateDrumPreview(activeDrumBank);
+
+      // Log for debugging
+      console.log(`Bank Mode: CC${ccNumber} (${ccValue}) -> ${activeDrumBank}.${paramKey} = ${sliderValue.toFixed(1)}`);
+      return;
     }
   }
 }
@@ -2026,6 +2240,329 @@ function toggleCustomization() {
 }
 
 /**
+ * Toggle MIDI Mapping panel
+ */
+let showMidiMapping = false;
+
+function toggleMidiMapping() {
+  showMidiMapping = !showMidiMapping;
+  const panel = document.getElementById('midi-mapping-panel');
+  const backdrop = document.getElementById('midi-mapping-backdrop');
+
+  if (showMidiMapping) {
+    buildMidiMappingUI();
+    panel.style.display = 'block';
+    backdrop.style.display = 'block';
+  } else {
+    panel.style.display = 'none';
+    backdrop.style.display = 'none';
+  }
+}
+
+/**
+ * Build the MIDI Mapping UI dynamically
+ */
+function buildMidiMappingUI() {
+  const container = document.getElementById('midi-mapping-container');
+  container.innerHTML = '';
+
+  // Clean up bankPadAssignments - remove drums that no longer exist
+  const validDrumIds = DRUM_KIT_CONFIG.map(d => d.id);
+  for (const drumId in bankPadAssignments) {
+    if (!validDrumIds.includes(drumId)) {
+      delete bankPadAssignments[drumId];
+    }
+  }
+
+  // Mode selector
+  const modeSection = document.createElement('div');
+  modeSection.style.cssText = 'margin-bottom: 25px; padding: 15px; background: #f8f9fa; border-radius: 8px;';
+
+  const modeTitle = document.createElement('h3');
+  modeTitle.textContent = 'Control Mode';
+  modeTitle.style.cssText = 'margin: 0 0 15px 0; font-size: 14px; color: #333;';
+  modeSection.appendChild(modeTitle);
+
+  // Radio buttons for mode selection
+  const directModeLabel = document.createElement('label');
+  directModeLabel.style.cssText = 'display: block; cursor: pointer; margin-bottom: 10px; padding: 10px; background: white; border-radius: 5px; border: 2px solid ' + (bankModeEnabled ? '#ddd' : '#667eea') + ';';
+
+  const directModeRadio = document.createElement('input');
+  directModeRadio.type = 'radio';
+  directModeRadio.name = 'control-mode';
+  directModeRadio.checked = !bankModeEnabled;
+  directModeRadio.onchange = function() {
+    bankModeEnabled = false;
+    updateActiveDrumIndicator();
+    buildMidiMappingUI();
+  };
+
+  const directModeText = document.createElement('span');
+  directModeText.innerHTML = '<strong>Direct Mode</strong><br><span style="font-size: 11px; color: #666;">Each fader/dial controls a specific drum + variable (use 🎛 buttons in Drum Customization)</span>';
+  directModeText.style.marginLeft = '8px';
+
+  directModeLabel.appendChild(directModeRadio);
+  directModeLabel.appendChild(directModeText);
+  modeSection.appendChild(directModeLabel);
+
+  const bankModeLabel = document.createElement('label');
+  bankModeLabel.style.cssText = 'display: block; cursor: pointer; padding: 10px; background: white; border-radius: 5px; border: 2px solid ' + (bankModeEnabled ? '#667eea' : '#ddd') + ';';
+
+  const bankModeRadio = document.createElement('input');
+  bankModeRadio.type = 'radio';
+  bankModeRadio.name = 'control-mode';
+  bankModeRadio.checked = bankModeEnabled;
+  bankModeRadio.onchange = function() {
+    bankModeEnabled = true;
+    updateActiveDrumIndicator();
+    buildMidiMappingUI();
+  };
+
+  const bankModeText = document.createElement('span');
+  bankModeText.innerHTML = '<strong>Bank Mode</strong><br><span style="font-size: 11px; color: #666;">Hit pad to select drum, faders control selected drum\'s variables</span>';
+  bankModeText.style.marginLeft = '8px';
+
+  bankModeLabel.appendChild(bankModeRadio);
+  bankModeLabel.appendChild(bankModeText);
+  modeSection.appendChild(bankModeLabel);
+
+  container.appendChild(modeSection);
+
+  // Bank mode assignments (only show if bank mode enabled)
+  if (bankModeEnabled) {
+    // Pad assignments
+    const padSection = document.createElement('div');
+    padSection.style.cssText = 'margin-bottom: 25px;';
+
+    const padTitle = document.createElement('h3');
+    padTitle.textContent = 'Pad Assignments (Select Drum)';
+    padTitle.style.cssText = 'margin: 0 0 15px 0; font-size: 14px; color: #333;';
+    padSection.appendChild(padTitle);
+
+    const padGrid = document.createElement('div');
+    padGrid.style.cssText = 'display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px;';
+
+    for (const drum of DRUM_KIT_CONFIG) {
+      const drumId = drum.id;
+
+      // Skip if no settings exist for this drum
+      if (!drumSettings[drumId]) continue;
+
+      // Ensure bankPadAssignment exists for this drum
+      if (!bankPadAssignments[drumId]) {
+        bankPadAssignments[drumId] = { note: null };
+      }
+
+      const assignment = bankPadAssignments[drumId];
+
+      const padRow = document.createElement('div');
+      padRow.style.cssText = 'display: flex; align-items: center; justify-content: space-between; padding: 10px; background: #f8f9fa; border-radius: 5px;';
+
+      const drumLabel = document.createElement('span');
+      drumLabel.textContent = drumSettings[drumId]?.name || drum.name;
+      drumLabel.style.cssText = 'font-weight: bold; font-size: 12px; flex: 1;';
+
+      const assignmentDisplay = document.createElement('span');
+      if (assignment.note !== null) {
+        assignmentDisplay.textContent = `Note ${assignment.note}`;
+        assignmentDisplay.style.cssText = 'font-size: 11px; color: #667eea; font-weight: bold; padding: 3px 8px; background: #e8eaff; border-radius: 3px; margin-right: 5px;';
+      } else {
+        assignmentDisplay.textContent = 'Not Set';
+        assignmentDisplay.style.cssText = 'font-size: 11px; color: #999; margin-right: 5px;';
+      }
+
+      const learnBtn = document.createElement('button');
+      learnBtn.textContent = '🎛';
+      learnBtn.title = 'Learn Pad';
+      learnBtn.style.cssText = 'padding: 4px 8px; font-size: 11px; background: #667eea; color: white; border: none; border-radius: 3px; cursor: pointer; margin-right: 5px;';
+      learnBtn.onclick = function() {
+        startBankLearn('pad', drumId);
+        this.textContent = '⏳';
+        this.style.background = '#ff6b35';
+      };
+
+      const removeBtn = document.createElement('button');
+      removeBtn.textContent = '×';
+      removeBtn.title = 'Remove';
+      removeBtn.style.cssText = 'padding: 2px 6px; font-size: 10px; background: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer;';
+      removeBtn.style.display = assignment.note !== null ? 'inline-block' : 'none';
+      removeBtn.onclick = function() {
+        bankPadAssignments[drumId].note = null;
+        buildMidiMappingUI();
+      };
+
+      padRow.appendChild(drumLabel);
+      padRow.appendChild(assignmentDisplay);
+      padRow.appendChild(learnBtn);
+      padRow.appendChild(removeBtn);
+      padGrid.appendChild(padRow);
+    }
+
+    padSection.appendChild(padGrid);
+    container.appendChild(padSection);
+
+    // Variable assignments
+    const varSection = document.createElement('div');
+    varSection.style.cssText = 'margin-bottom: 25px;';
+
+    const varTitle = document.createElement('h3');
+    varTitle.textContent = 'Global Variable Assignments';
+    varTitle.style.cssText = 'margin: 0 0 10px 0; font-size: 14px; color: #333;';
+    varSection.appendChild(varTitle);
+
+    const varNote = document.createElement('div');
+    varNote.textContent = 'These faders/dials will control the selected drum\'s parameters';
+    varNote.style.cssText = 'font-size: 11px; color: #666; margin-bottom: 15px; font-style: italic;';
+    varSection.appendChild(varNote);
+
+    const varGrid = document.createElement('div');
+    varGrid.style.cssText = 'display: grid; gap: 10px;';
+
+    const variables = [
+      { key: 'size', label: 'Size' },
+      { key: 'opacity', label: 'Opacity' },
+      { key: 'hueVariation', label: 'Hue Variation' },
+      { key: 'rotation', label: 'Rotation' },
+      { key: 'strokeWeight', label: 'Stroke Weight' }
+    ];
+
+    for (const variable of variables) {
+      const assignment = globalVariableAssignments[variable.key];
+
+      const varRow = document.createElement('div');
+      varRow.style.cssText = 'display: flex; align-items: center; justify-content: space-between; padding: 10px; background: #f8f9fa; border-radius: 5px;';
+
+      const varLabel = document.createElement('span');
+      varLabel.textContent = variable.label;
+      varLabel.style.cssText = 'font-weight: bold; font-size: 12px; flex: 1;';
+
+      const assignmentDisplay = document.createElement('span');
+      if (assignment.cc !== null) {
+        const rangeInfo = (assignment.ccMin === 0 && assignment.ccMax === 127) ? '' : ` (${assignment.ccMin}-${assignment.ccMax})`;
+        assignmentDisplay.textContent = `CC${assignment.cc}${rangeInfo}`;
+        assignmentDisplay.style.cssText = 'font-size: 11px; color: #667eea; font-weight: bold; padding: 3px 8px; background: #e8eaff; border-radius: 3px; margin-right: 5px;';
+      } else {
+        assignmentDisplay.textContent = 'Not Set';
+        assignmentDisplay.style.cssText = 'font-size: 11px; color: #999; margin-right: 5px;';
+      }
+
+      const learnBtn = document.createElement('button');
+      learnBtn.textContent = '🎛';
+      learnBtn.title = 'Learn Fader/Dial';
+      learnBtn.style.cssText = 'padding: 4px 8px; font-size: 11px; background: #667eea; color: white; border: none; border-radius: 3px; cursor: pointer; margin-right: 5px;';
+      learnBtn.onclick = function() {
+        startBankLearn('variable', variable.key);
+        this.textContent = '⏳';
+        this.style.background = '#ff6b35';
+      };
+
+      const removeBtn = document.createElement('button');
+      removeBtn.textContent = '×';
+      removeBtn.title = 'Remove';
+      removeBtn.style.cssText = 'padding: 2px 6px; font-size: 10px; background: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer;';
+      removeBtn.style.display = assignment.cc !== null ? 'inline-block' : 'none';
+      removeBtn.onclick = function() {
+        globalVariableAssignments[variable.key].cc = null;
+        globalVariableAssignments[variable.key].ccMin = 0;
+        globalVariableAssignments[variable.key].ccMax = 127;
+        buildMidiMappingUI();
+      };
+
+      varRow.appendChild(varLabel);
+      varRow.appendChild(assignmentDisplay);
+      varRow.appendChild(learnBtn);
+      varRow.appendChild(removeBtn);
+      varGrid.appendChild(varRow);
+    }
+
+    varSection.appendChild(varGrid);
+    container.appendChild(varSection);
+  } else {
+    // Direct mode message
+    const directModeMsg = document.createElement('div');
+    directModeMsg.style.cssText = 'padding: 20px; background: #e8eaff; border-radius: 8px; text-align: center;';
+    directModeMsg.innerHTML = '<p style="margin: 0; font-size: 13px; color: #667eea;"><strong>Direct Mode Active</strong></p><p style="margin: 10px 0 0 0; font-size: 12px; color: #666;">Use the 🎛 learn buttons in the Drum Customization panel to assign controllers to specific drum parameters.</p>';
+    container.appendChild(directModeMsg);
+  }
+}
+
+/**
+ * Start bank mode learn (for pad or variable)
+ */
+function startBankLearn(type, target) {
+  bankLearnMode = true;
+  bankLearnType = type;
+  bankLearnTarget = target;
+  ccLearnCalibrationValues = [];
+
+  console.log(`Bank Learn: Waiting for ${type === 'pad' ? 'pad hit' : 'fader/dial movement'} for ${target}...`);
+
+  setTimeout(() => {
+    if (bankLearnMode) {
+      bankLearnMode = false;
+      bankLearnType = null;
+      bankLearnTarget = null;
+      ccLearnCalibrationValues = [];
+      buildMidiMappingUI();
+      console.log('Bank learn timeout');
+    }
+  }, 4000);
+}
+
+/**
+ * Update the active drum indicator in the UI
+ */
+function updateActiveDrumIndicator() {
+  let indicatorEl = document.getElementById('active-drum-indicator');
+
+  // Create indicator if it doesn't exist
+  if (!indicatorEl && bankModeEnabled) {
+    indicatorEl = document.createElement('div');
+    indicatorEl.id = 'active-drum-indicator';
+    indicatorEl.style.cssText = `
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      background: rgba(102, 126, 234, 0.95);
+      color: white;
+      padding: 12px 20px;
+      border-radius: 8px;
+      font-family: monospace;
+      font-size: 13px;
+      font-weight: bold;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+      z-index: 998;
+      pointer-events: none;
+      animation: pulse 2s ease-in-out infinite;
+    `;
+    document.body.appendChild(indicatorEl);
+
+    // Add CSS animation for pulse effect
+    if (!document.getElementById('active-drum-indicator-style')) {
+      const style = document.createElement('style');
+      style.id = 'active-drum-indicator-style';
+      style.textContent = `
+        @keyframes pulse {
+          0%, 100% { transform: scale(1); }
+          50% { transform: scale(1.05); }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+  }
+
+  if (indicatorEl) {
+    if (bankModeEnabled) {
+      const drumName = drumSettings[activeDrumBank]?.name || activeDrumBank.toUpperCase();
+      indicatorEl.textContent = `🎯 CONTROLLING: ${drumName}`;
+      indicatorEl.style.display = 'block';
+    } else {
+      indicatorEl.style.display = 'none';
+    }
+  }
+}
+
+/**
  * Build the drum customization UI dynamically
  */
 function buildDrumSettingsUI() {
@@ -2069,6 +2606,9 @@ function buildDrumSettingsUI() {
     // Create tab button
     const tabButton = document.createElement('button');
     tabButton.id = `tab-btn-${drumId}`;
+    tabButton.draggable = true;
+    tabButton.dataset.drumId = drumId;
+    tabButton.dataset.drumIndex = index;
     tabButton.style.cssText = `
       flex: 1;
       padding: 10px;
@@ -2077,7 +2617,7 @@ function buildDrumSettingsUI() {
       border-top: 3px solid ${isActive ? settings.color : 'transparent'};
       border-radius: 8px 8px 0 0;
       font-weight: ${isActive ? 'bold' : 'normal'};
-      cursor: pointer;
+      cursor: move;
       transition: all 0.2s;
       font-size: 13px;
       color: #333;
@@ -2086,6 +2626,11 @@ function buildDrumSettingsUI() {
       justify-content: center;
       gap: 6px;
     `;
+
+    // Add drag icon
+    const dragIcon = document.createElement('span');
+    dragIcon.textContent = '⠿';
+    dragIcon.style.cssText = 'opacity: 0.4; font-size: 10px;';
 
     // Add color indicator dot
     const colorDot = document.createElement('span');
@@ -2097,8 +2642,55 @@ function buildDrumSettingsUI() {
       display: inline-block;
     `;
 
+    tabButton.appendChild(dragIcon);
     tabButton.appendChild(colorDot);
     tabButton.appendChild(document.createTextNode(drumName));
+
+    // Drag and drop handlers
+    tabButton.ondragstart = (e) => {
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/html', drumId);
+      tabButton.style.opacity = '0.4';
+    };
+
+    tabButton.ondragend = (e) => {
+      tabButton.style.opacity = '1';
+    };
+
+    tabButton.ondragover = (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      tabButton.style.background = '#667eea';
+      tabButton.style.color = 'white';
+    };
+
+    tabButton.ondragleave = (e) => {
+      if (!tabButton.classList.contains('active')) {
+        tabButton.style.background = '#f8f9fa';
+        tabButton.style.color = '#333';
+      } else {
+        tabButton.style.background = 'white';
+        tabButton.style.color = '#333';
+      }
+    };
+
+    tabButton.ondrop = (e) => {
+      e.preventDefault();
+      const draggedDrumId = e.dataTransfer.getData('text/html');
+      const targetDrumId = drumId;
+
+      if (draggedDrumId !== targetDrumId) {
+        reorderDrums(draggedDrumId, targetDrumId);
+      }
+
+      if (!tabButton.classList.contains('active')) {
+        tabButton.style.background = '#f8f9fa';
+        tabButton.style.color = '#333';
+      } else {
+        tabButton.style.background = 'white';
+        tabButton.style.color = '#333';
+      }
+    };
 
     tabButton.onmouseover = () => {
       if (!tabButton.classList.contains('active')) {
@@ -2547,12 +3139,45 @@ function buildDrumSettingsUI() {
   tabNav.appendChild(addDrumBtn);
 
   container.appendChild(tabNav);
+
+  // Add hint about dragging tabs
+  const dragHint = document.createElement('div');
+  dragHint.style.cssText = 'font-size: 10px; color: #999; text-align: center; margin: -10px 0 10px 0; font-style: italic;';
+  dragHint.textContent = 'Drag tabs to reorder drums';
+  container.appendChild(dragHint);
+
   container.appendChild(tabContent);
 
   // Draw all previews immediately
   drumsToShow.forEach(({ id }) => {
     updateDrumPreview(id);
   });
+}
+
+/**
+ * Reorder drums in DRUM_KIT_CONFIG
+ */
+function reorderDrums(draggedDrumId, targetDrumId) {
+  // Find indices
+  const draggedIndex = DRUM_KIT_CONFIG.findIndex(d => d.id === draggedDrumId);
+  const targetIndex = DRUM_KIT_CONFIG.findIndex(d => d.id === targetDrumId);
+
+  if (draggedIndex === -1 || targetIndex === -1) return;
+
+  // Remove dragged drum and insert at target position
+  const [draggedDrum] = DRUM_KIT_CONFIG.splice(draggedIndex, 1);
+  DRUM_KIT_CONFIG.splice(targetIndex, 0, draggedDrum);
+
+  // Regenerate drum mappings
+  regenerateDrumMappings();
+
+  // Rebuild UIs to reflect new order
+  buildDrumSettingsUI();
+  if (showMidiMapping) {
+    buildMidiMappingUI();
+  }
+
+  console.log(`Reordered: ${draggedDrumId} moved to position of ${targetDrumId}`);
 }
 
 /**
@@ -2571,6 +3196,9 @@ function switchDrumTab(drumId) {
     const btn = document.getElementById(`tab-btn-${id}`);
     const panel = document.getElementById(`tab-panel-${id}`);
     const settings = drumSettings[id];
+
+    // Skip if elements don't exist yet
+    if (!btn || !panel) return;
 
     if (id === drumId) {
       // Activate this tab
@@ -2690,8 +3318,19 @@ function addNewDrum() {
     strokeColor: '#000000',
     hueVariation: 0,
     hueScaling: SCALING_CURVES.LINEAR,
-    rotation: 0
+    rotation: 0,
+    // MIDI CC live control mappings
+    midiCC: {
+      size: { cc: null, min: 30, max: 300, ccMin: 0, ccMax: 127 },
+      opacity: { cc: null, min: 10, max: 100, ccMin: 0, ccMax: 127 },
+      hueVariation: { cc: null, min: 0, max: 30, ccMin: 0, ccMax: 127 },
+      rotation: { cc: null, min: 0, max: 360, ccMin: 0, ccMax: 127 },
+      strokeWeight: { cc: null, min: 1, max: 10, ccMin: 0, ccMax: 127 }
+    }
   };
+
+  // Initialize bank mode pad assignment for new drum
+  bankPadAssignments[newId] = { note: null };
 
   // Regenerate mappings
   regenerateDrumMappings();
@@ -3197,13 +3836,20 @@ const STORAGE_KEY = 'drumPainterSettings';
 function saveAsDefault() {
   try {
     const state = {
-      version: '1.2', // Bumped version for MIDI CC support
+      version: '1.3', // Bumped version for Bank Mode support
       drumKitConfig: DRUM_KIT_CONFIG, // Save custom drum kit
       drumSettings: drumSettings,
       globalSettings: {
         sizeMultiplier: globalSizeMultiplier,
         blendMode: currentBlendMode,
         bgColor: currentBgColor
+      },
+      // Bank mode settings
+      bankModeSettings: {
+        enabled: bankModeEnabled,
+        activeDrum: activeDrumBank,
+        padAssignments: bankPadAssignments,
+        globalVariables: globalVariableAssignments
       },
       timestamp: new Date().toISOString()
     };
@@ -3256,6 +3902,23 @@ function loadDefault() {
       if (state.globalSettings.bgColor !== undefined) {
         currentBgColor = state.globalSettings.bgColor;
       }
+    }
+
+    // Load bank mode settings
+    if (state.bankModeSettings) {
+      if (state.bankModeSettings.enabled !== undefined) {
+        bankModeEnabled = state.bankModeSettings.enabled;
+      }
+      if (state.bankModeSettings.activeDrum) {
+        activeDrumBank = state.bankModeSettings.activeDrum;
+      }
+      if (state.bankModeSettings.padAssignments) {
+        bankPadAssignments = state.bankModeSettings.padAssignments;
+      }
+      if (state.bankModeSettings.globalVariables) {
+        globalVariableAssignments = state.bankModeSettings.globalVariables;
+      }
+      updateActiveDrumIndicator();
     }
 
     // Rebuild UI to reflect changes
@@ -3403,23 +4066,50 @@ function resetToFactory() {
  * Apply drum settings from loaded state
  */
 function applyDrumSettings(newSettings) {
-  // Validate and merge each drum's settings
-  for (let drumId in DRUM_IDS) {
-    const id = DRUM_IDS[drumId];
-    if (newSettings[id]) {
-      // Only apply valid properties
-      const validKeys = ['name', 'midiNote', 'color', 'shape',
-                         'opacity', 'opacityScaling',
-                         'size', 'sizeScaling',
-                         'strokeEnabled', 'strokeWeight', 'strokeColor',
-                         'hueVariation', 'hueScaling',
-                         'rotation', 'midiCC'];
+  // Loop through all settings (including dynamically added drums)
+  for (let id in newSettings) {
+    if (!newSettings[id]) continue;
 
-      for (let key of validKeys) {
-        if (newSettings[id][key] !== undefined) {
-          drumSettings[id][key] = newSettings[id][key];
+    // Initialize drumSettings[id] if it doesn't exist (for new drums)
+    if (!drumSettings[id]) {
+      drumSettings[id] = {
+        name: newSettings[id].name || id,
+        midiNote: newSettings[id].midiNote || 60,
+        color: newSettings[id].color || '#FFFFFF',
+        shape: 'circle',
+        opacity: 1.0,
+        opacityScaling: SCALING_CURVES.LINEAR,
+        size: 1.0,
+        sizeScaling: SCALING_CURVES.LINEAR,
+        strokeEnabled: false,
+        strokeWeight: 2,
+        strokeColor: '#000000',
+        hueVariation: 0,
+        hueScaling: SCALING_CURVES.LINEAR,
+        rotation: 0,
+        midiCC: {
+          size: { cc: null, min: 30, max: 300, ccMin: 0, ccMax: 127 },
+          opacity: { cc: null, min: 10, max: 100, ccMin: 0, ccMax: 127 },
+          hueVariation: { cc: null, min: 0, max: 30, ccMin: 0, ccMax: 127 },
+          rotation: { cc: null, min: 0, max: 360, ccMin: 0, ccMax: 127 },
+          strokeWeight: { cc: null, min: 1, max: 10, ccMin: 0, ccMax: 127 }
         }
+      };
+    }
+
+    // Only apply valid properties
+    const validKeys = ['name', 'midiNote', 'color', 'shape',
+                       'opacity', 'opacityScaling',
+                       'size', 'sizeScaling',
+                       'strokeEnabled', 'strokeWeight', 'strokeColor',
+                       'hueVariation', 'hueScaling',
+                       'rotation', 'midiCC'];
+
+    for (let key of validKeys) {
+      if (newSettings[id][key] !== undefined) {
+        drumSettings[id][key] = newSettings[id][key];
       }
+    }
 
       // Backward compatibility: Initialize midiCC if not present or migrate old format
       if (!drumSettings[id].midiCC) {
@@ -3464,6 +4154,10 @@ function applyDrumSettings(newSettings) {
         if (midiCC.rotation && 'value' in midiCC.rotation) delete midiCC.rotation.value;
         if (midiCC.strokeWeight && 'value' in midiCC.strokeWeight) delete midiCC.strokeWeight.value;
       }
+
+    // Initialize bank mode pad assignment if missing (for new or old drums)
+    if (!bankPadAssignments[id]) {
+      bankPadAssignments[id] = { note: null };
     }
   }
 
@@ -3511,6 +4205,23 @@ function loadDefaultOnStartup() {
       if (state.globalSettings.bgColor !== undefined) {
         currentBgColor = state.globalSettings.bgColor;
       }
+    }
+
+    // Load bank mode settings
+    if (state.bankModeSettings) {
+      if (state.bankModeSettings.enabled !== undefined) {
+        bankModeEnabled = state.bankModeSettings.enabled;
+      }
+      if (state.bankModeSettings.activeDrum) {
+        activeDrumBank = state.bankModeSettings.activeDrum;
+      }
+      if (state.bankModeSettings.padAssignments) {
+        bankPadAssignments = state.bankModeSettings.padAssignments;
+      }
+      if (state.bankModeSettings.globalVariables) {
+        globalVariableAssignments = state.bankModeSettings.globalVariables;
+      }
+      // updateActiveDrumIndicator() will be called after setup completes
     }
 
     console.log('✓ Loaded saved settings from browser storage');
