@@ -196,6 +196,13 @@ let midiLearnMode = false;
 let midiLearnDrumId = null;
 let currentCustomizationTab = DRUM_IDS.KICK; // Track current active tab
 
+// MIDI CC learn mode
+let ccLearnMode = false;
+let ccLearnDrumId = null;
+let ccLearnParameter = null; // 'size', 'opacity', 'hueVariation', 'rotation', 'strokeWeight'
+let ccLearnCalibrationValues = []; // Track CC values during learn for auto-calibration
+let ccLearnStartTime = 0;
+
 // Scaling curve types
 const SCALING_CURVES = {
   LINEAR: 'linear',
@@ -229,7 +236,15 @@ function generateFactorySettings() {
       strokeColor: '#000000',
       hueVariation: 0,
       hueScaling: SCALING_CURVES.LINEAR,
-      rotation: 0
+      rotation: 0,
+      // MIDI CC live control mappings (min/max match slider display ranges)
+      midiCC: {
+        size: { cc: null, min: 30, max: 300, ccMin: 0, ccMax: 127 },           // 30% to 300% (slider range)
+        opacity: { cc: null, min: 10, max: 100, ccMin: 0, ccMax: 127 },        // 10% to 100% (slider range)
+        hueVariation: { cc: null, min: 0, max: 30, ccMin: 0, ccMax: 127 },     // 0° to 30°
+        rotation: { cc: null, min: 0, max: 360, ccMin: 0, ccMax: 127 },        // 0° to 360°
+        strokeWeight: { cc: null, min: 1, max: 10, ccMin: 0, ccMax: 127 }      // 1px to 10px
+      }
     };
   });
   return settings;
@@ -298,6 +313,36 @@ function setup() {
 
   // Load saved settings from localStorage (if available)
   loadDefaultOnStartup();
+
+  // Force migrate any old CC format settings (aggressive fix)
+  for (const drum of DRUM_KIT_CONFIG) {
+    const drumId = drum.id;
+    if (drumSettings[drumId] && drumSettings[drumId].midiCC) {
+      const midiCC = drumSettings[drumId].midiCC;
+
+      // Fix size range if wrong
+      if (midiCC.size && midiCC.size.min < 10) {
+        midiCC.size.min = 30;
+        midiCC.size.max = 300;
+        console.log(`Force-migrated size CC for ${drumId}: ${midiCC.size.min}-${midiCC.size.max}`);
+      }
+
+      // Fix opacity range if wrong
+      if (midiCC.opacity && midiCC.opacity.min < 5) {
+        midiCC.opacity.min = 10;
+        midiCC.opacity.max = 100;
+        console.log(`Force-migrated opacity CC for ${drumId}: ${midiCC.opacity.min}-${midiCC.opacity.max}`);
+      }
+
+      // Remove value properties
+      delete midiCC.size?.value;
+      delete midiCC.opacity?.value;
+      delete midiCC.hueVariation?.value;
+      delete midiCC.rotation?.value;
+      delete midiCC.strokeWeight?.value;
+    }
+  }
+  console.log('CC migration check complete');
 
   // Save initial blank canvas state
   saveCanvasState();
@@ -615,6 +660,9 @@ function handleMIDIMessage(message) {
   try {
     const [command, note, velocity] = message.data;
 
+    // Debug: Log ALL MIDI messages (temporarily)
+    console.log(`MIDI: command=${command}, data1=${note}, data2=${velocity}`);
+
     // Note On message (144) with velocity > 0
     if (command === 144 && velocity > 0) {
       // Handle MIDI learn mode
@@ -639,10 +687,182 @@ function handleMIDIMessage(message) {
       paintDrum(note, vel);
     }
 
+    // CC messages (176-191 for channels 1-16)
+    if (command >= 176 && command <= 191) {
+      const ccNumber = note; // Second byte is CC number
+      const ccValue = velocity; // Third byte is CC value (0-127)
+
+      // Handle CC learn mode with calibration
+      if (ccLearnMode && ccLearnDrumId && ccLearnParameter) {
+        // Collect CC values for calibration (first message starts the timer)
+        if (ccLearnCalibrationValues.length === 0) {
+          ccLearnStartTime = millis();
+          console.log(`CC Calibration: Move controller through FULL range for 3 seconds...`);
+        }
+
+        ccLearnCalibrationValues.push(ccValue);
+
+        // After 3 seconds, calculate min/max and assign
+        const elapsed = millis() - ccLearnStartTime;
+        if (elapsed >= 3000) {
+          const ccMin = Math.min(...ccLearnCalibrationValues);
+          const ccMax = Math.max(...ccLearnCalibrationValues);
+
+          drumSettings[ccLearnDrumId].midiCC[ccLearnParameter].cc = ccNumber;
+          drumSettings[ccLearnDrumId].midiCC[ccLearnParameter].ccMin = ccMin;
+          drumSettings[ccLearnDrumId].midiCC[ccLearnParameter].ccMax = ccMax;
+
+          console.log(`CC Learn Complete: CC ${ccNumber} assigned to ${ccLearnDrumId}.${ccLearnParameter}`);
+          console.log(`  Detected range: ${ccMin}-${ccMax} (${ccMax === 127 ? 'full range' : 'limited range'})`);
+
+          // Exit learn mode
+          ccLearnMode = false;
+          ccLearnDrumId = null;
+          ccLearnParameter = null;
+          ccLearnCalibrationValues = [];
+
+          // Rebuild UI to show the new CC mapping
+          buildDrumSettingsUI();
+          return;
+        }
+      }
+
+      // Normal CC processing - find which drum/parameter uses this CC
+      handleCCValue(ccNumber, ccValue);
+    }
+
+    // Pitch Bend messages (224-239 for channels 1-16) - KeyLab faders send these!
+    if (command >= 224 && command <= 239) {
+      // Pitch bend is 14-bit: combine LSB (note) and MSB (velocity)
+      const pitchBendValue = (velocity * 128) + note; // 0-16383
+      const normalizedValue = pitchBendValue / 16383; // 0.0-1.0
+      const ccValue = Math.round(normalizedValue * 127); // Convert to 0-127 like CC
+
+      const channel = command - 224 + 1; // MIDI channel 1-16
+      const pseudoCC = 1000 + channel; // Use 1001-1016 as "CC numbers" for pitch bend
+
+      // Handle CC learn mode with calibration (treat pitch bend like a CC)
+      if (ccLearnMode && ccLearnDrumId && ccLearnParameter) {
+        // Collect pitch bend values for calibration (first message starts the timer)
+        if (ccLearnCalibrationValues.length === 0) {
+          ccLearnStartTime = millis();
+          console.log(`Pitch Bend Calibration: Move fader through FULL range for 3 seconds...`);
+        }
+
+        ccLearnCalibrationValues.push(ccValue);
+
+        // After 3 seconds, calculate min/max and assign
+        const elapsed = millis() - ccLearnStartTime;
+        if (elapsed >= 3000) {
+          const ccMin = Math.min(...ccLearnCalibrationValues);
+          const ccMax = Math.max(...ccLearnCalibrationValues);
+
+          drumSettings[ccLearnDrumId].midiCC[ccLearnParameter].cc = pseudoCC;
+          drumSettings[ccLearnDrumId].midiCC[ccLearnParameter].ccMin = ccMin;
+          drumSettings[ccLearnDrumId].midiCC[ccLearnParameter].ccMax = ccMax;
+
+          console.log(`Pitch Bend Learn Complete: Pitch Bend (ch${channel}) assigned to ${ccLearnDrumId}.${ccLearnParameter}`);
+          console.log(`  Detected range: ${ccMin}-${ccMax}`);
+
+          // Exit learn mode
+          ccLearnMode = false;
+          ccLearnDrumId = null;
+          ccLearnParameter = null;
+          ccLearnCalibrationValues = [];
+
+          // Rebuild UI to show the new CC mapping
+          buildDrumSettingsUI();
+          return;
+        }
+      }
+
+      // Normal pitch bend processing - treat like CC
+      handleCCValue(pseudoCC, ccValue);
+    }
+
     // Optional: log for debugging
     // console.log(`MIDI: ${command} ${note} ${velocity}`);
   } catch (error) {
     console.error('Error handling MIDI message:', error);
+  }
+}
+
+// ===== MIDI CC VALUE HANDLING =====
+
+function handleCCValue(ccNumber, ccValue) {
+  // Search through all drums to find which parameter uses this CC number
+  let foundCount = 0;
+
+  for (const drum of DRUM_KIT_CONFIG) {
+    const drumId = drum.id;
+    const settings = drumSettings[drumId];
+    if (!settings || !settings.midiCC) continue;
+
+    const ccParams = settings.midiCC;
+    const parameters = ['size', 'opacity', 'hueVariation', 'rotation', 'strokeWeight'];
+
+    for (const param of parameters) {
+      if (ccParams[param].cc === ccNumber) {
+        foundCount++;
+
+        // Log warning if duplicate CC mapping found
+        if (foundCount > 1) {
+          console.warn(`⚠️ DUPLICATE: CC ${ccNumber} is mapped to multiple parameters!`);
+        }
+        // Map CC value using detected range (ccMin-ccMax) to slider display range (min-max)
+        const ccMin = ccParams[param].ccMin || 0;
+        const ccMax = ccParams[param].ccMax || 127;
+        const normalizedValue = (ccValue - ccMin) / (ccMax - ccMin);
+        const min = ccParams[param].min;
+        const max = ccParams[param].max;
+        const sliderValue = min + normalizedValue * (max - min);
+
+        // Debug: Log the actual ranges being used
+        console.log(`CC ${ccNumber} for ${drumId}.${param}: CC range=${ccMin}-${ccMax}, slider range=${min}-${max}, CC value=${ccValue}, mapped=${sliderValue.toFixed(1)}`);
+
+        // Update the actual parameter and slider (convert slider value to internal value)
+        if (param === 'size') {
+          const sizePercent = Math.round(sliderValue);
+          drumSettings[drumId].size = sliderValue / 100; // Convert 30-300 to 0.3-3.0
+          const sliderEl = document.querySelector(`input[oninput*="size-${drumId}"]`);
+          const displayEl = document.getElementById(`size-${drumId}`);
+          if (sliderEl) sliderEl.value = sizePercent;
+          if (displayEl) displayEl.textContent = sizePercent + '%';
+        } else if (param === 'opacity') {
+          const opacityPercent = Math.round(sliderValue);
+          drumSettings[drumId].opacity = sliderValue / 100; // Convert 10-100 to 0.1-1.0
+          const sliderEl = document.querySelector(`input[oninput*="opacity-${drumId}"]`);
+          const displayEl = document.getElementById(`opacity-${drumId}`);
+          if (sliderEl) sliderEl.value = opacityPercent;
+          if (displayEl) displayEl.textContent = opacityPercent + '%';
+        } else if (param === 'hueVariation') {
+          drumSettings[drumId].hueVariation = Math.round(sliderValue);
+          const sliderEl = document.querySelector(`input[oninput*="huevar-${drumId}"]`);
+          const displayEl = document.getElementById(`huevar-${drumId}`);
+          if (sliderEl) sliderEl.value = Math.round(sliderValue);
+          if (displayEl) displayEl.textContent = Math.round(sliderValue) + '°';
+        } else if (param === 'rotation') {
+          drumSettings[drumId].rotation = Math.round(sliderValue);
+          const sliderEl = document.querySelector(`input[oninput*="rotation-${drumId}"]`);
+          const displayEl = document.getElementById(`rotation-${drumId}`);
+          if (sliderEl) sliderEl.value = Math.round(sliderValue);
+          if (displayEl) displayEl.textContent = Math.round(sliderValue) + '°';
+        } else if (param === 'strokeWeight') {
+          drumSettings[drumId].strokeWeight = Math.round(sliderValue);
+          const sliderEl = document.querySelector(`input[oninput*="strokeweight-${drumId}"]`);
+          const displayEl = document.getElementById(`strokeweight-${drumId}`);
+          if (sliderEl) sliderEl.value = Math.round(sliderValue);
+          if (displayEl) displayEl.textContent = Math.round(sliderValue) + 'px';
+        }
+
+        // Update preview
+        updateDrumPreview(drumId);
+
+        // Log for debugging
+        console.log(`CC ${ccNumber} -> ${drumId}.${param} = ${sliderValue.toFixed(1)} (internal: ${drumSettings[drumId][param]})`);
+        return; // Found and processed, exit
+      }
+    }
   }
 }
 
@@ -726,8 +946,9 @@ function paintClassic(note, velocity) {
   let scaledVelSize = applyScalingCurve(velocity, settings?.sizeScaling || SCALING_CURVES.LINEAR);
   let scaledVelOpacity = applyScalingCurve(velocity, settings?.opacityScaling || SCALING_CURVES.LINEAR);
 
+  // CC values are already in the settings (no multiplication needed)
   let size = (BASE_SIZE_CLASSIC + scaledVelSize * VELOCITY_MULT_CLASSIC) * globalSizeMultiplier * getDrumSize(note);
-  let col = getDrumColor(note, scaledVelOpacity); // Pass velocity for hue variation
+  let col = getDrumColor(note, scaledVelOpacity);
   let shape = getDrumShape(note);
   let opacityMult = getDrumOpacity(note);
   let stroke = getDrumStroke(note);
@@ -1358,7 +1579,7 @@ function getDrumColor(note, velocityNorm = 1.0) {
     const settings = drumSettings[drumId];
     let col = color(settings.color);
 
-    // Apply hue variation if set
+    // Apply hue variation if set (CC already modifies settings.hueVariation)
     if (settings.hueVariation > 0) {
       push();
       colorMode(HSB, 360, 100, 100);
@@ -2040,6 +2261,7 @@ function buildDrumSettingsUI() {
         </select>
       </div>`
     );
+    opacityGroup.querySelector('div').appendChild(createCCLearnButton(drumId, 'opacity'));
 
     // Size slider (multiplier with velocity)
     const sizePercent = Math.round(settings.size * 100);
@@ -2057,6 +2279,7 @@ function buildDrumSettingsUI() {
         </select>
       </div>`
     );
+    sizeGroup.querySelector('div').appendChild(createCCLearnButton(drumId, 'size'));
 
     // Hue variation slider
     const hueVarValue = Math.round(settings.hueVariation);
@@ -2074,6 +2297,7 @@ function buildDrumSettingsUI() {
         </select>
       </div>`
     );
+    hueVarGroup.querySelector('div').appendChild(createCCLearnButton(drumId, 'hueVariation'));
 
     // Rotation slider (for non-circular shapes)
     const rotationValue = Math.round(settings.rotation);
@@ -2086,6 +2310,7 @@ function buildDrumSettingsUI() {
       </div>
       <div style="font-size: 11px; color: #888; margin-top: 4px;">Shape rotation (circles not affected)</div>`
     );
+    rotationGroup.querySelector('div').appendChild(createCCLearnButton(drumId, 'rotation'));
 
     // Stroke/Outline controls (with real-time preview)
     const strokeGroup = document.createElement('div');
@@ -2168,6 +2393,7 @@ function buildDrumSettingsUI() {
 
     strokeWeightControls.appendChild(strokeWeightSlider);
     strokeWeightControls.appendChild(strokeWeightDisplay);
+    strokeWeightControls.appendChild(createCCLearnButton(drumId, 'strokeWeight'));
     strokeWeightWrapper.appendChild(strokeWeightLabel);
     strokeWeightWrapper.appendChild(strokeWeightControls);
     strokeControls.appendChild(strokeWeightWrapper);
@@ -2182,6 +2408,68 @@ function buildDrumSettingsUI() {
         <div id="preview-${drumId}" style="display: inline-block;"></div>
       </div>
     `;
+
+    // Helper function to create MIDI CC learn button
+    function createCCLearnButton(drumId, paramKey) {
+      const ccData = settings.midiCC[paramKey];
+      const wrapper = document.createElement('div');
+      wrapper.style.cssText = 'display: flex; align-items: center; gap: 3px;';
+
+      if (ccData.cc !== null) {
+        // Show CC number with range info and remove button
+        const ccDisplay = document.createElement('span');
+        const ccMin = ccData.ccMin || 0;
+        const ccMax = ccData.ccMax || 127;
+        const rangeInfo = (ccMin === 0 && ccMax === 127) ? '' : ` (${ccMin}-${ccMax})`;
+        ccDisplay.textContent = `CC${ccData.cc}${rangeInfo}`;
+        ccDisplay.style.cssText = 'font-size: 9px; color: #667eea; font-weight: bold; padding: 2px 4px; background: #e8eaff; border-radius: 3px;';
+
+        const removeBtn = document.createElement('button');
+        removeBtn.textContent = '×';
+        removeBtn.title = 'Remove MIDI CC mapping';
+        removeBtn.style.cssText = 'padding: 1px 4px; font-size: 10px; background: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer; line-height: 1;';
+        removeBtn.onclick = function() {
+          drumSettings[drumId].midiCC[paramKey].cc = null;
+          drumSettings[drumId].midiCC[paramKey].ccMin = 0;
+          drumSettings[drumId].midiCC[paramKey].ccMax = 127;
+          buildDrumSettingsUI();
+        };
+
+        wrapper.appendChild(ccDisplay);
+        wrapper.appendChild(removeBtn);
+      } else {
+        // Show learn button
+        const learnBtn = document.createElement('button');
+        learnBtn.textContent = '🎛';
+        learnBtn.title = 'Learn MIDI CC';
+        learnBtn.style.cssText = 'padding: 2px 5px; font-size: 11px; background: #667eea; color: white; border: none; border-radius: 3px; cursor: pointer;';
+        learnBtn.onclick = function() {
+          ccLearnMode = true;
+          ccLearnDrumId = drumId;
+          ccLearnParameter = paramKey;
+          ccLearnCalibrationValues = [];
+          this.textContent = '⏳';
+          this.style.background = '#ff6b35';
+          console.log(`CC Learn Mode: Move controller through FULL range for ${drumId}.${paramKey} (3 seconds)`);
+
+          setTimeout(() => {
+            if (ccLearnMode) {
+              ccLearnMode = false;
+              ccLearnDrumId = null;
+              ccLearnParameter = null;
+              ccLearnCalibrationValues = [];
+              this.textContent = '🎛';
+              this.style.background = '#667eea';
+              console.log('CC Learn timeout - no controller detected');
+            }
+          }, 4000);
+        };
+
+        wrapper.appendChild(learnBtn);
+      }
+
+      return wrapper;
+    }
 
     content.appendChild(nameGroup);
     content.appendChild(midiNoteGroup);
@@ -2908,7 +3196,7 @@ const STORAGE_KEY = 'drumPainterSettings';
 function saveAsDefault() {
   try {
     const state = {
-      version: '1.1', // Bumped version for drum kit config support
+      version: '1.2', // Bumped version for MIDI CC support
       drumKitConfig: DRUM_KIT_CONFIG, // Save custom drum kit
       drumSettings: drumSettings,
       globalSettings: {
@@ -3124,12 +3412,56 @@ function applyDrumSettings(newSettings) {
                          'size', 'sizeScaling',
                          'strokeEnabled', 'strokeWeight', 'strokeColor',
                          'hueVariation', 'hueScaling',
-                         'rotation'];
+                         'rotation', 'midiCC'];
 
       for (let key of validKeys) {
         if (newSettings[id][key] !== undefined) {
           drumSettings[id][key] = newSettings[id][key];
         }
+      }
+
+      // Backward compatibility: Initialize midiCC if not present or migrate old format
+      if (!drumSettings[id].midiCC) {
+        drumSettings[id].midiCC = {
+          size: { cc: null, min: 30, max: 300, ccMin: 0, ccMax: 127 },
+          opacity: { cc: null, min: 10, max: 100, ccMin: 0, ccMax: 127 },
+          hueVariation: { cc: null, min: 0, max: 30, ccMin: 0, ccMax: 127 },
+          rotation: { cc: null, min: 0, max: 360, ccMin: 0, ccMax: 127 },
+          strokeWeight: { cc: null, min: 1, max: 10, ccMin: 0, ccMax: 127 }
+        };
+      } else {
+        // Migrate old format (internal values) to new format (slider values)
+        const midiCC = drumSettings[id].midiCC;
+
+        // Check if using old format (size min < 10 means internal format)
+        if (midiCC.size && midiCC.size.min < 10) {
+          midiCC.size.min = 30;
+          midiCC.size.max = 300;
+          console.log(`Migrated size CC range for ${id}`);
+        }
+
+        // Check if using old format (opacity min < 5 means internal format)
+        if (midiCC.opacity && midiCC.opacity.min < 5) {
+          midiCC.opacity.min = 10;
+          midiCC.opacity.max = 100;
+          console.log(`Migrated opacity CC range for ${id}`);
+        }
+
+        // Add ccMin/ccMax if missing (default to full 0-127 range)
+        const params = ['size', 'opacity', 'hueVariation', 'rotation', 'strokeWeight'];
+        for (const param of params) {
+          if (midiCC[param]) {
+            if (midiCC[param].ccMin === undefined) midiCC[param].ccMin = 0;
+            if (midiCC[param].ccMax === undefined) midiCC[param].ccMax = 127;
+          }
+        }
+
+        // Remove old 'value' properties if they exist (no longer needed)
+        if (midiCC.size && 'value' in midiCC.size) delete midiCC.size.value;
+        if (midiCC.opacity && 'value' in midiCC.opacity) delete midiCC.opacity.value;
+        if (midiCC.hueVariation && 'value' in midiCC.hueVariation) delete midiCC.hueVariation.value;
+        if (midiCC.rotation && 'value' in midiCC.rotation) delete midiCC.rotation.value;
+        if (midiCC.strokeWeight && 'value' in midiCC.strokeWeight) delete midiCC.strokeWeight.value;
       }
     }
   }
