@@ -16,16 +16,17 @@ const PARTICLE_LIFETIME = 30;
 const PARTICLE_SIZE_GROWTH = 0.1;
 
 // Paint size settings
-const BASE_SIZE_CLASSIC = 10;
-const VELOCITY_MULT_CLASSIC = 30;
-const BASE_SIZE_FIBONACCI = 8;
-const VELOCITY_MULT_FIBONACCI = 20;
-const BASE_SIZE_SYMMETRY = 12;
-const VELOCITY_MULT_SYMMETRY = 25;
-const BASE_SIZE_GRAVITY = 8;
-const VELOCITY_MULT_GRAVITY = 15;
-const BASE_SIZE_ORGANIC = 10;
-const VELOCITY_MULT_ORGANIC = 20;
+// Size calculation constants (maximum dynamic range)
+const BASE_SIZE_CLASSIC = 5;
+const VELOCITY_MULT_CLASSIC = 60;
+const BASE_SIZE_FIBONACCI = 5;
+const VELOCITY_MULT_FIBONACCI = 60;
+const BASE_SIZE_SYMMETRY = 5;
+const VELOCITY_MULT_SYMMETRY = 60;
+const BASE_SIZE_GRAVITY = 5;
+const VELOCITY_MULT_GRAVITY = 60;
+const BASE_SIZE_ORGANIC = 5;
+const VELOCITY_MULT_ORGANIC = 60;
 
 // Alpha/opacity settings
 const ALPHA_CLASSIC = 150;
@@ -65,6 +66,8 @@ let midiInput = null;
 let particles = [];
 let currentMode = 0;
 let strokeCount = 0;
+let lastVelocity = 0; // Track last MIDI velocity for display
+let lastDotSize = 0; // Track last dot size for display
 let showUI = true;
 let showHelp = false;
 let globalSizeMultiplier = 1.0; // 0.3 to 3.0 range
@@ -76,6 +79,28 @@ let notificationAlpha = 0;
 // Mode-specific state
 let spiralAngle = 0;
 let growthPoints = [];
+
+// Timeline mode state
+let timelineX = 0;
+let timelineSpeed = 2; // pixels per frame when auto-scrolling
+let timelineAutoScroll = false; // auto-advance or only on hits
+let timelineStartTime = null; // When first note was hit
+let timelinePixelsPerSecond = 200; // How many pixels = 1 second
+let measuresPerStaff = 4; // Number of complete measures per staff row (will be calculated dynamically)
+let staffWidth = 1800; // Width before wrapping to next staff (calculated dynamically)
+let staffHeight = 80; // Total height of one staff (all 4 drums)
+let drumLineSpacing = 15; // Vertical spacing between drum lines within a staff
+let timelineRecording = false; // Whether timeline is currently recording
+let timelinePausedTime = 0; // Accumulated paused time in milliseconds
+let timelineStopTime = null; // When we last stopped recording
+let timelineBPM = 120; // Beats per minute for metronome
+let timelineSubdivision = 4; // Beat subdivision (4 = quarter notes, 8 = eighth notes, 16 = sixteenth notes)
+let metronomeEnabled = false; // Whether metronome sound is enabled
+let lastMetronomeClick = -1; // Last subdivision index that played a click
+let audioContext = null; // Web Audio API context for metronome
+let lastMetronomeBPM = 120; // Track BPM changes
+let lastMetronomeSubdivision = 4; // Track subdivision changes
+let midiLatencyMs = 70; // MIDI latency compensation in milliseconds (adjustable)
 
 // Blend mode state
 let currentBlendMode = 0;
@@ -93,14 +118,16 @@ let canvasHistory = [];
 let historyIndex = -1;
 
 // Mouse painting state (for testing without MIDI)
-let mouseTestEnabled = true; // Allow mouse painting even with MIDI
+let mouseTestEnabled = false; // Start disabled, enable only if no MIDI
 let currentMouseDrum = 0;
 let prevMouseX = 0;
 let prevMouseY = 0;
 
 // DOM element cache
 let midiStatusEl;
-let modeStatusEl;
+let modeSelectEl;
+let blendSelectEl;
+let additionalStatusEl;
 let controlsEl;
 
 // MIDI note mappings (General MIDI drum map)
@@ -116,40 +143,106 @@ const MIDI_NOTES = {
   RIDE: 51
 };
 
+// ═══════════════════════════════════════════════════════════════
+// 🥁 DRUM KIT CONFIGURATION - EASY CUSTOMIZATION!
+// ═══════════════════════════════════════════════════════════════
+//
+// HOW TO CUSTOMIZE YOUR DRUM KIT:
+//
+// 1. ADD A DRUM: Copy a line and add to the array below
+//    { id: 'new_drum', name: 'My Drum', defaultMidiNote: 60, defaultColor: '#FF00FF' }
+//
+// 2. REMOVE A DRUM: Delete or comment out the line
+//
+// 3. RENAME A DRUM: Change the 'name' field (or use UI after loading)
+//
+// 4. REORDER DRUMS: Change the order in this array
+//    - Timeline mode uses this order top-to-bottom
+//    - Mouse mode cycles through this order with [ ]
+//
+// FIELD REFERENCE:
+// - id: Unique identifier (no spaces, letters/numbers/_)
+// - name: Display name (can be changed in UI later)
+// - defaultMidiNote: MIDI note number (0-127, use Learn button in UI)
+// - defaultColor: Hex color code (#RRGGBB)
+//
+// EXAMPLES:
+// Full kit: Add hi-hat, crash, ride, multiple toms
+// Minimal: Keep just 2-3 drums
+// Electronic kit: Map to your specific MIDI notes
+//
+// ═══════════════════════════════════════════════════════════════
+
+const DRUM_KIT_CONFIG = [
+  { id: 'kick', name: 'Kick', defaultMidiNote: 51, defaultColor: '#141E50' },
+  { id: 'snare', name: 'Snare', defaultMidiNote: 49, defaultColor: '#C82832' },
+  { id: 'rack_tom', name: 'Rack Tom', defaultMidiNote: 50, defaultColor: '#64A0DC' },
+  { id: 'floor_tom', name: 'Floor Tom', defaultMidiNote: 39, defaultColor: '#DC6428' }
+  // 💡 ADD MORE DRUMS HERE! Examples:
+  // { id: 'hi_hat', name: 'Hi-Hat', defaultMidiNote: 42, defaultColor: '#FFC300' },
+  // { id: 'crash', name: 'Crash', defaultMidiNote: 49, defaultColor: '#FF5733' },
+  // { id: 'ride', name: 'Ride', defaultMidiNote: 51, defaultColor: '#DAF7A6' }
+];
+
+// Generate DRUM_IDS object from config (for backwards compatibility)
+const DRUM_IDS = {};
+DRUM_KIT_CONFIG.forEach(drum => {
+  DRUM_IDS[drum.id.toUpperCase()] = drum.id;
+});
+
 // Drum customization system
 let showCustomization = false;
 let midiLearnMode = false;
 let midiLearnDrumId = null;
+let currentCustomizationTab = DRUM_IDS.KICK; // Track current active tab
 
-// Drum IDs (independent of MIDI notes)
-const DRUM_IDS = {
-  KICK: 'kick',
-  SNARE: 'snare',
-  RACK_TOM: 'rack_tom',
-  FLOOR_TOM: 'floor_tom'
+// Scaling curve types
+const SCALING_CURVES = {
+  LINEAR: 'linear',
+  LOGARITHMIC: 'log',
+  EXPONENTIAL: 'exp',
+  QUADRATIC: 'quad'
 };
 
-let drumSettings = {
-  [DRUM_IDS.KICK]: { midiNote: 36, color: '#141E50', shape: 'circle', opacity: 1.0 },
-  [DRUM_IDS.SNARE]: { midiNote: 38, color: '#C82832', shape: 'circle', opacity: 1.0 },
-  [DRUM_IDS.RACK_TOM]: { midiNote: 50, color: '#64A0DC', shape: 'circle', opacity: 1.0 },
-  [DRUM_IDS.FLOOR_TOM]: { midiNote: 45, color: '#DC6428', shape: 'circle', opacity: 1.0 }
+const SCALING_CURVE_NAMES = {
+  [SCALING_CURVES.LINEAR]: 'Linear',
+  [SCALING_CURVES.LOGARITHMIC]: 'Logarithmic',
+  [SCALING_CURVES.EXPONENTIAL]: 'Exponential',
+  [SCALING_CURVES.QUADRATIC]: 'Quadratic'
 };
 
-// Mouse testing drum selection (maps to the 4 custom drums)
-const MOUSE_DRUM_IDS = [
-  DRUM_IDS.KICK,
-  DRUM_IDS.SNARE,
-  DRUM_IDS.RACK_TOM,
-  DRUM_IDS.FLOOR_TOM
-];
+// Generate factory default settings from config
+function generateFactorySettings() {
+  const settings = {};
+  DRUM_KIT_CONFIG.forEach(drum => {
+    settings[drum.id] = {
+      name: drum.name,
+      midiNote: drum.defaultMidiNote,
+      color: drum.defaultColor,
+      shape: 'circle',
+      opacity: 1.0,
+      opacityScaling: SCALING_CURVES.LINEAR,
+      size: 1.0,
+      sizeScaling: SCALING_CURVES.LINEAR,
+      strokeEnabled: false,
+      strokeWeight: 2,
+      strokeColor: '#000000',
+      hueVariation: 0,
+      hueScaling: SCALING_CURVES.LINEAR,
+      rotation: 0
+    };
+  });
+  return settings;
+}
 
-const MOUSE_DRUM_NAMES = [
-  'Kick',
-  'Snare',
-  'Rack Tom',
-  'Floor Tom'
-];
+const FACTORY_DRUM_SETTINGS = generateFactorySettings();
+
+// Deep copy factory settings to current settings
+let drumSettings = JSON.parse(JSON.stringify(FACTORY_DRUM_SETTINGS));
+
+// Mouse testing drum selection (generated from config)
+let MOUSE_DRUM_IDS = DRUM_KIT_CONFIG.map(d => d.id);
+let MOUSE_DRUM_NAMES = DRUM_KIT_CONFIG.map(d => d.name);
 
 const SHAPE_OPTIONS = ['circle', 'square', 'triangle', 'diamond', 'star', 'hexagon'];
 
@@ -158,8 +251,21 @@ const MODE_NAMES = [
   'Fibonacci Spiral',
   'Radial Symmetry',
   'Gravity Field',
-  'Organic Growth'
+  'Organic Growth',
+  'Timeline/Sequencer'
 ];
+
+// Timeline lane mapping (generated dynamically from config)
+function generateTimelineLanes() {
+  const lanes = {};
+  DRUM_KIT_CONFIG.forEach((drum, index) => {
+    lanes[drum.id] = index;
+  });
+  return lanes;
+}
+
+let TIMELINE_LANES = generateTimelineLanes();
+let TIMELINE_LANE_COUNT = DRUM_KIT_CONFIG.length;
 
 function setup() {
   createCanvas(windowWidth, windowHeight);
@@ -169,7 +275,7 @@ function setup() {
 
   // Create high-res painting canvas
   paintCanvas = createGraphics(PAINT_CANVAS_WIDTH, PAINT_CANVAS_HEIGHT);
-  paintCanvas.background(255);
+  paintCanvas.background(BG_COLORS[currentBgColor]);
   paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
 
   // Initialize growth points for organic mode
@@ -182,23 +288,53 @@ function setup() {
 
   // Cache DOM elements
   midiStatusEl = document.getElementById('midi-status');
-  modeStatusEl = document.getElementById('mode-status');
+  modeSelectEl = document.getElementById('mode-select');
+  blendSelectEl = document.getElementById('blend-select');
+  additionalStatusEl = document.getElementById('additional-status');
   controlsEl = document.getElementById('controls');
 
   // Setup MIDI
   setupMIDI();
 
+  // Load saved settings from localStorage (if available)
+  loadDefaultOnStartup();
+
   // Save initial blank canvas state
   saveCanvasState();
 
+  // Initialize timeline controls visibility
+  updateTimelineControlsVisibility();
+
   console.log('🎨 Drum Painter Ready!');
-  console.log('Controls: SPACE=clear, S=save, 1-5=modes, H=hide UI, B=blend mode, Z=undo, Y=redo');
+  console.log('Controls: SPACE=clear, S=save, 1-6=modes, H=hide UI, B=blend mode, Z=undo, Y=redo');
   console.log('Mouse Testing: M=toggle, []=change drum, click/drag to paint');
+
+  // Make HTML callback functions globally accessible
+  window.toggleCustomization = toggleCustomization;
+  window.updateDrumSetting = updateDrumSetting;
+  window.learnMIDINote = learnMIDINote;
+  window.updateTimelineBPM = updateTimelineBPM;
+  window.updateTimelineSubdivision = updateTimelineSubdivision;
+  window.updateMidiLatency = updateMidiLatency;
+  window.toggleMetronome = toggleMetronome;
+  window.startTimelineRecording = startTimelineRecording;
+  window.stopTimelineRecording = stopTimelineRecording;
+  window.changeModeFromDropdown = changeModeFromDropdown;
+  window.changeBlendModeFromDropdown = changeBlendModeFromDropdown;
+  window.saveAsDefault = saveAsDefault;
+  window.loadDefault = loadDefault;
+  window.exportToFile = exportToFile;
+  window.importFromFile = importFromFile;
+  window.handleFileImport = handleFileImport;
+  window.resetToFactory = resetToFactory;
+  window.updateDrumTabLabel = updateDrumTabLabel;
+  window.addNewDrum = addNewDrum;
+  window.removeDrum = removeDrum;
 }
 
 function draw() {
   background(240);
-  
+
   // Display painting canvas scaled to window
   let scaleFactor = min(width / paintCanvas.width, height / paintCanvas.height);
   let w = paintCanvas.width * scaleFactor;
@@ -207,6 +343,16 @@ function draw() {
   let y = (height - h) / 2;
 
   image(paintCanvas, x, y, w, h);
+
+  // Draw timeline guides OVER the canvas if in timeline mode
+  if (currentMode === 5) {
+    drawTimelineLaneGuides(x, y, scaleFactor);
+
+    // Update metronome if enabled and recording
+    if (metronomeEnabled && timelineRecording) {
+      updateMetronome();
+    }
+  }
 
   // Update and draw particles (visual feedback)
   for (let i = particles.length - 1; i >= 0; i--) {
@@ -315,8 +461,8 @@ function drawHelpOverlay() {
 
   fill(0);
   textStyle(NORMAL);
-  text('1-5', col1, y);
-  text('Switch painting modes (Classic, Fibonacci, etc.)', col2, y);
+  text('1-6', col1, y);
+  text('Switch painting modes (Classic, Fibonacci, Timeline...)', col2, y);
   y += lineHeight;
 
   // Canvas Controls
@@ -399,6 +545,7 @@ function setupMIDI() {
   let midiTimeout = setTimeout(() => {
     if (!midiReady && midiStatusEl) {
       console.warn('MIDI setup timed out - Enabling mouse mode');
+      mouseTestEnabled = true; // Enable mouse mode on timeout
       midiStatusEl.textContent = 'Mouse Mode: Active (MIDI timeout)';
       midiStatusEl.className = 'status mouse-mode';
     }
@@ -416,7 +563,8 @@ function setupMIDI() {
       });
   } else {
     clearTimeout(midiTimeout);
-    console.error('WebMIDI not supported in this browser - Mouse mode active');
+    console.error('WebMIDI not supported in this browser - Enabling mouse mode');
+    mouseTestEnabled = true; // Enable mouse mode when WebMIDI not supported
     if (midiStatusEl) {
       midiStatusEl.textContent = 'Mouse Mode: Active (WebMIDI not supported)';
       midiStatusEl.className = 'status mouse-mode';
@@ -432,7 +580,8 @@ function onMIDISuccess(midi) {
   console.log('Available MIDI inputs:', inputs.map(i => i.name));
 
   if (inputs.length === 0) {
-    console.warn('No MIDI devices found - Mouse mode active');
+    console.warn('No MIDI devices found - Enabling mouse mode');
+    mouseTestEnabled = true; // Enable mouse mode when no MIDI devices
     if (midiStatusEl) {
       midiStatusEl.textContent = 'Mouse Mode: Active (no MIDI devices)';
       midiStatusEl.className = 'status mouse-mode';
@@ -455,6 +604,7 @@ function onMIDISuccess(midi) {
 
 function onMIDIFailure(error) {
   console.error('MIDI Access failed:', error);
+  mouseTestEnabled = true; // Enable mouse mode when MIDI fails
   if (midiStatusEl) {
     midiStatusEl.textContent = 'Mouse Mode: Active (MIDI failed)';
     midiStatusEl.className = 'status mouse-mode';
@@ -472,8 +622,11 @@ function handleMIDIMessage(message) {
         drumSettings[midiLearnDrumId].midiNote = note;
         console.log(`MIDI Learn: Assigned note ${note} to ${midiLearnDrumId}`);
 
-        // Update UI
-        buildDrumSettingsUI();
+        // Update just the input field instead of rebuilding entire UI
+        const inputEl = document.querySelector(`#drum-${midiLearnDrumId}-content input[type="number"]`);
+        if (inputEl) {
+          inputEl.value = note;
+        }
 
         // Exit learn mode
         midiLearnMode = false;
@@ -481,8 +634,8 @@ function handleMIDIMessage(message) {
         return;
       }
 
-      // Normal painting
-      const vel = map(velocity, 0, 127, 0.3, 1.0);
+      // Normal painting - use full velocity range (0-100%)
+      const vel = map(velocity, 0, 127, 0.0, 1.0);
       paintDrum(note, vel);
     }
 
@@ -497,6 +650,34 @@ function handleMIDIMessage(message) {
 
 function paintDrum(note, velocity) {
   try {
+    // Track velocity and calculate approximate dot size for UI display
+    lastVelocity = velocity;
+
+    // Get drum settings for size calculation
+    const drumId = findDrumByMidiNote(note);
+    const settings = drumSettings[drumId];
+    const scaledVelSize = applyScalingCurve(velocity, settings?.sizeScaling || SCALING_CURVES.LINEAR);
+
+    // Calculate approximate size based on current mode
+    let baseSize, velocityMult;
+    switch (currentMode) {
+      case 0: baseSize = BASE_SIZE_CLASSIC; velocityMult = VELOCITY_MULT_CLASSIC; break;
+      case 1: baseSize = BASE_SIZE_FIBONACCI; velocityMult = VELOCITY_MULT_FIBONACCI; break;
+      case 2: baseSize = BASE_SIZE_SYMMETRY; velocityMult = VELOCITY_MULT_SYMMETRY; break;
+      case 3: baseSize = BASE_SIZE_GRAVITY; velocityMult = VELOCITY_MULT_GRAVITY; break;
+      case 4: baseSize = BASE_SIZE_ORGANIC; velocityMult = VELOCITY_MULT_ORGANIC; break;
+      case 5: baseSize = 8; velocityMult = 15; break; // Timeline mode
+      default: baseSize = 10; velocityMult = 20;
+    }
+
+    lastDotSize = Math.round(
+      (baseSize + scaledVelSize * velocityMult) *
+      globalSizeMultiplier *
+      getDrumSize(note)
+    );
+
+    updateUIStatus(); // Update UI to show velocity and size
+
     switch (currentMode) {
       case 0:
         paintClassic(note, velocity);
@@ -512,6 +693,9 @@ function paintDrum(note, velocity) {
         break;
       case 4:
         paintOrganic(note, velocity);
+        break;
+      case 5:
+        paintTimeline(note, velocity);
         break;
       default:
         console.warn(`Unknown mode: ${currentMode}`);
@@ -533,14 +717,24 @@ function paintDrum(note, velocity) {
 function paintClassic(note, velocity) {
   let x = random(paintCanvas.width);
   let y = random(paintCanvas.height);
-  let size = (BASE_SIZE_CLASSIC + velocity * VELOCITY_MULT_CLASSIC) * globalSizeMultiplier;
-  let col = getDrumColor(note);
+
+  // Get drum settings
+  const drumId = findDrumByMidiNote(note);
+  const settings = drumSettings[drumId];
+
+  // Apply scaling curves to velocity-based values
+  let scaledVelSize = applyScalingCurve(velocity, settings?.sizeScaling || SCALING_CURVES.LINEAR);
+  let scaledVelOpacity = applyScalingCurve(velocity, settings?.opacityScaling || SCALING_CURVES.LINEAR);
+
+  let size = (BASE_SIZE_CLASSIC + scaledVelSize * VELOCITY_MULT_CLASSIC) * globalSizeMultiplier * getDrumSize(note);
+  let col = getDrumColor(note, scaledVelOpacity); // Pass velocity for hue variation
   let shape = getDrumShape(note);
   let opacityMult = getDrumOpacity(note);
+  let stroke = getDrumStroke(note);
+  let rotation = getDrumRotation(note);
 
   paintCanvas.push();
-  paintCanvas.noStroke();
-  paintDot(x, y, size, col, ALPHA_CLASSIC * velocity * opacityMult, shape);
+  paintDot(x, y, size, col, ALPHA_CLASSIC * scaledVelOpacity * opacityMult, shape, stroke, rotation);
   paintCanvas.pop();
 
   particles.push(new Particle(x, y, size, col));
@@ -552,22 +746,31 @@ function paintFibonacci(note, velocity) {
   const goldenAngle = PI * (3 - sqrt(5)); // ~137.5 degrees
   spiralAngle += goldenAngle;
 
+  // Get drum settings
+  const drumId = findDrumByMidiNote(note);
+  const settings = drumSettings[drumId];
+
+  // Apply scaling curves
+  let scaledVelSize = applyScalingCurve(velocity, settings?.sizeScaling || SCALING_CURVES.LINEAR);
+  let scaledVelOpacity = applyScalingCurve(velocity, settings?.opacityScaling || SCALING_CURVES.LINEAR);
+
   let radius = sqrt(strokeCount) * FIBONACCI_RADIUS_MULT;
   let x = paintCanvas.width / 2 + cos(spiralAngle) * radius;
   let y = paintCanvas.height / 2 + sin(spiralAngle) * radius;
-  let size = (BASE_SIZE_FIBONACCI + velocity * VELOCITY_MULT_FIBONACCI) * globalSizeMultiplier;
+  let size = (BASE_SIZE_FIBONACCI + scaledVelSize * VELOCITY_MULT_FIBONACCI) * globalSizeMultiplier * getDrumSize(note);
 
   // Keep within bounds
   x = constrain(x, 0, paintCanvas.width);
   y = constrain(y, 0, paintCanvas.height);
 
-  let col = getDrumColor(note);
+  let col = getDrumColor(note, scaledVelOpacity);
   let shape = getDrumShape(note);
   let opacityMult = getDrumOpacity(note);
+  let stroke = getDrumStroke(note);
+  let rotation = getDrumRotation(note);
 
   paintCanvas.push();
-  paintCanvas.noStroke();
-  paintDot(x, y, size, col, ALPHA_FIBONACCI * velocity * opacityMult, shape);
+  paintDot(x, y, size, col, ALPHA_FIBONACCI * scaledVelOpacity * opacityMult, shape, stroke, rotation);
   paintCanvas.pop();
 
   particles.push(new Particle(x, y, size, col));
@@ -576,22 +779,31 @@ function paintFibonacci(note, velocity) {
 // ===== MODE 2: RADIAL SYMMETRY =====
 
 function paintSymmetry(note, velocity) {
+  // Get drum settings
+  const drumId = findDrumByMidiNote(note);
+  const settings = drumSettings[drumId];
+
+  // Apply scaling curves
+  let scaledVelSize = applyScalingCurve(velocity, settings?.sizeScaling || SCALING_CURVES.LINEAR);
+  let scaledVelOpacity = applyScalingCurve(velocity, settings?.opacityScaling || SCALING_CURVES.LINEAR);
+
   let angle = random(TWO_PI / SYMMETRY_ORDER);
   let radius = random(SYMMETRY_RADIUS_MIN, SYMMETRY_RADIUS_MAX);
-  let size = (BASE_SIZE_SYMMETRY + velocity * VELOCITY_MULT_SYMMETRY) * globalSizeMultiplier;
-  let col = getDrumColor(note);
+  let size = (BASE_SIZE_SYMMETRY + scaledVelSize * VELOCITY_MULT_SYMMETRY) * globalSizeMultiplier * getDrumSize(note);
+  let col = getDrumColor(note, scaledVelOpacity);
   let shape = getDrumShape(note);
   let opacityMult = getDrumOpacity(note);
+  let stroke = getDrumStroke(note);
+  let rotation = getDrumRotation(note);
 
   paintCanvas.push();
-  paintCanvas.noStroke();
 
   for (let i = 0; i < SYMMETRY_ORDER; i++) {
     let a = angle + (TWO_PI / SYMMETRY_ORDER) * i;
     let x = paintCanvas.width / 2 + cos(a) * radius;
     let y = paintCanvas.height / 2 + sin(a) * radius;
 
-    paintDot(x, y, size, col, ALPHA_SYMMETRY * velocity * opacityMult, shape);
+    paintDot(x, y, size, col, ALPHA_SYMMETRY * scaledVelOpacity * opacityMult, shape, stroke, rotation);
 
     if (i === 0) {
       particles.push(new Particle(x, y, size, col));
@@ -603,23 +815,32 @@ function paintSymmetry(note, velocity) {
 // ===== MODE 3: GRAVITY FIELD =====
 
 function paintGravity(note, velocity) {
+  // Get drum settings
+  const drumId = findDrumByMidiNote(note);
+  const settings = drumSettings[drumId];
+
+  // Apply scaling curves
+  let scaledVelSize = applyScalingCurve(velocity, settings?.sizeScaling || SCALING_CURVES.LINEAR);
+  let scaledVelOpacity = applyScalingCurve(velocity, settings?.opacityScaling || SCALING_CURVES.LINEAR);
+
   let x = random(paintCanvas.width);
   let y = random(paintCanvas.height * 0.3);
-  let size = (BASE_SIZE_GRAVITY + velocity * VELOCITY_MULT_GRAVITY) * globalSizeMultiplier;
-  let col = getDrumColor(note);
+  let size = (BASE_SIZE_GRAVITY + scaledVelSize * VELOCITY_MULT_GRAVITY) * globalSizeMultiplier * getDrumSize(note);
+  let col = getDrumColor(note, scaledVelOpacity);
   let shape = getDrumShape(note);
   let opacityMult = getDrumOpacity(note);
+  let stroke = getDrumStroke(note);
+  let rotation = getDrumRotation(note);
 
   paintCanvas.push();
-  paintCanvas.noStroke();
 
-  let steps = floor(GRAVITY_STEPS_BASE + velocity * GRAVITY_STEPS_MULT);
+  let steps = floor(GRAVITY_STEPS_BASE + scaledVelOpacity * GRAVITY_STEPS_MULT);
   for (let i = 0; i < steps; i++) {
     y += random(GRAVITY_STEP_MIN, GRAVITY_STEP_MAX);
     x += random(GRAVITY_DRIFT_MIN, GRAVITY_DRIFT_MAX);
 
-    let alpha = map(i, 0, steps, ALPHA_GRAVITY * velocity * opacityMult, ALPHA_GRAVITY_MIN * velocity * opacityMult);
-    paintDot(x, y, size, col, alpha, shape);
+    let alpha = map(i, 0, steps, ALPHA_GRAVITY * scaledVelOpacity * opacityMult, ALPHA_GRAVITY_MIN * scaledVelOpacity * opacityMult);
+    paintDot(x, y, size, col, alpha, shape, stroke, rotation);
 
     if (y > paintCanvas.height) break;
   }
@@ -631,6 +852,14 @@ function paintGravity(note, velocity) {
 // ===== MODE 4: ORGANIC GROWTH =====
 
 function paintOrganic(note, velocity) {
+  // Get drum settings
+  const drumId = findDrumByMidiNote(note);
+  const settings = drumSettings[drumId];
+
+  // Apply scaling curves
+  let scaledVelSize = applyScalingCurve(velocity, settings?.sizeScaling || SCALING_CURVES.LINEAR);
+  let scaledVelOpacity = applyScalingCurve(velocity, settings?.opacityScaling || SCALING_CURVES.LINEAR);
+
   // Find nearest growth point
   let testPos = createVector(random(paintCanvas.width), random(paintCanvas.height));
   let nearest = growthPoints[0];
@@ -649,18 +878,19 @@ function paintOrganic(note, velocity) {
   let distance = randomGaussian() * ORGANIC_DISTANCE_SPREAD + ORGANIC_DISTANCE_BASE;
   let x = nearest.x + cos(angle) * distance;
   let y = nearest.y + sin(angle) * distance;
-  let size = (BASE_SIZE_ORGANIC + velocity * VELOCITY_MULT_ORGANIC) * globalSizeMultiplier;
+  let size = (BASE_SIZE_ORGANIC + scaledVelSize * VELOCITY_MULT_ORGANIC) * globalSizeMultiplier * getDrumSize(note);
 
   x = constrain(x, 0, paintCanvas.width);
   y = constrain(y, 0, paintCanvas.height);
 
-  let col = getDrumColor(note);
+  let col = getDrumColor(note, scaledVelOpacity);
   let shape = getDrumShape(note);
   let opacityMult = getDrumOpacity(note);
+  let stroke = getDrumStroke(note);
+  let rotation = getDrumRotation(note);
 
   paintCanvas.push();
-  paintCanvas.noStroke();
-  paintDot(x, y, size, col, ALPHA_ORGANIC * velocity * opacityMult, shape);
+  paintDot(x, y, size, col, ALPHA_ORGANIC * scaledVelOpacity * opacityMult, shape, stroke, rotation);
   paintCanvas.pop();
 
   // Occasionally move growth point
@@ -677,6 +907,250 @@ function paintOrganic(note, velocity) {
   particles.push(new Particle(x, y, size, col));
 }
 
+// ===== MODE 5: TIMELINE/SEQUENCER =====
+
+function paintTimeline(note, velocity) {
+  // Find which drum this is
+  const drumId = findDrumByMidiNote(note);
+  if (!drumId || !(drumId in TIMELINE_LANES)) {
+    console.warn(`Drum ${note} not mapped to timeline lane`);
+    return;
+  }
+
+  // Don't paint if timeline is not recording
+  if (!timelineRecording) {
+    console.log('Timeline not recording - press Start button first');
+    return;
+  }
+
+  // Initialize start time on first note after starting recording
+  const currentTime = millis();
+  if (timelineStartTime === null) {
+    timelineStartTime = currentTime;
+  }
+
+  // Calculate time elapsed in seconds (excluding paused time)
+  // Subtract MIDI latency compensation to align notes with grid
+  const timeElapsed = (currentTime - timelineStartTime - timelinePausedTime - midiLatencyMs) / 1000.0;
+
+  // Calculate x position based on time
+  const totalX = timeElapsed * timelinePixelsPerSecond;
+
+  // Calculate which staff (row) this belongs to based on wrapping
+  const staffIndex = floor(totalX / staffWidth);
+  const xInStaff = totalX % staffWidth;
+
+  // Calculate y position within the staff
+  const laneIndex = TIMELINE_LANES[drumId];
+  const staffY = staffIndex * staffHeight;
+  const laneY = staffY + (laneIndex * drumLineSpacing) + drumLineSpacing;
+
+  // Ensure paintCanvas is tall enough for this staff
+  const requiredHeight = (staffIndex + 1) * staffHeight + 100;
+  if (paintCanvas.height < requiredHeight) {
+    // Resize canvas - save current content, resize, restore
+    let tempImg = paintCanvas.get();
+    paintCanvas.resizeCanvas(paintCanvas.width, requiredHeight);
+    paintCanvas.image(tempImg, 0, 0);
+  }
+
+  // Get drum settings and apply scaling
+  const settings = drumSettings[drumId];
+
+  let scaledVelSize = applyScalingCurve(velocity, settings?.sizeScaling || SCALING_CURVES.LINEAR);
+  let scaledVelOpacity = applyScalingCurve(velocity, settings?.opacityScaling || SCALING_CURVES.LINEAR);
+
+  let col = getDrumColor(note, scaledVelOpacity);
+  let shape = getDrumShape(note);
+  let sizeMultiplier = getDrumSize(note);
+  let opacityMult = getDrumOpacity(note);
+  let stroke = getDrumStroke(note);
+  let rotation = getDrumRotation(note);
+
+  // Size based on velocity
+  let size = (8 + scaledVelSize * 15) * sizeMultiplier;
+  let alpha = 200 * scaledVelOpacity * opacityMult;
+
+  paintCanvas.push();
+  paintDot(xInStaff, laneY, size, col, alpha, shape, stroke, rotation);
+  paintCanvas.pop();
+
+  // Visual feedback particle
+  particles.push(new Particle(xInStaff, laneY, size, col));
+}
+
+/**
+ * Draw timeline lane guides (called from draw loop when in timeline mode)
+ * @param {number} offsetX - X offset of the canvas on screen
+ * @param {number} offsetY - Y offset of the canvas on screen
+ * @param {number} scale - Scale factor of the canvas
+ */
+function drawTimelineLaneGuides(offsetX, offsetY, scale) {
+  push();
+
+  // IMPORTANT: Ensure we're in RGB mode for correct color rendering
+  colorMode(RGB, 255);
+
+  // Calculate beat/measure metrics
+  const secondsPerBeat = 60 / timelineBPM;
+  const pixelsPerBeat = secondsPerBeat * timelinePixelsPerSecond;
+  const pixelsPerMeasure = pixelsPerBeat * 4; // 4 beats per measure (4/4 time)
+  const secondsPerSubdivision = secondsPerBeat / (timelineSubdivision / 4);
+  const pixelsPerSubdivision = secondsPerSubdivision * timelinePixelsPerSecond;
+
+  // Calculate how many complete measures fit in the canvas width (with margin)
+  const maxStaffWidth = paintCanvas.width - 100; // Leave margin for labels
+  measuresPerStaff = Math.max(1, Math.floor(maxStaffWidth / pixelsPerMeasure));
+
+  // Calculate staff width to fit exact number of measures
+  staffWidth = measuresPerStaff * pixelsPerMeasure;
+
+  // Calculate how many staffs we need to show
+  const currentTime = millis();
+  let timeElapsed = 0;
+  if (timelineStartTime !== null) {
+    if (timelineRecording) {
+      // Currently recording - use current time
+      timeElapsed = (currentTime - timelineStartTime - timelinePausedTime) / 1000.0;
+    } else if (timelineStopTime !== null) {
+      // Stopped - freeze at stop time
+      timeElapsed = (timelineStopTime - timelineStartTime - timelinePausedTime) / 1000.0;
+    }
+  }
+  const totalX = timeElapsed * timelinePixelsPerSecond;
+  const maxStaffs = max(1, ceil(totalX / staffWidth) + 1);
+  const maxStaffsToShow = min(maxStaffs, floor(paintCanvas.height / staffHeight) + 1);
+
+  // Draw staffs
+  for (let staffIdx = 0; staffIdx < maxStaffsToShow; staffIdx++) {
+    const staffY = staffIdx * staffHeight;
+
+    // Draw horizontal staff lines for each drum
+    stroke(200, 200, 200, 120);
+    strokeWeight(1);
+
+    for (let i = 0; i < TIMELINE_LANE_COUNT; i++) {
+      let y = (staffY + (i * drumLineSpacing) + drumLineSpacing) * scale + offsetY;
+      let x1 = offsetX;
+      let x2 = offsetX + staffWidth * scale;
+      line(x1, y, x2, y);
+    }
+
+    // Draw vertical beat/measure lines based on BPM
+    const maxBeats = Math.ceil(staffWidth / pixelsPerBeat);
+    const subdivisionsPerBeat = timelineSubdivision / 4; // How many subdivisions in one quarter note
+
+    console.log(`Grid debug: subdivision=${timelineSubdivision}, subdivisionsPerBeat=${subdivisionsPerBeat}, pixelsPerSubdivision=${pixelsPerSubdivision}`);
+
+    // Draw subdivision lines (light grey, visible) - ONLY where they don't overlap with beats
+    stroke(190, 190, 190, 200);
+    strokeWeight(1);
+    let subdivisionCount = 0;
+    for (let beat = 0; beat <= maxBeats; beat++) {
+      for (let sub = 1; sub < subdivisionsPerBeat; sub++) { // Start at 1 to skip the beat itself
+        let xPos = beat * pixelsPerBeat + sub * pixelsPerSubdivision;
+        if (xPos <= staffWidth) {
+          let x = offsetX + xPos * scale;
+          let y1 = offsetY + staffY * scale;
+          let y2 = offsetY + (staffY + staffHeight) * scale;
+          line(x, y1, x, y2);
+          subdivisionCount++;
+        }
+      }
+    }
+    console.log(`Drew ${subdivisionCount} subdivision lines for staff ${staffIdx}`);
+
+    // Draw beat lines (medium grey, thicker - for quarter notes)
+    stroke(170, 170, 170, 180);
+    strokeWeight(1.5);
+    for (let beat = 0; beat <= maxBeats; beat++) {
+      // Skip beats that fall on measure boundaries (we'll draw those separately)
+      if (beat % 4 !== 0) {
+        let xPos = beat * pixelsPerBeat;
+        if (xPos <= staffWidth) {
+          let x = offsetX + xPos * scale;
+          let y1 = offsetY + staffY * scale;
+          let y2 = offsetY + (staffY + staffHeight) * scale;
+          line(x, y1, x, y2);
+        }
+      }
+    }
+
+    // Draw measure lines (darkest, every 4 beats)
+    stroke(150, 150, 150, 180);
+    strokeWeight(2);
+    for (let measure = 0; measure <= maxBeats / 4; measure++) {
+      let xPos = measure * pixelsPerBeat * 4;
+      if (xPos <= staffWidth) {
+        let x = offsetX + xPos * scale;
+        let y1 = offsetY + staffY * scale;
+        let y2 = offsetY + (staffY + staffHeight) * scale;
+        line(x, y1, x, y2);
+      }
+    }
+
+    // Draw drum labels on left side with matching colors
+    noStroke();
+    textAlign(LEFT, CENTER);
+    textSize(11 * scale);
+    textStyle(BOLD);
+
+    // Generate drum info from config
+    const drumInfo = DRUM_KIT_CONFIG.map(drum => ({
+      name: (drumSettings[drum.id]?.name || drum.name).toUpperCase().substring(0, 6),
+      drumId: drum.id
+    }));
+
+    drumInfo.forEach((info, i) => {
+      let y = (staffY + (i * drumLineSpacing) + drumLineSpacing) * scale + offsetY;
+
+      // Get drum color
+      const settings = drumSettings[info.drumId];
+      if (settings) {
+        let col = color(settings.color);
+        let r = red(col);
+        let g = green(col);
+        let b = blue(col);
+        fill(r, g, b, 200);
+      } else {
+        fill(0, 0, 0, 100);
+      }
+
+      text(info.name, offsetX + 5 * scale, y);
+    });
+
+    // Draw staff index/measure marker
+    textAlign(LEFT, TOP);
+    textSize(10 * scale);
+    fill(0, 0, 0, 80);
+    const startTime = staffIdx * (staffWidth / timelinePixelsPerSecond);
+    const startBeat = Math.floor(startTime / secondsPerBeat);
+    const startMeasure = Math.floor(startBeat / 4);
+    text(`M${startMeasure + 1}`, offsetX + 5 * scale, offsetY + staffY * scale + 5 * scale);
+  }
+
+  // Draw playhead line (current time position)
+  if (timelineStartTime !== null && totalX > 0) {
+    const staffIndex = floor(totalX / staffWidth);
+    const xInStaff = totalX % staffWidth;
+    const staffY = staffIndex * staffHeight;
+
+    // Red when recording, grey when stopped
+    if (timelineRecording) {
+      stroke(255, 50, 50, 200);
+    } else {
+      stroke(100, 100, 100, 150);
+    }
+    strokeWeight(3);
+    let x = offsetX + xInStaff * scale;
+    let y1 = offsetY + staffY * scale;
+    let y2 = offsetY + (staffY + staffHeight) * scale;
+    line(x, y1, x, y2);
+  }
+
+  pop();
+}
+
 // ===== UTILITY FUNCTIONS =====
 
 /**
@@ -687,34 +1161,79 @@ function paintOrganic(note, velocity) {
  * @param {p5.Color} col - Color object
  * @param {number} alpha - Alpha/opacity value
  * @param {string} shape - Shape type ('circle', 'square', etc.)
+ * @param {object} stroke - Stroke settings {enabled, weight, color}
+ * @param {number} rotation - Rotation angle in degrees
  */
-function paintDot(x, y, size, col, alpha, shape = 'circle') {
+function paintDot(x, y, size, col, alpha, shape = 'circle', stroke = null, rotation = 0) {
   let r = red(col), g = green(col), b = blue(col);
   paintCanvas.fill(r, g, b, alpha);
 
-  switch (shape) {
-    case 'circle':
-      paintCanvas.circle(x, y, size);
-      break;
-    case 'square':
-      paintCanvas.rectMode(CENTER);
-      paintCanvas.square(x, y, size);
-      break;
-    case 'triangle':
-      let h = size * 0.866; // height of equilateral triangle
-      paintCanvas.triangle(x, y - size / 2, x - size / 2, y + h / 2, x + size / 2, y + h / 2);
-      break;
-    case 'diamond':
-      paintCanvas.quad(x, y - size / 2, x + size / 2, y, x, y + size / 2, x - size / 2, y);
-      break;
-    case 'star':
-      drawStar(paintCanvas, x, y, size / 3, size / 2, 5);
-      break;
-    case 'hexagon':
-      drawHexagon(paintCanvas, x, y, size / 2);
-      break;
-    default:
-      paintCanvas.circle(x, y, size);
+  // Apply stroke if enabled
+  if (stroke && stroke.enabled) {
+    let sr = parseInt(stroke.color.slice(1, 3), 16);
+    let sg = parseInt(stroke.color.slice(3, 5), 16);
+    let sb = parseInt(stroke.color.slice(5, 7), 16);
+    paintCanvas.stroke(sr, sg, sb);
+    paintCanvas.strokeWeight(stroke.weight);
+  } else {
+    paintCanvas.noStroke();
+  }
+
+  // Apply rotation for non-circular shapes
+  if (rotation !== 0 && shape !== 'circle') {
+    paintCanvas.push();
+    paintCanvas.translate(x, y);
+    paintCanvas.rotate(radians(rotation));
+
+    switch (shape) {
+      case 'square':
+        paintCanvas.rectMode(CENTER);
+        paintCanvas.square(0, 0, size);
+        break;
+      case 'triangle':
+        let h = size * 0.866;
+        paintCanvas.triangle(0, -size / 2, -size / 2, h / 2, size / 2, h / 2);
+        break;
+      case 'diamond':
+        paintCanvas.quad(0, -size / 2, size / 2, 0, 0, size / 2, -size / 2, 0);
+        break;
+      case 'star':
+        drawStar(paintCanvas, 0, 0, size / 3, size / 2, 5);
+        break;
+      case 'hexagon':
+        drawHexagon(paintCanvas, 0, 0, size / 2);
+        break;
+      default:
+        paintCanvas.circle(0, 0, size);
+    }
+
+    paintCanvas.pop();
+  } else {
+    // No rotation or circle (rotation doesn't affect circles)
+    switch (shape) {
+      case 'circle':
+        paintCanvas.circle(x, y, size);
+        break;
+      case 'square':
+        paintCanvas.rectMode(CENTER);
+        paintCanvas.square(x, y, size);
+        break;
+      case 'triangle':
+        let h = size * 0.866;
+        paintCanvas.triangle(x, y - size / 2, x - size / 2, y + h / 2, x + size / 2, y + h / 2);
+        break;
+      case 'diamond':
+        paintCanvas.quad(x, y - size / 2, x + size / 2, y, x, y + size / 2, x - size / 2, y);
+        break;
+      case 'star':
+        drawStar(paintCanvas, x, y, size / 3, size / 2, 5);
+        break;
+      case 'hexagon':
+        drawHexagon(paintCanvas, x, y, size / 2);
+        break;
+      default:
+        paintCanvas.circle(x, y, size);
+    }
   }
 }
 
@@ -832,11 +1351,35 @@ function drawMouseIndicator() {
   pop();
 }
 
-function getDrumColor(note) {
+function getDrumColor(note, velocityNorm = 1.0) {
   // Find drum by MIDI note
   const drumId = findDrumByMidiNote(note);
   if (drumId && drumSettings[drumId]) {
-    return color(drumSettings[drumId].color);
+    const settings = drumSettings[drumId];
+    let col = color(settings.color);
+
+    // Apply hue variation if set
+    if (settings.hueVariation > 0) {
+      push();
+      colorMode(HSB, 360, 100, 100);
+      let h = hue(col);
+      let s = saturation(col);
+      let b = brightness(col);
+
+      // Apply scaling curve to hue variation based on velocity
+      let scaledVariation = applyScalingCurve(velocityNorm, settings.hueScaling || SCALING_CURVES.LINEAR);
+
+      // Add random hue shift (scaled by velocity)
+      let maxShift = settings.hueVariation * scaledVariation;
+      let hueShift = random(-maxShift, maxShift);
+      h = (h + hueShift + 360) % 360; // Keep in 0-360 range
+
+      col = color(h, s, b);
+      colorMode(RGB, 255);
+      pop();
+    }
+
+    return col;
   }
   // Fallback to gray
   return color(150, 150, 150);
@@ -856,6 +1399,63 @@ function getDrumOpacity(note) {
     return drumSettings[drumId].opacity;
   }
   return 1.0;
+}
+
+function getDrumSize(note) {
+  const drumId = findDrumByMidiNote(note);
+  if (drumId && drumSettings[drumId]) {
+    return drumSettings[drumId].size;
+  }
+  return 1.0;
+}
+
+/**
+ * Apply scaling curve to a value (0-1 range)
+ * @param {number} value - Input value (0-1)
+ * @param {string} scaling - Scaling type (linear, log, exp, quad)
+ * @returns {number} - Scaled value (0-1)
+ */
+function applyScalingCurve(value, scaling) {
+  value = constrain(value, 0, 1);
+
+  switch (scaling) {
+    case SCALING_CURVES.LOGARITHMIC:
+      // Log curve: more sensitivity at lower values
+      // Using log10(1 + 9x) to map 0->0 and 1->1
+      return Math.log10(1 + 9 * value);
+
+    case SCALING_CURVES.EXPONENTIAL:
+      // Exponential curve: more sensitivity at higher values
+      return Math.pow(value, 2.5);
+
+    case SCALING_CURVES.QUADRATIC:
+      // Smooth quadratic curve
+      return value * value;
+
+    case SCALING_CURVES.LINEAR:
+    default:
+      return value;
+  }
+}
+
+function getDrumStroke(note) {
+  const drumId = findDrumByMidiNote(note);
+  if (drumId && drumSettings[drumId]) {
+    return {
+      enabled: drumSettings[drumId].strokeEnabled,
+      weight: drumSettings[drumId].strokeWeight,
+      color: drumSettings[drumId].strokeColor
+    };
+  }
+  return { enabled: false, weight: 2, color: '#000000' };
+}
+
+function getDrumRotation(note) {
+  const drumId = findDrumByMidiNote(note);
+  if (drumId && drumSettings[drumId]) {
+    return drumSettings[drumId].rotation;
+  }
+  return 0;
 }
 
 /**
@@ -908,26 +1508,91 @@ class Particle {
 // ===== UI & CONTROLS =====
 
 function updateUIStatus() {
-  if (modeStatusEl) {
-    let statusText = `Mode: ${MODE_NAMES[currentMode]} | Blend: ${BLEND_MODE_NAMES[currentBlendMode]}`;
+  // Update dropdown selections
+  if (modeSelectEl) {
+    modeSelectEl.value = currentMode;
+  }
+  if (blendSelectEl) {
+    blendSelectEl.value = currentBlendMode;
+  }
+
+  // Build additional status text
+  if (additionalStatusEl) {
+    let statusParts = [];
+
+    // Show strokes, velocity, and dot size
+    const velocityPercent = Math.round(lastVelocity * 100);
+    statusParts.push(`Strokes: ${strokeCount} | Vel: ${velocityPercent}% | Size: ${lastDotSize}px`);
 
     // Show brush size if not at 100%
     if (globalSizeMultiplier !== 1.0) {
-      statusText += ` | Size: ${(globalSizeMultiplier * 100).toFixed(0)}%`;
+      statusParts.push(`Size: ${(globalSizeMultiplier * 100).toFixed(0)}%`);
     }
-
-    statusText += ` | Strokes: ${strokeCount}`;
 
     // Show mouse test info if enabled
     if (mouseTestEnabled) {
-      statusText += ` | Mouse: ${MOUSE_DRUM_NAMES[currentMouseDrum]}`;
+      statusParts.push(`Mouse: ${MOUSE_DRUM_NAMES[currentMouseDrum]}`);
     }
 
-    modeStatusEl.textContent = statusText;
+    additionalStatusEl.textContent = statusParts.join(' | ');
+  }
+}
+
+/**
+ * Change mode from dropdown selection
+ */
+function changeModeFromDropdown(mode) {
+  if (mode >= 0 && mode <= 5 && mode !== currentMode) {
+    currentMode = mode;
+    strokeCount = 0;
+    spiralAngle = 0;
+
+    // Reset timeline when switching TO timeline mode (mode 5)
+    if (currentMode === 5) {
+      timelineStartTime = null;
+      timelineRecording = false;
+      timelinePausedTime = 0;
+      updateTimelineControlsVisibility();
+      updateTimelineButtonsUI('initial');
+    } else {
+      // Hide timeline controls when switching away
+      updateTimelineControlsVisibility();
+    }
+
+    // Only reset growth points when switching TO organic mode (mode 4)
+    if (currentMode === 4) {
+      resetGrowthPoints();
+    }
+
+    showNotification(MODE_NAMES[currentMode]);
+    console.log(`Mode: ${MODE_NAMES[currentMode]}`);
+  }
+}
+
+/**
+ * Change blend mode from dropdown selection
+ */
+function changeBlendModeFromDropdown(blendMode) {
+  if (blendMode >= 0 && blendMode < BLEND_MODES.length && blendMode !== currentBlendMode) {
+    currentBlendMode = blendMode;
+    paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
+    showNotification(`Blend: ${BLEND_MODE_NAMES[currentBlendMode]}`);
+    console.log(`Blend Mode: ${BLEND_MODE_NAMES[currentBlendMode]}`);
   }
 }
 
 function keyPressed() {
+  // Ignore keyboard shortcuts if user is typing in an input field
+  const activeElement = document.activeElement;
+  if (activeElement && (
+    activeElement.tagName === 'INPUT' ||
+    activeElement.tagName === 'TEXTAREA' ||
+    activeElement.tagName === 'SELECT' ||
+    activeElement.isContentEditable
+  )) {
+    return true; // Allow default behavior for input fields
+  }
+
   if (key === ' ') {
     // Clear canvas
     paintCanvas.background(255);
@@ -1039,11 +1704,23 @@ function keyPressed() {
     }
   }
 
-  // Mode switching (1-5)
-  if (key >= '1' && key <= '5') {
+  // Mode switching (1-6)
+  if (key >= '1' && key <= '6') {
     currentMode = parseInt(key) - 1;
     strokeCount = 0;
     spiralAngle = 0;
+
+    // Reset timeline when switching TO timeline mode (mode 5)
+    if (currentMode === 5) {
+      timelineStartTime = null;
+      timelineRecording = false;
+      timelinePausedTime = 0;
+      updateTimelineControlsVisibility();
+      updateTimelineButtonsUI('initial');
+    } else {
+      // Hide timeline controls when switching away
+      updateTimelineControlsVisibility();
+    }
 
     // Only reset growth points when switching TO organic mode (mode 4)
     if (currentMode === 4) {
@@ -1064,8 +1741,8 @@ function windowResized() {
 // ===== MOUSE PAINTING (for testing without MIDI) =====
 
 function mousePressed() {
-  // Don't paint if customization panel is open
-  if (showCustomization) return;
+  // Don't paint if customization panel is open or dragging controls
+  if (showCustomization || window.isDraggingControls) return;
 
   if (!midiReady || mouseTestEnabled) {
     prevMouseX = mouseX;
@@ -1074,8 +1751,8 @@ function mousePressed() {
 }
 
 function mouseDragged() {
-  // Don't paint if customization panel is open
-  if (showCustomization) return;
+  // Don't paint if customization panel is open or dragging controls
+  if (showCustomization || window.isDraggingControls) return;
 
   // Allow painting with mouse if no MIDI connected OR if mouse test enabled
   if (!midiReady || mouseTestEnabled) {
@@ -1095,8 +1772,8 @@ function mouseDragged() {
 }
 
 function mouseClicked() {
-  // Don't paint if customization panel is open
-  if (showCustomization) return;
+  // Don't paint if customization panel is open or dragging controls
+  if (showCustomization || window.isDraggingControls) return;
 
   // Single click for single stroke
   if (!midiReady || mouseTestEnabled) {
@@ -1134,58 +1811,153 @@ function buildDrumSettingsUI() {
   const container = document.getElementById('drum-settings-container');
   container.innerHTML = '';
 
-  // Only show these 4 drums
-  const drumsToShow = [
-    { id: DRUM_IDS.KICK, name: 'Kick' },
-    { id: DRUM_IDS.SNARE, name: 'Snare' },
-    { id: DRUM_IDS.RACK_TOM, name: 'Rack Tom' },
-    { id: DRUM_IDS.FLOOR_TOM, name: 'Floor Tom' }
-  ];
+  // Use drums from config (dynamic)
+  const drumsToShow = DRUM_KIT_CONFIG.map(drum => ({
+    id: drum.id,
+    name: drumSettings[drum.id]?.name || drum.name
+  }));
 
-  // Create settings for each drum
-  drumsToShow.forEach(({ id: drumId, name: drumName }) => {
+  // Create tab navigation
+  const tabNav = document.createElement('div');
+  tabNav.style.cssText = `
+    display: flex;
+    gap: 5px;
+    margin-bottom: 15px;
+    border-bottom: 2px solid #e9ecef;
+  `;
+
+  // Create tab content container
+  const tabContent = document.createElement('div');
+  tabContent.style.cssText = `
+    position: relative;
+    min-height: 350px;
+  `;
+
+  // Create tabs and content for each drum
+  drumsToShow.forEach(({ id: drumId, name: drumName }, index) => {
     const settings = drumSettings[drumId];
 
-    // Create drum section
-    const section = document.createElement('div');
-    section.style.cssText = `
-      margin-bottom: 15px;
-      padding: 15px;
-      background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-      border-radius: 8px;
-      border-left: 4px solid ${settings.color};
-    `;
+    // Skip if settings don't exist for this drum
+    if (!settings) {
+      console.error(`No settings found for drum: ${drumId}`);
+      return;
+    }
 
-    // Collapsible header
-    const header = document.createElement('div');
-    header.style.cssText = `
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
+    const isActive = drumId === currentCustomizationTab;
+
+    // Create tab button
+    const tabButton = document.createElement('button');
+    tabButton.id = `tab-btn-${drumId}`;
+    tabButton.style.cssText = `
+      flex: 1;
+      padding: 10px;
+      border: none;
+      background: ${isActive ? 'white' : '#f8f9fa'};
+      border-top: 3px solid ${isActive ? settings.color : 'transparent'};
+      border-radius: 8px 8px 0 0;
+      font-weight: ${isActive ? 'bold' : 'normal'};
       cursor: pointer;
-      font-weight: bold;
+      transition: all 0.2s;
+      font-size: 13px;
       color: #333;
-      font-size: 15px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
     `;
 
-    const headerTitle = document.createElement('span');
-    headerTitle.textContent = `${drumName}`;
+    // Add color indicator dot
+    const colorDot = document.createElement('span');
+    colorDot.style.cssText = `
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: ${settings.color};
+      display: inline-block;
+    `;
 
-    const toggleIcon = document.createElement('span');
-    toggleIcon.textContent = '▼';
-    toggleIcon.style.transition = 'transform 0.3s';
+    tabButton.appendChild(colorDot);
+    tabButton.appendChild(document.createTextNode(drumName));
 
-    header.appendChild(headerTitle);
-    header.appendChild(toggleIcon);
+    tabButton.onmouseover = () => {
+      if (!tabButton.classList.contains('active')) {
+        tabButton.style.background = '#e9ecef';
+      }
+    };
+    tabButton.onmouseout = () => {
+      if (!tabButton.classList.contains('active')) {
+        tabButton.style.background = '#f8f9fa';
+      }
+    };
+    tabButton.onclick = () => switchDrumTab(drumId);
 
-    // Settings content (initially visible)
+    tabNav.appendChild(tabButton);
+
+    // Create tab panel
+    const panel = document.createElement('div');
+    panel.id = `tab-panel-${drumId}`;
+    panel.style.cssText = `
+      display: ${isActive ? 'block' : 'none'};
+      animation: fadeIn 0.2s;
+    `;
+    panel.className = isActive ? 'active' : '';
+
+    // Settings content
     const content = document.createElement('div');
     content.style.cssText = `
-      margin-top: 12px;
-      padding-top: 12px;
-      border-top: 1px solid rgba(0,0,0,0.1);
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
     `;
     content.id = `drum-${drumId}-content`;
+
+    // Drum Name (create programmatically to ensure it's editable)
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.value = settings.name || drumName;
+    nameInput.placeholder = 'Drum name';
+    nameInput.spellcheck = false;
+    nameInput.disabled = false;
+    nameInput.readOnly = false;
+    nameInput.tabIndex = 0;
+    nameInput.style.cssText = 'width: 100%; padding: 8px; border: 2px solid #ddd; border-radius: 5px; font-size: 13px; cursor: text; pointer-events: auto; user-select: text; -webkit-user-select: text;';
+
+    // Add click handler to focus
+    nameInput.addEventListener('click', function(e) {
+      e.stopPropagation();
+      this.focus();
+      console.log('Name input clicked and focused');
+    });
+
+    nameInput.addEventListener('focus', function() {
+      console.log('Name input focused');
+      this.style.borderColor = '#667eea';
+    });
+
+    nameInput.addEventListener('blur', function() {
+      console.log('Name input blurred, value:', this.value);
+      this.style.borderColor = '#ddd';
+      updateDrumSetting(drumId, 'name', this.value);
+      updateDrumTabLabel(drumId, this.value);
+    });
+
+    nameInput.addEventListener('input', function() {
+      console.log('Name input changed:', this.value);
+    });
+
+    nameInput.addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') {
+        this.blur();
+      }
+    });
+
+    const nameGroup = document.createElement('div');
+    nameGroup.style.marginBottom = '12px';
+    const nameLabel = document.createElement('label');
+    nameLabel.style.cssText = 'display: block; font-size: 12px; color: #666; margin-bottom: 5px; font-weight: 600;';
+    nameLabel.textContent = 'Name';
+    nameGroup.appendChild(nameLabel);
+    nameGroup.appendChild(nameInput);
 
     // MIDI Note selector
     const midiNoteGroup = createSettingGroup('MIDI Note',
@@ -1208,12 +1980,37 @@ function buildDrumSettingsUI() {
       <div style="font-size: 11px; color: #888; margin-top: 4px;">Click "Learn" then hit your drum pad</div>`
     );
 
-    // Color picker
-    const colorGroup = createSettingGroup('Color',
-      `<input type="color" value="${settings.color}"
-        onchange="updateDrumSetting('${drumId}', 'color', this.value)"
-        style="width: 100%; height: 40px; border: 2px solid #ddd; border-radius: 5px; cursor: pointer;">`
-    );
+    // Color picker (with real-time preview)
+    const colorInput = document.createElement('input');
+    colorInput.type = 'color';
+    colorInput.value = settings.color;
+    colorInput.style.cssText = 'width: 100%; height: 40px; border: 2px solid #ddd; border-radius: 5px; cursor: pointer;';
+    colorInput.addEventListener('input', function() {
+      // Real-time preview while dragging
+      drumSettings[drumId].color = this.value;
+      updateDrumPreview(drumId);
+      // Update tab color indicator
+      const tabBtn = document.getElementById(`tab-btn-${drumId}`);
+      if (tabBtn) {
+        const colorDot = tabBtn.querySelector('span');
+        if (colorDot) colorDot.style.background = this.value;
+        if (tabBtn.classList.contains('active')) {
+          tabBtn.style.borderTop = `3px solid ${this.value}`;
+        }
+      }
+    });
+    colorInput.addEventListener('change', function() {
+      // Final update on release
+      updateDrumSetting(drumId, 'color', this.value);
+    });
+
+    const colorGroup = document.createElement('div');
+    colorGroup.style.marginBottom = '12px';
+    const colorLabel = document.createElement('label');
+    colorLabel.style.cssText = 'display: block; font-size: 12px; color: #666; margin-bottom: 5px; font-weight: 600;';
+    colorLabel.textContent = 'Color';
+    colorGroup.appendChild(colorLabel);
+    colorGroup.appendChild(colorInput);
 
     // Shape selector
     const shapeOptions = SHAPE_OPTIONS.map(shape =>
@@ -1229,45 +2026,280 @@ function buildDrumSettingsUI() {
 
     // Opacity slider (multiplier with velocity)
     const opacityPercent = Math.round(settings.opacity * 100);
-    const opacityGroup = createSettingGroup('Opacity Multiplier',
-      `<div style="display: flex; align-items: center; gap: 10px;">
+    const opacityGroup = createSettingGroup('Opacity',
+      `<div style="display: flex; align-items: center; gap: 8px;">
         <input type="range" min="10" max="100" value="${opacityPercent}"
           oninput="updateDrumSetting('${drumId}', 'opacity', this.value / 100); document.getElementById('opacity-${drumId}').textContent = this.value + '%';"
           style="flex: 1; cursor: pointer;">
-        <span id="opacity-${drumId}" style="min-width: 45px; font-weight: bold; color: #666;">${opacityPercent}%</span>
-      </div>
-      <div style="font-size: 11px; color: #888; margin-top: 4px;">Multiplies with MIDI velocity</div>`
+        <span id="opacity-${drumId}" style="min-width: 40px; font-weight: bold; color: #666; font-size: 11px;">${opacityPercent}%</span>
+        <select onchange="updateDrumSetting('${drumId}', 'opacityScaling', this.value)"
+          style="min-width: 70px; padding: 3px; border: 1px solid #ddd; border-radius: 3px; font-size: 10px; cursor: pointer;">
+          ${Object.keys(SCALING_CURVES).map(key =>
+            `<option value="${SCALING_CURVES[key]}" ${settings.opacityScaling === SCALING_CURVES[key] ? 'selected' : ''}>${SCALING_CURVE_NAMES[SCALING_CURVES[key]]}</option>`
+          ).join('')}
+        </select>
+      </div>`
     );
 
-    // Shape preview
+    // Size slider (multiplier with velocity)
+    const sizePercent = Math.round(settings.size * 100);
+    const sizeGroup = createSettingGroup('Size',
+      `<div style="display: flex; align-items: center; gap: 8px;">
+        <input type="range" min="30" max="300" value="${sizePercent}"
+          oninput="updateDrumSetting('${drumId}', 'size', this.value / 100); document.getElementById('size-${drumId}').textContent = this.value + '%';"
+          style="flex: 1; cursor: pointer;">
+        <span id="size-${drumId}" style="min-width: 40px; font-weight: bold; color: #666; font-size: 11px;">${sizePercent}%</span>
+        <select onchange="updateDrumSetting('${drumId}', 'sizeScaling', this.value)"
+          style="min-width: 70px; padding: 3px; border: 1px solid #ddd; border-radius: 3px; font-size: 10px; cursor: pointer;">
+          ${Object.keys(SCALING_CURVES).map(key =>
+            `<option value="${SCALING_CURVES[key]}" ${settings.sizeScaling === SCALING_CURVES[key] ? 'selected' : ''}>${SCALING_CURVE_NAMES[SCALING_CURVES[key]]}</option>`
+          ).join('')}
+        </select>
+      </div>`
+    );
+
+    // Hue variation slider
+    const hueVarValue = Math.round(settings.hueVariation);
+    const hueVarGroup = createSettingGroup('Hue Variation',
+      `<div style="display: flex; align-items: center; gap: 8px;">
+        <input type="range" min="0" max="30" value="${hueVarValue}"
+          oninput="updateDrumSetting('${drumId}', 'hueVariation', parseInt(this.value)); document.getElementById('huevar-${drumId}').textContent = this.value + '°';"
+          style="flex: 1; cursor: pointer;">
+        <span id="huevar-${drumId}" style="min-width: 40px; font-weight: bold; color: #666; font-size: 11px;">${hueVarValue}°</span>
+        <select onchange="updateDrumSetting('${drumId}', 'hueScaling', this.value)"
+          style="min-width: 70px; padding: 3px; border: 1px solid #ddd; border-radius: 3px; font-size: 10px; cursor: pointer;">
+          ${Object.keys(SCALING_CURVES).map(key =>
+            `<option value="${SCALING_CURVES[key]}" ${settings.hueScaling === SCALING_CURVES[key] ? 'selected' : ''}>${SCALING_CURVE_NAMES[SCALING_CURVES[key]]}</option>`
+          ).join('')}
+        </select>
+      </div>`
+    );
+
+    // Rotation slider (for non-circular shapes)
+    const rotationValue = Math.round(settings.rotation);
+    const rotationGroup = createSettingGroup('Rotation',
+      `<div style="display: flex; align-items: center; gap: 10px;">
+        <input type="range" min="0" max="360" value="${rotationValue}"
+          oninput="updateDrumSetting('${drumId}', 'rotation', parseInt(this.value)); document.getElementById('rotation-${drumId}').textContent = this.value + '°';"
+          style="flex: 1; cursor: pointer;">
+        <span id="rotation-${drumId}" style="min-width: 45px; font-weight: bold; color: #666;">${rotationValue}°</span>
+      </div>
+      <div style="font-size: 11px; color: #888; margin-top: 4px;">Shape rotation (circles not affected)</div>`
+    );
+
+    // Stroke/Outline controls (with real-time preview)
+    const strokeGroup = document.createElement('div');
+    strokeGroup.style.marginBottom = '12px';
+
+    const strokeCheckboxLabel = document.createElement('label');
+    strokeCheckboxLabel.style.cssText = 'display: flex; align-items: center; gap: 8px; margin-bottom: 8px; cursor: pointer;';
+
+    const strokeCheckbox = document.createElement('input');
+    strokeCheckbox.type = 'checkbox';
+    strokeCheckbox.checked = settings.strokeEnabled;
+    strokeCheckbox.style.cursor = 'pointer';
+    strokeCheckbox.onchange = function() {
+      updateDrumSetting(drumId, 'strokeEnabled', this.checked);
+      document.getElementById(`stroke-controls-${drumId}`).style.display = this.checked ? 'block' : 'none';
+    };
+
+    const strokeCheckboxText = document.createElement('span');
+    strokeCheckboxText.style.cssText = 'font-size: 12px; color: #666; font-weight: 600;';
+    strokeCheckboxText.textContent = 'Outline/Stroke';
+
+    strokeCheckboxLabel.appendChild(strokeCheckbox);
+    strokeCheckboxLabel.appendChild(strokeCheckboxText);
+    strokeGroup.appendChild(strokeCheckboxLabel);
+
+    // Stroke controls container
+    const strokeControls = document.createElement('div');
+    strokeControls.id = `stroke-controls-${drumId}`;
+    strokeControls.style.cssText = `display: ${settings.strokeEnabled ? 'block' : 'none'}; padding-left: 24px;`;
+
+    // Stroke color with real-time preview
+    const strokeColorWrapper = document.createElement('div');
+    strokeColorWrapper.style.marginBottom = '8px';
+    const strokeColorLabel = document.createElement('label');
+    strokeColorLabel.style.cssText = 'display: block; font-size: 11px; color: #888; margin-bottom: 4px;';
+    strokeColorLabel.textContent = 'Stroke Color';
+
+    const strokeColorInput = document.createElement('input');
+    strokeColorInput.type = 'color';
+    strokeColorInput.value = settings.strokeColor;
+    strokeColorInput.style.cssText = 'width: 100%; height: 32px; border: 2px solid #ddd; border-radius: 5px; cursor: pointer;';
+    strokeColorInput.addEventListener('input', function() {
+      // Real-time preview while dragging
+      drumSettings[drumId].strokeColor = this.value;
+      updateDrumPreview(drumId);
+    });
+    strokeColorInput.addEventListener('change', function() {
+      // Final update on release
+      updateDrumSetting(drumId, 'strokeColor', this.value);
+    });
+
+    strokeColorWrapper.appendChild(strokeColorLabel);
+    strokeColorWrapper.appendChild(strokeColorInput);
+    strokeControls.appendChild(strokeColorWrapper);
+
+    // Stroke weight
+    const strokeWeightWrapper = document.createElement('div');
+    const strokeWeightLabel = document.createElement('label');
+    strokeWeightLabel.style.cssText = 'display: block; font-size: 11px; color: #888; margin-bottom: 4px;';
+    strokeWeightLabel.textContent = 'Stroke Weight';
+
+    const strokeWeightControls = document.createElement('div');
+    strokeWeightControls.style.cssText = 'display: flex; align-items: center; gap: 10px;';
+
+    const strokeWeightSlider = document.createElement('input');
+    strokeWeightSlider.type = 'range';
+    strokeWeightSlider.min = '1';
+    strokeWeightSlider.max = '10';
+    strokeWeightSlider.value = settings.strokeWeight;
+    strokeWeightSlider.style.cssText = 'flex: 1; cursor: pointer;';
+    strokeWeightSlider.oninput = function() {
+      updateDrumSetting(drumId, 'strokeWeight', parseInt(this.value));
+      document.getElementById(`strokeweight-${drumId}`).textContent = this.value + 'px';
+    };
+
+    const strokeWeightDisplay = document.createElement('span');
+    strokeWeightDisplay.id = `strokeweight-${drumId}`;
+    strokeWeightDisplay.style.cssText = 'min-width: 35px; font-weight: bold; color: #666; font-size: 11px;';
+    strokeWeightDisplay.textContent = settings.strokeWeight + 'px';
+
+    strokeWeightControls.appendChild(strokeWeightSlider);
+    strokeWeightControls.appendChild(strokeWeightDisplay);
+    strokeWeightWrapper.appendChild(strokeWeightLabel);
+    strokeWeightWrapper.appendChild(strokeWeightControls);
+    strokeControls.appendChild(strokeWeightWrapper);
+
+    strokeGroup.appendChild(strokeControls);
+
+    // Shape preview (compact, inline with last setting)
     const preview = document.createElement('div');
     preview.innerHTML = `
-      <div style="margin-top: 10px; text-align: center; padding: 10px; background: white; border-radius: 5px;">
-        <small style="color: #666; display: block; margin-bottom: 5px;">Preview</small>
+      <div style="text-align: center; padding: 8px; background: white; border-radius: 5px; border: 1px solid #e0e0e0;">
+        <small style="color: #666; display: block; margin-bottom: 3px; font-size: 10px;">Preview</small>
         <div id="preview-${drumId}" style="display: inline-block;"></div>
       </div>
     `;
 
+    content.appendChild(nameGroup);
     content.appendChild(midiNoteGroup);
     content.appendChild(colorGroup);
     content.appendChild(shapeGroup);
+    content.appendChild(rotationGroup);
+    content.appendChild(sizeGroup);
     content.appendChild(opacityGroup);
-    content.appendChild(preview);
+    content.appendChild(hueVarGroup);
+    content.appendChild(strokeGroup);
+    content.appendChild(preview); // Preview in right column
 
-    // Toggle collapse functionality
-    let isOpen = true;
-    header.onclick = () => {
-      isOpen = !isOpen;
-      content.style.display = isOpen ? 'block' : 'none';
-      toggleIcon.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(-90deg)';
-    };
+    // Add "Remove Drum" button at bottom (only if more than 1 drum)
+    if (DRUM_KIT_CONFIG.length > 1) {
+      const removeBtnWrapper = document.createElement('div');
+      removeBtnWrapper.style.cssText = 'grid-column: 1 / -1; margin-top: 10px;';
+      const removeBtn = document.createElement('button');
+      removeBtn.textContent = '🗑️ Remove This Drum';
+      removeBtn.style.cssText = `
+        width: 100%;
+        padding: 8px;
+        background: #dc3545;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: bold;
+        transition: all 0.2s;
+      `;
+      removeBtn.onmouseover = () => removeBtn.style.background = '#c82333';
+      removeBtn.onmouseout = () => removeBtn.style.background = '#dc3545';
+      removeBtn.onclick = () => removeDrum(drumId);
+      removeBtnWrapper.appendChild(removeBtn);
+      content.appendChild(removeBtnWrapper);
+    }
 
-    section.appendChild(header);
-    section.appendChild(content);
-    container.appendChild(section);
+    panel.appendChild(content);
+    tabContent.appendChild(panel);
+  });
 
-    // Draw preview
-    updateDrumPreview(drumId);
+  // Add CSS animation
+  const style = document.createElement('style');
+  style.textContent = `
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+  `;
+  document.head.appendChild(style);
+
+  // Add "+" button to add new drum
+  const addDrumBtn = document.createElement('button');
+  addDrumBtn.innerHTML = '+ Add Drum';
+  addDrumBtn.style.cssText = `
+    padding: 10px 20px;
+    border: 2px dashed #667eea;
+    background: white;
+    color: #667eea;
+    border-radius: 8px 8px 0 0;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 13px;
+    font-weight: bold;
+    min-width: 100px;
+  `;
+  addDrumBtn.onmouseover = () => {
+    addDrumBtn.style.background = '#f0f0ff';
+  };
+  addDrumBtn.onmouseout = () => {
+    addDrumBtn.style.background = 'white';
+  };
+  addDrumBtn.onclick = () => addNewDrum();
+  tabNav.appendChild(addDrumBtn);
+
+  container.appendChild(tabNav);
+  container.appendChild(tabContent);
+
+  // Draw all previews immediately
+  drumsToShow.forEach(({ id }) => {
+    updateDrumPreview(id);
+  });
+}
+
+/**
+ * Switch between drum tabs
+ */
+function switchDrumTab(drumId) {
+  // Remember current tab
+  currentCustomizationTab = drumId;
+
+  const drumsToShow = DRUM_KIT_CONFIG.map(drum => ({
+    id: drum.id,
+    name: drumSettings[drum.id]?.name || drum.name
+  }));
+
+  drumsToShow.forEach(({ id }) => {
+    const btn = document.getElementById(`tab-btn-${id}`);
+    const panel = document.getElementById(`tab-panel-${id}`);
+    const settings = drumSettings[id];
+
+    if (id === drumId) {
+      // Activate this tab
+      btn.style.background = 'white';
+      btn.style.fontWeight = 'bold';
+      btn.style.borderTop = `3px solid ${settings.color}`;
+      btn.classList.add('active');
+      panel.style.display = 'block';
+      panel.classList.add('active');
+    } else {
+      // Deactivate other tabs
+      btn.style.background = '#f8f9fa';
+      btn.style.fontWeight = 'normal';
+      btn.style.borderTop = '3px solid transparent';
+      btn.classList.remove('active');
+      panel.style.display = 'none';
+      panel.classList.remove('active');
+    }
   });
 }
 
@@ -1293,7 +2325,162 @@ function updateDrumSetting(drumId, property, value) {
   if (drumSettings[drumId]) {
     drumSettings[drumId][property] = value;
     updateDrumPreview(drumId);
+
+    // Update tab color indicator if color changed
+    if (property === 'color') {
+      const tabBtn = document.getElementById(`tab-btn-${drumId}`);
+      if (tabBtn) {
+        const colorDot = tabBtn.querySelector('span');
+        if (colorDot) {
+          colorDot.style.background = value;
+        }
+        // Update border color if this tab is active
+        if (tabBtn.classList.contains('active')) {
+          tabBtn.style.borderTop = `3px solid ${value}`;
+        }
+      }
+    }
+
+    // Update mouse drum names if name changed
+    if (property === 'name') {
+      MOUSE_DRUM_NAMES = DRUM_KIT_CONFIG.map(drum =>
+        drumSettings[drum.id]?.name || drum.name
+      );
+    }
+
     console.log(`Updated ${drumId}: ${property} = ${value}`);
+  }
+}
+
+/**
+ * Update drum tab label when name changes
+ */
+function updateDrumTabLabel(drumId, newName) {
+  const tabBtn = document.getElementById(`tab-btn-${drumId}`);
+  if (tabBtn) {
+    // Find and update the text node (not the color dot)
+    const textNodes = Array.from(tabBtn.childNodes).filter(n => n.nodeType === Node.TEXT_NODE);
+    if (textNodes.length > 0) {
+      textNodes[0].textContent = newName;
+    }
+  }
+}
+
+/**
+ * Add a new drum to the kit
+ */
+function addNewDrum() {
+  // Generate unique ID
+  const timestamp = Date.now();
+  const newId = `drum_${timestamp}`;
+
+  // Pick a random color
+  const colors = ['#E74C3C', '#3498DB', '#2ECC71', '#F39C12', '#9B59B6', '#1ABC9C', '#E67E22', '#34495E'];
+  const randomColor = colors[Math.floor(Math.random() * colors.length)];
+
+  // Add to config
+  DRUM_KIT_CONFIG.push({
+    id: newId,
+    name: `Drum ${DRUM_KIT_CONFIG.length + 1}`,
+    defaultMidiNote: 60,
+    defaultColor: randomColor
+  });
+
+  // Add to settings
+  drumSettings[newId] = {
+    name: `Drum ${DRUM_KIT_CONFIG.length}`,
+    midiNote: 60,
+    color: randomColor,
+    shape: 'circle',
+    opacity: 1.0,
+    opacityScaling: SCALING_CURVES.LINEAR,
+    size: 1.0,
+    sizeScaling: SCALING_CURVES.LINEAR,
+    strokeEnabled: false,
+    strokeWeight: 2,
+    strokeColor: '#000000',
+    hueVariation: 0,
+    hueScaling: SCALING_CURVES.LINEAR,
+    rotation: 0
+  };
+
+  // Regenerate mappings
+  regenerateDrumMappings();
+
+  // Rebuild UI and switch to new drum
+  currentCustomizationTab = newId;
+  buildDrumSettingsUI();
+
+  console.log(`Added new drum: ${newId}`);
+  showNotification('Drum Added');
+}
+
+/**
+ * Remove a drum from the kit
+ */
+function removeDrum(drumId) {
+  if (DRUM_KIT_CONFIG.length <= 1) {
+    alert('Cannot remove the last drum!');
+    return;
+  }
+
+  const drumName = drumSettings[drumId]?.name || drumId;
+  if (!confirm(`Remove "${drumName}"? This cannot be undone.`)) {
+    return;
+  }
+
+  // Remove from config
+  const configIndex = DRUM_KIT_CONFIG.findIndex(d => d.id === drumId);
+  if (configIndex !== -1) {
+    DRUM_KIT_CONFIG.splice(configIndex, 1);
+  }
+
+  // Remove from settings
+  delete drumSettings[drumId];
+
+  // Remove from DRUM_IDS
+  for (let key in DRUM_IDS) {
+    if (DRUM_IDS[key] === drumId) {
+      delete DRUM_IDS[key];
+      break;
+    }
+  }
+
+  // Regenerate mappings
+  regenerateDrumMappings();
+
+  // Switch to first drum and rebuild UI
+  currentCustomizationTab = DRUM_KIT_CONFIG[0].id;
+  buildDrumSettingsUI();
+
+  console.log(`Removed drum: ${drumId}`);
+  showNotification('Drum Removed');
+}
+
+/**
+ * Regenerate all drum-related mappings after add/remove
+ */
+function regenerateDrumMappings() {
+  // Regenerate DRUM_IDS
+  Object.keys(DRUM_IDS).forEach(key => delete DRUM_IDS[key]);
+  DRUM_KIT_CONFIG.forEach(drum => {
+    DRUM_IDS[drum.id.toUpperCase()] = drum.id;
+  });
+
+  // Regenerate mouse drum arrays
+  MOUSE_DRUM_IDS = DRUM_KIT_CONFIG.map(d => d.id);
+  MOUSE_DRUM_NAMES = DRUM_KIT_CONFIG.map(d => drumSettings[d.id]?.name || d.name);
+
+  // Regenerate timeline lanes
+  TIMELINE_LANES = {};
+  DRUM_KIT_CONFIG.forEach((drum, index) => {
+    TIMELINE_LANES[drum.id] = index;
+  });
+  TIMELINE_LANE_COUNT = DRUM_KIT_CONFIG.length;
+
+  // Reset current mouse drum if out of bounds
+  if (currentMouseDrum >= MOUSE_DRUM_IDS.length) {
+    currentMouseDrum = 0;
   }
 }
 
@@ -1305,17 +2492,17 @@ function updateDrumPreview(drumId) {
   if (!previewEl) return;
 
   const settings = drumSettings[drumId];
-  const size = 30;
+  const size = 24; // Smaller preview
 
   // Create a small canvas for preview
   let previewCanvas = document.createElement('canvas');
-  previewCanvas.width = 60;
-  previewCanvas.height = 60;
+  previewCanvas.width = 50;
+  previewCanvas.height = 50;
   previewCanvas.style.display = 'block';
   previewCanvas.style.margin = '0 auto';
 
   let ctx = previewCanvas.getContext('2d');
-  ctx.clearRect(0, 0, 60, 60);
+  ctx.clearRect(0, 0, 50, 50);
 
   // Parse color
   let hex = settings.color;
@@ -1325,9 +2512,30 @@ function updateDrumPreview(drumId) {
   let alpha = settings.opacity;
 
   ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
-  ctx.strokeStyle = 'none';
 
-  let cx = 30, cy = 30;
+  // Apply stroke if enabled
+  if (settings.strokeEnabled) {
+    let strokeHex = settings.strokeColor;
+    let sr = parseInt(strokeHex.slice(1, 3), 16);
+    let sg = parseInt(strokeHex.slice(3, 5), 16);
+    let sb = parseInt(strokeHex.slice(5, 7), 16);
+    ctx.strokeStyle = `rgb(${sr}, ${sg}, ${sb})`;
+    ctx.lineWidth = settings.strokeWeight;
+  } else {
+    ctx.strokeStyle = 'none';
+    ctx.lineWidth = 0;
+  }
+
+  let cx = 25, cy = 25;
+
+  // Apply rotation for non-circular shapes
+  if (settings.rotation !== 0 && settings.shape !== 'circle') {
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate((settings.rotation * Math.PI) / 180);
+    cx = 0;
+    cy = 0;
+  }
 
   // Draw shape
   switch (settings.shape) {
@@ -1335,9 +2543,11 @@ function updateDrumPreview(drumId) {
       ctx.beginPath();
       ctx.arc(cx, cy, size / 2, 0, Math.PI * 2);
       ctx.fill();
+      if (settings.strokeEnabled) ctx.stroke();
       break;
     case 'square':
       ctx.fillRect(cx - size / 2, cy - size / 2, size, size);
+      if (settings.strokeEnabled) ctx.strokeRect(cx - size / 2, cy - size / 2, size, size);
       break;
     case 'triangle':
       ctx.beginPath();
@@ -1347,6 +2557,7 @@ function updateDrumPreview(drumId) {
       ctx.lineTo(cx + size / 2, cy + h / 2);
       ctx.closePath();
       ctx.fill();
+      if (settings.strokeEnabled) ctx.stroke();
       break;
     case 'diamond':
       ctx.beginPath();
@@ -1356,13 +2567,21 @@ function updateDrumPreview(drumId) {
       ctx.lineTo(cx - size / 2, cy);
       ctx.closePath();
       ctx.fill();
+      if (settings.strokeEnabled) ctx.stroke();
       break;
     case 'star':
       drawStarCanvas(ctx, cx, cy, size / 3, size / 2, 5);
+      if (settings.strokeEnabled) ctx.stroke();
       break;
     case 'hexagon':
       drawHexagonCanvas(ctx, cx, cy, size / 2);
+      if (settings.strokeEnabled) ctx.stroke();
       break;
+  }
+
+  // Restore transformation if rotation was applied
+  if (settings.rotation !== 0 && settings.shape !== 'circle') {
+    ctx.restore();
   }
 
   previewEl.innerHTML = '';
@@ -1434,4 +2653,535 @@ function learnMIDINote(drumId) {
       console.log('MIDI Learn: Timed out');
     }
   }, 5000);
+}
+
+// ===== TIMELINE RECORDING CONTROLS =====
+
+/**
+ * Start timeline recording
+ * @param {boolean} startOver - If true, reset timeline; if false, continue from where we left off
+ */
+function startTimelineRecording(startOver = false) {
+  timelineRecording = true;
+
+  // If starting over, reset everything
+  if (startOver) {
+    timelineStartTime = null; // Will be set on first note
+    timelinePausedTime = 0;
+    timelineStopTime = null;
+    lastMetronomeClick = -1; // Reset metronome
+
+    // Clear the canvas
+    paintCanvas.background(BG_COLORS[currentBgColor]);
+    saveCanvasState();
+
+    console.log('Timeline recording started (from beginning)');
+    showNotification('Recording Started (New)');
+  } else {
+    // Continue recording - keep existing timelineStartTime and calculate paused duration
+    if (timelineStartTime !== null && timelineStopTime !== null) {
+      // We're continuing after a stop - add the paused duration
+      const pauseDuration = millis() - timelineStopTime;
+      timelinePausedTime += pauseDuration;
+      timelineStopTime = null;
+
+      // Sync metronome to current position
+      // Don't subtract 1 - we want to be at the CURRENT subdivision, not the previous one
+      const currentTime = millis();
+      const timeElapsed = (currentTime - timelineStartTime - timelinePausedTime) / 1000.0;
+      const secondsPerBeat = 60 / timelineBPM;
+      const secondsPerSubdivision = secondsPerBeat / (timelineSubdivision / 4);
+
+      // Calculate the current subdivision, rounding to nearest to avoid drift
+      const exactSubdivision = timeElapsed / secondsPerSubdivision;
+      lastMetronomeClick = Math.round(exactSubdivision) - 1;
+
+      console.log(`Timeline recording continued (paused for ${pauseDuration}ms)`);
+      showNotification('Recording Continued');
+    } else {
+      // First time starting
+      timelineStartTime = null; // Will be set on first note
+      timelinePausedTime = 0;
+      timelineStopTime = null;
+      lastMetronomeClick = -1; // Reset metronome
+      console.log('Timeline recording started');
+      showNotification('Recording Started');
+    }
+  }
+
+  // Update UI - show recording buttons
+  updateTimelineButtonsUI('recording');
+
+  const statusDiv = document.getElementById('timeline-status');
+  if (statusDiv) statusDiv.textContent = '🔴 Recording...';
+}
+
+/**
+ * Stop timeline recording
+ */
+function stopTimelineRecording() {
+  timelineRecording = false;
+  timelineStopTime = millis(); // Record when we stopped
+
+  // Update UI - show start over / continue buttons
+  updateTimelineButtonsUI('stopped');
+
+  const statusDiv = document.getElementById('timeline-status');
+  if (statusDiv) statusDiv.textContent = 'Recording paused';
+
+  console.log('Timeline recording stopped at', timelineStopTime);
+  showNotification('Recording Stopped');
+}
+
+/**
+ * Update timeline button visibility based on state
+ * @param {string} state - 'initial', 'recording', or 'stopped'
+ */
+function updateTimelineButtonsUI(state) {
+  const initialButtons = document.getElementById('timeline-buttons-initial');
+  const recordingButtons = document.getElementById('timeline-buttons-recording');
+  const stoppedButtons = document.getElementById('timeline-buttons-stopped');
+
+  if (initialButtons) initialButtons.style.display = 'none';
+  if (recordingButtons) recordingButtons.style.display = 'none';
+  if (stoppedButtons) stoppedButtons.style.display = 'none';
+
+  if (state === 'initial') {
+    if (initialButtons) initialButtons.style.display = 'flex';
+  } else if (state === 'recording') {
+    if (recordingButtons) recordingButtons.style.display = 'flex';
+  } else if (state === 'stopped') {
+    if (stoppedButtons) stoppedButtons.style.display = 'flex';
+  }
+}
+
+/**
+ * Update visibility of timeline controls based on current mode
+ */
+function updateTimelineControlsVisibility() {
+  const timelineControls = document.getElementById('timeline-controls');
+  if (timelineControls) {
+    timelineControls.style.display = (currentMode === 5) ? 'block' : 'none';
+
+    // Sync UI with current values when showing
+    if (currentMode === 5) {
+      const bpmInput = document.getElementById('timeline-bpm');
+      const bpmDisplay = document.getElementById('bpm-display');
+      const subdivisionSelect = document.getElementById('timeline-subdivision');
+
+      if (bpmInput) bpmInput.value = timelineBPM;
+      if (bpmDisplay) bpmDisplay.textContent = timelineBPM;
+      if (subdivisionSelect) subdivisionSelect.value = timelineSubdivision;
+    }
+  }
+}
+
+/**
+ * Update timeline BPM setting
+ */
+function updateTimelineBPM(bpm) {
+  timelineBPM = constrain(bpm, 40, 240);
+  const bpmDisplay = document.getElementById('bpm-display');
+  if (bpmDisplay) bpmDisplay.textContent = timelineBPM;
+  console.log('Timeline BPM set to', timelineBPM);
+}
+
+/**
+ * Update timeline subdivision setting
+ */
+function updateTimelineSubdivision(subdivision) {
+  timelineSubdivision = subdivision;
+  lastMetronomeClick = -1; // Reset metronome on subdivision change
+  console.log('Timeline subdivision set to', timelineSubdivision);
+}
+
+/**
+ * Update MIDI latency compensation
+ */
+function updateMidiLatency(latencyMs) {
+  midiLatencyMs = constrain(latencyMs, 0, 200);
+  console.log('MIDI latency compensation set to', midiLatencyMs, 'ms');
+}
+
+/**
+ * Toggle metronome on/off
+ */
+function toggleMetronome(enabled) {
+  metronomeEnabled = enabled;
+
+  // Initialize audio context on first enable
+  if (enabled && !audioContext) {
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  }
+
+  console.log('Metronome', enabled ? 'enabled' : 'disabled');
+}
+
+/**
+ * Update metronome - play click sounds based on BPM and subdivision
+ */
+function updateMetronome() {
+  if (!timelineStartTime || !audioContext) return;
+
+  // Reset if BPM or subdivision changed
+  if (lastMetronomeBPM !== timelineBPM || lastMetronomeSubdivision !== timelineSubdivision) {
+    lastMetronomeClick = -1;
+    lastMetronomeBPM = timelineBPM;
+    lastMetronomeSubdivision = timelineSubdivision;
+  }
+
+  const currentTime = millis();
+  const timeElapsed = (currentTime - timelineStartTime - timelinePausedTime) / 1000.0;
+
+  const secondsPerBeat = 60 / timelineBPM;
+  const secondsPerSubdivision = secondsPerBeat / (timelineSubdivision / 4);
+
+  // Calculate which subdivision we're on
+  const currentSubdivision = Math.floor(timeElapsed / secondsPerSubdivision);
+
+  // Play click if we've crossed into a new subdivision
+  if (currentSubdivision > lastMetronomeClick) {
+    lastMetronomeClick = currentSubdivision;
+
+    // Calculate beat position for tone selection
+    // Quarter notes are spaced by (timelineSubdivision / 4) subdivisions
+    // Measures are 4 quarter notes = timelineSubdivision subdivisions
+    const subdivisionsPerQuarter = timelineSubdivision / 4;
+    const subdivisionsPerMeasure = timelineSubdivision;
+
+    // Check if this subdivision aligns with a measure or quarter note
+    const isOnMeasure = (currentSubdivision % subdivisionsPerMeasure) === 0;
+    const isOnQuarterNote = (currentSubdivision % subdivisionsPerQuarter) === 0;
+
+    // Debug logging
+    const beatType = isOnMeasure ? 'MEASURE' : (isOnQuarterNote ? 'QUARTER' : 'subdivision');
+    console.log(`Metronome click ${currentSubdivision}: ${beatType}`);
+
+    playMetronomeClick(isOnMeasure, isOnQuarterNote);
+  }
+}
+
+/**
+ * Play a metronome click sound
+ * @param {boolean} isMeasure - True if this is the first beat of a measure
+ * @param {boolean} isQuarterNote - True if this is a quarter note beat
+ */
+function playMetronomeClick(isMeasure, isQuarterNote) {
+  if (!audioContext) return;
+
+  const oscillator = audioContext.createOscillator();
+  const gainNode = audioContext.createGain();
+
+  oscillator.connect(gainNode);
+  gainNode.connect(audioContext.destination);
+
+  // Different pitches for different beats
+  if (isMeasure) {
+    oscillator.frequency.value = 1200; // High pitch for measure
+    gainNode.gain.value = 0.3;
+  } else if (isQuarterNote) {
+    oscillator.frequency.value = 800; // Medium pitch for quarter notes
+    gainNode.gain.value = 0.2;
+  } else {
+    oscillator.frequency.value = 600; // Low pitch for subdivisions
+    gainNode.gain.value = 0.15;
+  }
+
+  oscillator.type = 'sine';
+
+  const now = audioContext.currentTime;
+  oscillator.start(now);
+
+  // Quick attack and decay for a "click" sound
+  gainNode.gain.setValueAtTime(gainNode.gain.value, now);
+  gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+  oscillator.stop(now + 0.05);
+}
+
+// ===== STATE MANAGEMENT SYSTEM =====
+
+const STORAGE_KEY = 'drumPainterSettings';
+
+/**
+ * Save current settings to localStorage as default
+ */
+function saveAsDefault() {
+  try {
+    const state = {
+      version: '1.1', // Bumped version for drum kit config support
+      drumKitConfig: DRUM_KIT_CONFIG, // Save custom drum kit
+      drumSettings: drumSettings,
+      globalSettings: {
+        sizeMultiplier: globalSizeMultiplier,
+        blendMode: currentBlendMode,
+        bgColor: currentBgColor
+      },
+      timestamp: new Date().toISOString()
+    };
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    console.log('✓ Settings saved to browser storage');
+    showNotification('Saved as Default');
+  } catch (error) {
+    console.error('Error saving settings:', error);
+    showNotification('Save Failed');
+  }
+}
+
+/**
+ * Load settings from localStorage
+ */
+function loadDefault() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (!saved) {
+      console.warn('No saved settings found');
+      showNotification('No Default Settings');
+      return;
+    }
+
+    const state = JSON.parse(saved);
+
+    // Load custom drum kit config if available
+    if (state.drumKitConfig && Array.isArray(state.drumKitConfig)) {
+      // Clear and reload config
+      DRUM_KIT_CONFIG.length = 0;
+      state.drumKitConfig.forEach(drum => DRUM_KIT_CONFIG.push(drum));
+
+      // Regenerate mappings
+      regenerateDrumMappings();
+    }
+
+    // Validate and apply settings
+    if (state.drumSettings) {
+      applyDrumSettings(state.drumSettings);
+    }
+    if (state.globalSettings) {
+      if (state.globalSettings.sizeMultiplier !== undefined) {
+        globalSizeMultiplier = state.globalSettings.sizeMultiplier;
+      }
+      if (state.globalSettings.blendMode !== undefined) {
+        currentBlendMode = state.globalSettings.blendMode;
+        paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
+      }
+      if (state.globalSettings.bgColor !== undefined) {
+        currentBgColor = state.globalSettings.bgColor;
+      }
+    }
+
+    // Rebuild UI to reflect changes
+    buildDrumSettingsUI();
+
+    console.log('✓ Settings loaded from browser storage');
+    showNotification('Default Loaded');
+  } catch (error) {
+    console.error('Error loading settings:', error);
+    showNotification('Load Failed');
+  }
+}
+
+/**
+ * Export settings to a JSON file
+ */
+function exportToFile() {
+  try {
+    const state = {
+      version: '1.1',
+      drumKitConfig: DRUM_KIT_CONFIG,
+      drumSettings: drumSettings,
+      globalSettings: {
+        sizeMultiplier: globalSizeMultiplier,
+        blendMode: currentBlendMode,
+        bgColor: currentBgColor
+      },
+      timestamp: new Date().toISOString()
+    };
+
+    const json = JSON.stringify(state, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `drum-painter-settings-${Date.now()}.json`;
+    a.click();
+
+    URL.revokeObjectURL(url);
+
+    console.log('✓ Settings exported to file');
+    showNotification('Exported to File');
+  } catch (error) {
+    console.error('Error exporting settings:', error);
+    showNotification('Export Failed');
+  }
+}
+
+/**
+ * Trigger file picker for import
+ */
+function importFromFile() {
+  const input = document.getElementById('import-file-input');
+  if (input) {
+    input.click();
+  }
+}
+
+/**
+ * Handle file import
+ */
+function handleFileImport(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const state = JSON.parse(e.target.result);
+
+      // Validate version
+      if (!state.version) {
+        throw new Error('Invalid settings file: missing version');
+      }
+
+      // Load custom drum kit config if available
+      if (state.drumKitConfig && Array.isArray(state.drumKitConfig)) {
+        // Clear and reload config
+        DRUM_KIT_CONFIG.length = 0;
+        state.drumKitConfig.forEach(drum => DRUM_KIT_CONFIG.push(drum));
+
+        // Regenerate mappings
+        regenerateDrumMappings();
+      }
+
+      // Apply settings
+      if (state.drumSettings) {
+        applyDrumSettings(state.drumSettings);
+      }
+      if (state.globalSettings) {
+        if (state.globalSettings.sizeMultiplier !== undefined) {
+          globalSizeMultiplier = state.globalSettings.sizeMultiplier;
+        }
+        if (state.globalSettings.blendMode !== undefined) {
+          currentBlendMode = state.globalSettings.blendMode;
+          paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
+        }
+        if (state.globalSettings.bgColor !== undefined) {
+          currentBgColor = state.globalSettings.bgColor;
+        }
+      }
+
+      // Rebuild UI
+      buildDrumSettingsUI();
+
+      console.log('✓ Settings imported from file');
+      showNotification('Imported Successfully');
+    } catch (error) {
+      console.error('Error importing settings:', error);
+      showNotification('Import Failed');
+      alert('Failed to import settings. Please check the file format.');
+    }
+  };
+
+  reader.readAsText(file);
+
+  // Reset input so same file can be imported again
+  event.target.value = '';
+}
+
+/**
+ * Reset all settings to factory defaults
+ */
+function resetToFactory() {
+  if (confirm('Reset all drum settings to factory defaults? This cannot be undone.')) {
+    // Deep copy factory settings
+    drumSettings = JSON.parse(JSON.stringify(FACTORY_DRUM_SETTINGS));
+
+    // Reset global settings
+    globalSizeMultiplier = 1.0;
+    currentBlendMode = 0;
+    currentBgColor = 0;
+    paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
+
+    // Rebuild UI
+    buildDrumSettingsUI();
+
+    console.log('✓ Settings reset to factory defaults');
+    showNotification('Reset to Factory');
+  }
+}
+
+/**
+ * Apply drum settings from loaded state
+ */
+function applyDrumSettings(newSettings) {
+  // Validate and merge each drum's settings
+  for (let drumId in DRUM_IDS) {
+    const id = DRUM_IDS[drumId];
+    if (newSettings[id]) {
+      // Only apply valid properties
+      const validKeys = ['name', 'midiNote', 'color', 'shape',
+                         'opacity', 'opacityScaling',
+                         'size', 'sizeScaling',
+                         'strokeEnabled', 'strokeWeight', 'strokeColor',
+                         'hueVariation', 'hueScaling',
+                         'rotation'];
+
+      for (let key of validKeys) {
+        if (newSettings[id][key] !== undefined) {
+          drumSettings[id][key] = newSettings[id][key];
+        }
+      }
+    }
+  }
+
+  // Update mouse drum names after loading
+  MOUSE_DRUM_NAMES = DRUM_KIT_CONFIG.map(drum =>
+    drumSettings[drum.id]?.name || drum.name
+  );
+}
+
+/**
+ * Load default settings on startup (silent, no notifications)
+ */
+function loadDefaultOnStartup() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (!saved) {
+      console.log('No saved settings found - using factory defaults');
+      return;
+    }
+
+    const state = JSON.parse(saved);
+
+    // Load custom drum kit config if available
+    if (state.drumKitConfig && Array.isArray(state.drumKitConfig)) {
+      // Clear and reload config
+      DRUM_KIT_CONFIG.length = 0;
+      state.drumKitConfig.forEach(drum => DRUM_KIT_CONFIG.push(drum));
+
+      // Regenerate mappings
+      regenerateDrumMappings();
+    }
+
+    // Validate and apply settings
+    if (state.drumSettings) {
+      applyDrumSettings(state.drumSettings);
+    }
+    if (state.globalSettings) {
+      if (state.globalSettings.sizeMultiplier !== undefined) {
+        globalSizeMultiplier = state.globalSettings.sizeMultiplier;
+      }
+      if (state.globalSettings.blendMode !== undefined) {
+        currentBlendMode = state.globalSettings.blendMode;
+        // Blend mode will be applied after canvas is created
+      }
+      if (state.globalSettings.bgColor !== undefined) {
+        currentBgColor = state.globalSettings.bgColor;
+      }
+    }
+
+    console.log('✓ Loaded saved settings from browser storage');
+  } catch (error) {
+    console.error('Error loading saved settings on startup:', error);
+  }
 }
