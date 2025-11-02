@@ -849,7 +849,7 @@ function handleCCValue(ccNumber, ccValue) {
           if (displayEl) displayEl.textContent = Math.round(sliderValue) + '°';
         } else if (param === 'strokeWeight') {
           drumSettings[drumId].strokeWeight = Math.round(sliderValue);
-          const sliderEl = document.querySelector(`input[oninput*="strokeweight-${drumId}"]`);
+          const sliderEl = document.getElementById(`strokeweight-slider-${drumId}`);
           const displayEl = document.getElementById(`strokeweight-${drumId}`);
           if (sliderEl) sliderEl.value = Math.round(sliderValue);
           if (displayEl) displayEl.textContent = Math.round(sliderValue) + 'px';
@@ -2248,13 +2248,13 @@ function buildDrumSettingsUI() {
     // Opacity slider (multiplier with velocity)
     const opacityPercent = Math.round(settings.opacity * 100);
     const opacityGroup = createSettingGroup('Opacity',
-      `<div style="display: flex; align-items: center; gap: 8px;">
+      `<div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
         <input type="range" min="10" max="100" value="${opacityPercent}"
           oninput="updateDrumSetting('${drumId}', 'opacity', this.value / 100); document.getElementById('opacity-${drumId}').textContent = this.value + '%';"
-          style="flex: 1; cursor: pointer;">
-        <span id="opacity-${drumId}" style="min-width: 40px; font-weight: bold; color: #666; font-size: 11px;">${opacityPercent}%</span>
+          style="flex: 1; min-width: 100px; cursor: pointer;">
+        <span id="opacity-${drumId}" style="min-width: 35px; font-weight: bold; color: #666; font-size: 11px;">${opacityPercent}%</span>
         <select onchange="updateDrumSetting('${drumId}', 'opacityScaling', this.value)"
-          style="min-width: 70px; padding: 3px; border: 1px solid #ddd; border-radius: 3px; font-size: 10px; cursor: pointer;">
+          style="min-width: 65px; padding: 3px; border: 1px solid #ddd; border-radius: 3px; font-size: 10px; cursor: pointer;">
           ${Object.keys(SCALING_CURVES).map(key =>
             `<option value="${SCALING_CURVES[key]}" ${settings.opacityScaling === SCALING_CURVES[key] ? 'selected' : ''}>${SCALING_CURVE_NAMES[SCALING_CURVES[key]]}</option>`
           ).join('')}
@@ -2266,13 +2266,13 @@ function buildDrumSettingsUI() {
     // Size slider (multiplier with velocity)
     const sizePercent = Math.round(settings.size * 100);
     const sizeGroup = createSettingGroup('Size',
-      `<div style="display: flex; align-items: center; gap: 8px;">
+      `<div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
         <input type="range" min="30" max="300" value="${sizePercent}"
           oninput="updateDrumSetting('${drumId}', 'size', this.value / 100); document.getElementById('size-${drumId}').textContent = this.value + '%';"
-          style="flex: 1; cursor: pointer;">
-        <span id="size-${drumId}" style="min-width: 40px; font-weight: bold; color: #666; font-size: 11px;">${sizePercent}%</span>
+          style="flex: 1; min-width: 100px; cursor: pointer;">
+        <span id="size-${drumId}" style="min-width: 35px; font-weight: bold; color: #666; font-size: 11px;">${sizePercent}%</span>
         <select onchange="updateDrumSetting('${drumId}', 'sizeScaling', this.value)"
-          style="min-width: 70px; padding: 3px; border: 1px solid #ddd; border-radius: 3px; font-size: 10px; cursor: pointer;">
+          style="min-width: 65px; padding: 3px; border: 1px solid #ddd; border-radius: 3px; font-size: 10px; cursor: pointer;">
           ${Object.keys(SCALING_CURVES).map(key =>
             `<option value="${SCALING_CURVES[key]}" ${settings.sizeScaling === SCALING_CURVES[key] ? 'selected' : ''}>${SCALING_CURVE_NAMES[SCALING_CURVES[key]]}</option>`
           ).join('')}
@@ -2284,13 +2284,13 @@ function buildDrumSettingsUI() {
     // Hue variation slider
     const hueVarValue = Math.round(settings.hueVariation);
     const hueVarGroup = createSettingGroup('Hue Variation',
-      `<div style="display: flex; align-items: center; gap: 8px;">
+      `<div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
         <input type="range" min="0" max="30" value="${hueVarValue}"
           oninput="updateDrumSetting('${drumId}', 'hueVariation', parseInt(this.value)); document.getElementById('huevar-${drumId}').textContent = this.value + '°';"
-          style="flex: 1; cursor: pointer;">
-        <span id="huevar-${drumId}" style="min-width: 40px; font-weight: bold; color: #666; font-size: 11px;">${hueVarValue}°</span>
+          style="flex: 1; min-width: 100px; cursor: pointer;">
+        <span id="huevar-${drumId}" style="min-width: 35px; font-weight: bold; color: #666; font-size: 11px;">${hueVarValue}°</span>
         <select onchange="updateDrumSetting('${drumId}', 'hueScaling', this.value)"
-          style="min-width: 70px; padding: 3px; border: 1px solid #ddd; border-radius: 3px; font-size: 10px; cursor: pointer;">
+          style="min-width: 65px; padding: 3px; border: 1px solid #ddd; border-radius: 3px; font-size: 10px; cursor: pointer;">
           ${Object.keys(SCALING_CURVES).map(key =>
             `<option value="${SCALING_CURVES[key]}" ${settings.hueScaling === SCALING_CURVES[key] ? 'selected' : ''}>${SCALING_CURVE_NAMES[SCALING_CURVES[key]]}</option>`
           ).join('')}
@@ -2302,11 +2302,11 @@ function buildDrumSettingsUI() {
     // Rotation slider (for non-circular shapes)
     const rotationValue = Math.round(settings.rotation);
     const rotationGroup = createSettingGroup('Rotation',
-      `<div style="display: flex; align-items: center; gap: 10px;">
+      `<div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
         <input type="range" min="0" max="360" value="${rotationValue}"
           oninput="updateDrumSetting('${drumId}', 'rotation', parseInt(this.value)); document.getElementById('rotation-${drumId}').textContent = this.value + '°';"
-          style="flex: 1; cursor: pointer;">
-        <span id="rotation-${drumId}" style="min-width: 45px; font-weight: bold; color: #666;">${rotationValue}°</span>
+          style="flex: 1; min-width: 100px; cursor: pointer;">
+        <span id="rotation-${drumId}" style="min-width: 35px; font-weight: bold; color: #666; font-size: 11px;">${rotationValue}°</span>
       </div>
       <div style="font-size: 11px; color: #888; margin-top: 4px;">Shape rotation (circles not affected)</div>`
     );
@@ -2373,14 +2373,15 @@ function buildDrumSettingsUI() {
     strokeWeightLabel.textContent = 'Stroke Weight';
 
     const strokeWeightControls = document.createElement('div');
-    strokeWeightControls.style.cssText = 'display: flex; align-items: center; gap: 10px;';
+    strokeWeightControls.style.cssText = 'display: flex; align-items: center; gap: 6px; flex-wrap: wrap;';
 
     const strokeWeightSlider = document.createElement('input');
     strokeWeightSlider.type = 'range';
+    strokeWeightSlider.id = `strokeweight-slider-${drumId}`;
     strokeWeightSlider.min = '1';
     strokeWeightSlider.max = '10';
     strokeWeightSlider.value = settings.strokeWeight;
-    strokeWeightSlider.style.cssText = 'flex: 1; cursor: pointer;';
+    strokeWeightSlider.style.cssText = 'flex: 1; min-width: 100px; cursor: pointer;';
     strokeWeightSlider.oninput = function() {
       updateDrumSetting(drumId, 'strokeWeight', parseInt(this.value));
       document.getElementById(`strokeweight-${drumId}`).textContent = this.value + 'px';
