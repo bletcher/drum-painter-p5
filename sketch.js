@@ -289,7 +289,9 @@ const MODE_NAMES = [
   'Radial Symmetry',
   'Gravity Field',
   'Organic Growth',
-  'Timeline/Sequencer'
+  'Timeline/Sequencer',
+  'Dendritic Spreading',
+  'Lightning'
 ];
 
 // Timeline lane mapping (generated dynamically from config)
@@ -1269,6 +1271,8 @@ function paintDrum(note, velocity) {
       case 3: baseSize = BASE_SIZE_GRAVITY; velocityMult = VELOCITY_MULT_GRAVITY; break;
       case 4: baseSize = BASE_SIZE_ORGANIC; velocityMult = VELOCITY_MULT_ORGANIC; break;
       case 5: baseSize = 8; velocityMult = 15; break; // Timeline mode
+      case 6: baseSize = 5; velocityMult = 12; break; // Dendritic mode
+      case 7: baseSize = 3; velocityMult = 10; break; // Lightning mode
       default: baseSize = 10; velocityMult = 20;
     }
 
@@ -1298,6 +1302,12 @@ function paintDrum(note, velocity) {
         break;
       case 5:
         paintTimeline(note, velocity);
+        break;
+      case 6:
+        paintDendritic(note, velocity);
+        break;
+      case 7:
+        paintLightning(note, velocity);
         break;
       default:
         console.warn(`Unknown mode: ${currentMode}`);
@@ -1774,6 +1784,257 @@ function drawTimelineLaneGuides(offsetX, offsetY, scale) {
   pop();
 }
 
+// ===== MODE 6: DENDRITIC SPREADING =====
+
+function paintDendritic(note, velocity) {
+  // Get drum settings
+  const drumId = findDrumByMidiNote(note);
+  const settings = drumSettings[drumId];
+
+  // Apply scaling curves
+  let scaledVelSize = applyScalingCurve(velocity, settings?.sizeScaling || SCALING_CURVES.LINEAR);
+  let scaledVelOpacity = applyScalingCurve(velocity, settings?.opacityScaling || SCALING_CURVES.LINEAR);
+
+  // Central soma/convergence point (upstream)
+  let somaX = random(paintCanvas.width * 0.3, paintCanvas.width * 0.7);
+  let somaY = random(paintCanvas.height * 0.3, paintCanvas.height * 0.6);
+
+  let col = getDrumColor(note, scaledVelOpacity);
+  let shape = getDrumShape(note);
+  let opacityMult = getDrumOpacity(note);
+  let stroke = getDrumStroke(note);
+  let rotation = getDrumRotation(note);
+
+  paintCanvas.push();
+
+  // Build a tree structure from soma outward, then draw it in reverse
+  // This creates proper tributary merging
+
+  class BranchNode {
+    constructor(x, y, thickness, parent = null) {
+      this.x = x;
+      this.y = y;
+      this.thickness = thickness;
+      this.parent = parent;
+      this.children = [];
+    }
+  }
+
+  // Create the tree starting from soma
+  const rootNode = new BranchNode(somaX, somaY, 1.0);
+  const allNodes = [rootNode];
+
+  // Recursively create branches
+  function createBranches(node, depth, maxDepth, angle) {
+    if (depth >= maxDepth) return;
+
+    // Length decreases with depth
+    const branchLength = (80 - depth * 15) * (0.5 + scaledVelOpacity * 0.5);
+
+    // Number of child branches (2-4 for main branches, 2-3 for smaller)
+    const numChildren = depth === 0 ? floor(3 + scaledVelOpacity * 3) : floor(2 + random(2));
+
+    for (let i = 0; i < numChildren; i++) {
+      // Calculate branch angle
+      let branchAngle;
+      if (depth === 0) {
+        // Main branches spread evenly around the soma
+        branchAngle = (TWO_PI / numChildren) * i + random(-PI/8, PI/8);
+      } else {
+        // Sub-branches split from parent angle
+        const spread = PI / 3;
+        branchAngle = angle + map(i, 0, numChildren - 1, -spread/2, spread/2) + random(-PI/12, PI/12);
+      }
+
+      // Calculate end position
+      const endX = node.x + cos(branchAngle) * branchLength;
+      const endY = node.y + sin(branchAngle) * branchLength;
+
+      // Thickness decreases with depth
+      const thickness = node.thickness * 0.6;
+
+      // Create child node
+      const childNode = new BranchNode(endX, endY, thickness, node);
+      node.children.push(childNode);
+      allNodes.push(childNode);
+
+      // Recurse with lower probability at each level
+      if (random(1) > depth * 0.2) {
+        createBranches(childNode, depth + 1, maxDepth, branchAngle);
+      }
+    }
+  }
+
+  // Generate the tree structure
+  const maxDepth = 3 + floor(scaledVelOpacity * 2);
+  createBranches(rootNode, 0, maxDepth, 0);
+
+  // Now draw the network from tips to root (downstream to upstream)
+  // This makes tributaries appear to merge as they approach the center
+
+  function drawPath(node) {
+    if (!node.parent) return; // Don't draw from root
+
+    const parent = node.parent;
+
+    // Calculate cumulative thickness (thicker near root)
+    const distToRoot = dist(node.x, node.y, somaX, somaY);
+    const maxDist = paintCanvas.width * 0.6;
+    const thicknessFactor = map(distToRoot, maxDist, 0, 0.3, 1.5);
+
+    const baseSize = (2 + scaledVelSize * 8) * globalSizeMultiplier * getDrumSize(note);
+    const nodeSize = baseSize * node.thickness * thicknessFactor;
+    const parentSize = baseSize * parent.thickness * thicknessFactor * 1.2;
+
+    // Draw segment from child to parent
+    const numSteps = ceil(dist(node.x, node.y, parent.x, parent.y) / 3);
+
+    for (let i = 0; i <= numSteps; i++) {
+      const t = i / numSteps;
+      const x = lerp(node.x, parent.x, t);
+      const y = lerp(node.y, parent.y, t);
+      const size = lerp(nodeSize, parentSize, t);
+
+      // Alpha increases toward root
+      const alpha = map(t, 0, 1,
+        140 * scaledVelOpacity * opacityMult,
+        200 * scaledVelOpacity * opacityMult
+      );
+
+      paintDot(x, y, size, col, alpha, shape, stroke, rotation);
+    }
+  }
+
+  // Draw all paths
+  for (let node of allNodes) {
+    drawPath(node);
+  }
+
+  // Draw the soma (central convergence point) last, making it prominent
+  const somaSize = (10 + scaledVelSize * 18) * globalSizeMultiplier * getDrumSize(note);
+  paintDot(somaX, somaY, somaSize, col, 240 * scaledVelOpacity * opacityMult, shape, stroke, rotation);
+
+  // Add some extra emphasis dots around soma
+  for (let i = 0; i < 3; i++) {
+    const angle = random(TWO_PI);
+    const distance = random(somaSize * 0.3, somaSize * 0.8);
+    const x = somaX + cos(angle) * distance;
+    const y = somaY + sin(angle) * distance;
+    paintDot(x, y, somaSize * 0.7, col, 200 * scaledVelOpacity * opacityMult, shape, stroke, rotation);
+  }
+
+  paintCanvas.pop();
+  particles.push(new Particle(somaX, somaY, 10, col));
+}
+
+// ===== MODE 7: LIGHTNING =====
+
+function paintLightning(note, velocity) {
+  // Get drum settings
+  const drumId = findDrumByMidiNote(note);
+  const settings = drumSettings[drumId];
+
+  // Apply scaling curves
+  let scaledVelSize = applyScalingCurve(velocity, settings?.sizeScaling || SCALING_CURVES.LINEAR);
+  let scaledVelOpacity = applyScalingCurve(velocity, settings?.opacityScaling || SCALING_CURVES.LINEAR);
+
+  // Lightning starts from random top area or side
+  let startX, startY, endX, endY;
+  const direction = random(1);
+
+  if (direction < 0.5) {
+    // Vertical lightning (top to bottom)
+    startX = random(paintCanvas.width);
+    startY = random(paintCanvas.height * 0.2);
+    endX = startX + random(-100, 100);
+    endY = random(paintCanvas.height * 0.6, paintCanvas.height * 0.9);
+  } else {
+    // Horizontal lightning (left to right or right to left)
+    if (random(1) < 0.5) {
+      startX = random(paintCanvas.width * 0.1);
+      endX = random(paintCanvas.width * 0.6, paintCanvas.width * 0.9);
+    } else {
+      startX = random(paintCanvas.width * 0.9, paintCanvas.width);
+      endX = random(paintCanvas.width * 0.1, paintCanvas.width * 0.4);
+    }
+    startY = random(paintCanvas.height);
+    endY = startY + random(-100, 100);
+  }
+
+  let col = getDrumColor(note, scaledVelOpacity);
+  let shape = getDrumShape(note);
+  let opacityMult = getDrumOpacity(note);
+  let stroke = getDrumStroke(note);
+  let rotation = getDrumRotation(note);
+
+  paintCanvas.push();
+
+  // Create jagged lightning bolt
+  function drawLightningBolt(x1, y1, x2, y2, thickness, alpha) {
+    const segments = floor(10 + scaledVelOpacity * 15);
+    let points = [{x: x1, y: y1}];
+
+    // Create jagged path
+    for (let i = 1; i < segments; i++) {
+      const t = i / segments;
+      let x = lerp(x1, x2, t);
+      let y = lerp(y1, y2, t);
+
+      // Add random offset perpendicular to the main direction
+      const offset = random(-15, 15) * (1 - abs(t - 0.5) * 2); // More jagged in middle
+      const angle = atan2(y2 - y1, x2 - x1) + HALF_PI;
+      x += cos(angle) * offset;
+      y += sin(angle) * offset;
+
+      points.push({x, y});
+    }
+    points.push({x: x2, y: y2});
+
+    // Draw the lightning bolt
+    for (let i = 0; i < points.length; i++) {
+      const size = thickness * random(0.7, 1.3);
+      paintDot(points[i].x, points[i].y, size, col, alpha, shape, stroke, rotation);
+
+      // Randomly create side branches
+      if (i > 0 && i < points.length - 1 && random(1) < 0.2) {
+        const branchAngle = random(PI/4, PI/2) * (random(1) < 0.5 ? 1 : -1);
+        const branchLength = random(20, 50);
+        const branchEndX = points[i].x + cos(branchAngle) * branchLength;
+        const branchEndY = points[i].y + sin(branchAngle) * branchLength;
+
+        // Draw smaller branch
+        const branchSegments = 3;
+        for (let j = 0; j <= branchSegments; j++) {
+          const bt = j / branchSegments;
+          const bx = lerp(points[i].x, branchEndX, bt);
+          const by = lerp(points[i].y, branchEndY, bt);
+          paintDot(bx, by, size * 0.6, col, alpha * 0.7, shape, stroke, rotation);
+        }
+      }
+    }
+  }
+
+  // Main lightning bolt
+  const mainThickness = (3 + scaledVelSize * 10) * globalSizeMultiplier * getDrumSize(note);
+  const mainAlpha = 220 * scaledVelOpacity * opacityMult;
+  drawLightningBolt(startX, startY, endX, endY, mainThickness, mainAlpha);
+
+  // Add glow effect with fainter outer bolts
+  if (scaledVelOpacity > 0.5) {
+    drawLightningBolt(
+      startX + random(-3, 3),
+      startY + random(-3, 3),
+      endX + random(-3, 3),
+      endY + random(-3, 3),
+      mainThickness * 1.5,
+      mainAlpha * 0.3
+    );
+  }
+
+  paintCanvas.pop();
+  particles.push(new Particle(startX, startY, 8, col));
+}
+
 // ===== UTILITY FUNCTIONS =====
 
 /**
@@ -2165,7 +2426,7 @@ function updateUIStatus() {
  * Change mode from dropdown selection
  */
 function changeModeFromDropdown(mode) {
-  if (mode >= 0 && mode <= 5 && mode !== currentMode) {
+  if (mode >= 0 && mode <= 7 && mode !== currentMode) {
     currentMode = mode;
     strokeCount = 0;
     spiralAngle = 0;
@@ -2329,8 +2590,8 @@ function keyPressed() {
     }
   }
 
-  // Mode switching (1-6)
-  if (key >= '1' && key <= '6') {
+  // Mode switching (1-8)
+  if (key >= '1' && key <= '8') {
     currentMode = parseInt(key) - 1;
     strokeCount = 0;
     spiralAngle = 0;
@@ -2352,6 +2613,11 @@ function keyPressed() {
     // Only reset growth points when switching TO organic mode (mode 4)
     if (currentMode === 4) {
       resetGrowthPoints();
+    }
+
+    // Sync dropdown with keyboard shortcut change
+    if (modeSelectEl) {
+      modeSelectEl.value = currentMode;
     }
 
     showNotification(MODE_NAMES[currentMode]);
