@@ -95,6 +95,7 @@ let timelinePausedTime = 0; // Accumulated paused time in milliseconds
 let timelineStopTime = null; // When we last stopped recording
 let timelineBPM = 120; // Beats per minute for metronome
 let timelineSubdivision = 4; // Beat subdivision (4 = quarter notes, 8 = eighth notes, 16 = sixteenth notes)
+let timelineBeatsPerMeasure = 4; // Time signature numerator (2/4, 3/4, 4/4, 5/4, etc.)
 let metronomeEnabled = false; // Whether metronome sound is enabled
 let lastMetronomeClick = -1; // Last subdivision index that played a click
 let audioContext = null; // Web Audio API context for metronome
@@ -365,9 +366,11 @@ function setup() {
   }
   console.log('CC migration check complete');
 
-  // Initialize bank mode pad assignments for all drums
+  // Initialize bank mode pad assignments ONLY if not already loaded
   for (const drum of DRUM_KIT_CONFIG) {
-    bankPadAssignments[drum.id] = { note: null };
+    if (!bankPadAssignments[drum.id]) {
+      bankPadAssignments[drum.id] = { note: null };
+    }
   }
 
   // Save initial blank canvas state
@@ -382,6 +385,21 @@ function setup() {
   console.log('🎨 Drum Painter Ready!');
   console.log('Controls: SPACE=clear, S=save, 1-6=modes, H=hide UI, B=blend mode, Z=undo, Y=redo');
   console.log('Mouse Testing: M=toggle, []=change drum, click/drag to paint');
+  console.log('\n📋 Helper Functions (type in console):');
+  console.log('  clearSavedSettings()       - Clear localStorage, reload to start fresh');
+  console.log('  showCurrentDrums()         - Show current drum configuration');
+  console.log('  cleanOrphanedDrums()       - Remove drums with no settings');
+  console.log('  showMidiMapping()          - Show MIDI note mappings and conflicts');
+  console.log('  inspectSavedSettings()     - Inspect what\'s saved in localStorage');
+  console.log('  testSettingsPersistence()  - Test if drum settings persist when switching');
+  console.log('  saveAsDefault()            - Save current settings to localStorage');
+  console.log('  loadDefault()              - Load saved settings');
+  console.log('  exportToFile()             - Export settings to JSON file');
+  console.log('  importFromFile()           - Import settings from JSON file');
+  console.log('  resetToFactory()           - Reset all settings to factory defaults');
+  console.log('  addNewDrum()               - Add a new drum to the kit');
+  console.log('  removeDrum(drumId)         - Remove a drum from the kit');
+  console.log('\n');
 
   // Make HTML callback functions globally accessible
   window.toggleCustomization = toggleCustomization;
@@ -390,6 +408,7 @@ function setup() {
   window.learnMIDINote = learnMIDINote;
   window.updateTimelineBPM = updateTimelineBPM;
   window.updateTimelineSubdivision = updateTimelineSubdivision;
+  window.updateTimeSignature = updateTimeSignature;
   window.updateMidiLatency = updateMidiLatency;
   window.toggleMetronome = toggleMetronome;
   window.startTimelineRecording = startTimelineRecording;
@@ -403,9 +422,154 @@ function setup() {
   window.handleFileImport = handleFileImport;
   window.resetToFactory = resetToFactory;
   window.updateDrumTabLabel = updateDrumTabLabel;
+
+  // Debug helpers
+  window.clearSavedSettings = function() {
+    localStorage.removeItem(STORAGE_KEY);
+    console.log('✓ Cleared saved settings. Reload page to start fresh.');
+  };
+  window.showCurrentDrums = function() {
+    console.log(`Current drums (${DRUM_KIT_CONFIG.length}):`, DRUM_KIT_CONFIG.map(d => d.id));
+    console.log('Timeline lanes:', TIMELINE_LANES);
+    console.log('Timeline lane count:', TIMELINE_LANE_COUNT);
+  };
+  window.cleanOrphanedDrums = function() {
+    const orphanedDrums = [];
+    for (let i = DRUM_KIT_CONFIG.length - 1; i >= 0; i--) {
+      const drumId = DRUM_KIT_CONFIG[i].id;
+      if (!drumSettings[drumId]) {
+        console.warn(`⚠️ Removing orphaned drum: ${drumId}`);
+        orphanedDrums.push(drumId);
+        DRUM_KIT_CONFIG.splice(i, 1);
+      }
+    }
+    if (orphanedDrums.length > 0) {
+      regenerateDrumMappings();
+      console.log(`🧹 Cleaned up ${orphanedDrums.length} orphaned drums:`, orphanedDrums);
+      console.log(`✓ Remaining drums:`, DRUM_KIT_CONFIG.map(d => d.id));
+      console.log('💡 Run saveAsDefault() to save the cleaned configuration');
+      return orphanedDrums;
+    } else {
+      console.log('✓ No orphaned drums found');
+      return [];
+    }
+  };
+  window.showMidiMapping = function() {
+    console.log('=== MIDI NOTE MAPPING ===');
+    console.log('Bank Mode Enabled:', bankModeEnabled);
+    console.log('Active Drum:', activeDrumBank);
+    console.log('\n🎚️ BANK PADS (Alesis - switch active drum):');
+    for (const drumId in bankPadAssignments) {
+      const pad = bankPadAssignments[drumId];
+      if (pad.note !== null) {
+        console.log(`  ${drumId}: Note ${pad.note}`);
+      }
+    }
+    console.log('\n🥁 DRUM TRIGGERS (paint when hit):');
+    DRUM_KIT_CONFIG.forEach(drum => {
+      const settings = drumSettings[drum.id];
+      if (settings) {
+        console.log(`  ${drum.id}: Note ${settings.midiNote}`);
+      }
+    });
+    console.log('\n⚠️ CONFLICTS (same note used for pad AND trigger):');
+    let hasConflicts = false;
+    for (const drumId in bankPadAssignments) {
+      const padNote = bankPadAssignments[drumId].note;
+      if (padNote !== null) {
+        DRUM_KIT_CONFIG.forEach(drum => {
+          const triggerNote = drumSettings[drum.id]?.midiNote;
+          if (padNote === triggerNote) {
+            console.warn(`  ⚠️ ${drumId} pad (${padNote}) conflicts with ${drum.id} trigger (${triggerNote})`);
+            console.warn(`     → When bank mode is ON, note ${padNote} will SWITCH drums (not paint)`);
+            hasConflicts = true;
+          }
+        });
+      }
+    }
+    if (!hasConflicts) {
+      console.log('  ✓ No conflicts found');
+    }
+  };
   window.addNewDrum = addNewDrum;
   window.removeDrum = removeDrum;
+  window.testSettingsPersistence = function() {
+    console.log('=== TESTING SETTINGS PERSISTENCE ===');
+    console.log('Current settings for all drums:');
+    DRUM_KIT_CONFIG.forEach(drum => {
+      const settings = drumSettings[drum.id];
+      if (settings) {
+        console.log(`\n${drum.id}:`);
+        console.log(`  Size: ${(settings.size * 100).toFixed(0)}%`);
+        console.log(`  Opacity: ${(settings.opacity * 100).toFixed(0)}%`);
+        console.log(`  Hue Variation: ${settings.hueVariation}°`);
+        console.log(`  Rotation: ${settings.rotation}°`);
+        console.log(`  Stroke Weight: ${settings.strokeWeight}px`);
+      }
+    });
+    console.log('\n💡 Switch drums using pads, adjust faders, then run this again to verify settings persist');
+  };
+  window.inspectSavedSettings = function() {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (!saved) {
+      console.log('❌ No settings saved in localStorage');
+      return;
+    }
+    try {
+      const state = JSON.parse(saved);
+      console.log('=== SAVED SETTINGS IN LOCALSTORAGE ===');
+      console.log('Version:', state.version);
+      console.log('Saved at:', state.timestamp);
+      console.log('\nDrum Kit:', state.drumKitConfig?.length || 0, 'drums');
+      console.log('Bank mode enabled:', state.bankModeSettings?.enabled);
+
+      // Bank mode pad assignments
+      if (state.bankModeSettings?.padAssignments) {
+        console.log('\nBank Pad Assignments:');
+        for (const drumId in state.bankModeSettings.padAssignments) {
+          const pad = state.bankModeSettings.padAssignments[drumId];
+          if (pad.note !== null) {
+            console.log(`  ${drumId}: Note ${pad.note}`);
+          }
+        }
+      }
+
+      // Bank mode global variables
+      if (state.bankModeSettings?.globalVariables) {
+        console.log('\nBank Global Variables:');
+        for (const param in state.bankModeSettings.globalVariables) {
+          const assignment = state.bankModeSettings.globalVariables[param];
+          if (assignment.cc !== null) {
+            console.log(`  ${param}: CC ${assignment.cc} (range ${assignment.ccMin}-${assignment.ccMax})`);
+          }
+        }
+      }
+
+      // Direct mode CC mappings
+      console.log('\nDirect Mode CC Mappings:');
+      for (const drumId in state.drumSettings) {
+        const drumCCs = state.drumSettings[drumId].midiCC;
+        if (drumCCs) {
+          let hasCC = false;
+          for (const param in drumCCs) {
+            if (drumCCs[param].cc !== null) {
+              if (!hasCC) {
+                console.log(`  ${drumId}:`);
+                hasCC = true;
+              }
+              console.log(`    ${param}: CC ${drumCCs[param].cc} (range ${drumCCs[param].ccMin}-${drumCCs[param].ccMax})`);
+            }
+          }
+        }
+      }
+
+      console.log('\n💡 Compare with current settings using showMidiMapping()');
+    } catch (error) {
+      console.error('Error parsing saved settings:', error);
+    }
+  };
 }
+
 
 function draw() {
   background(240);
@@ -690,8 +854,8 @@ function handleMIDIMessage(message) {
   try {
     const [command, note, velocity] = message.data;
 
-    // Debug: Log ALL MIDI messages (temporarily)
-    console.log(`MIDI: command=${command}, data1=${note}, data2=${velocity}`);
+    // Debug: Log ALL MIDI messages (comment out to reduce console spam)
+    // console.log(`MIDI: command=${command}, data1=${note}, data2=${velocity}`);
 
     // Note On message (144) with velocity > 0
     if (command === 144 && velocity > 0) {
@@ -711,17 +875,21 @@ function handleMIDIMessage(message) {
       }
 
       // Handle bank mode pad selection (switch active drum)
-      if (bankModeEnabled) {
+      // BUT: Skip bank mode in timeline mode - we want to paint all notes
+      if (bankModeEnabled && currentMode !== 5) {
         // Check if this note is assigned to a drum
         for (const drumId in bankPadAssignments) {
           if (bankPadAssignments[drumId].note === note) {
             activeDrumBank = drumId;
-            console.log(`Bank Mode: Selected ${drumId} for control`);
+            console.log(`🎚️ BANK PAD: Note ${note} switched active drum to ${drumId} (NOT PAINTING)`);
             updateActiveDrumIndicator();
             return; // Don't paint, just select
           }
         }
       }
+
+      // If we got here, this note is NOT a bank pad, so it should paint
+      // console.log(`🥁 TRIGGER: Note ${note} will paint (vel=${velocity})`);
 
       // Handle MIDI learn mode (for drum note mapping)
       if (midiLearnMode && midiLearnDrumId) {
@@ -1358,11 +1526,8 @@ function paintTimeline(note, velocity) {
     return;
   }
 
-  // Initialize start time on first note after starting recording
+  // timelineStartTime is now set when Start button is clicked (not on first note)
   const currentTime = millis();
-  if (timelineStartTime === null) {
-    timelineStartTime = currentTime;
-  }
 
   // Calculate time elapsed in seconds (excluding paused time)
   // Subtract MIDI latency compensation to align notes with grid
@@ -1383,10 +1548,25 @@ function paintTimeline(note, velocity) {
   // Ensure paintCanvas is tall enough for this staff
   const requiredHeight = (staffIndex + 1) * staffHeight + 100;
   if (paintCanvas.height < requiredHeight) {
-    // Resize canvas - save current content, resize, restore
+    // Save current height and content
+    const oldHeight = paintCanvas.height;
     let tempImg = paintCanvas.get();
+
+    // Resize canvas (new area will be transparent)
     paintCanvas.resizeCanvas(paintCanvas.width, requiredHeight);
+
+    // Draw the saved content back first (preserves existing painting)
     paintCanvas.image(tempImg, 0, 0);
+
+    // Fill only the NEW extended area with background color
+    paintCanvas.push();
+    paintCanvas.noStroke();
+    paintCanvas.fill(BG_COLORS[currentBgColor]);
+    paintCanvas.rect(0, oldHeight, paintCanvas.width, requiredHeight - oldHeight);
+    paintCanvas.pop();
+
+    // Restore blend mode
+    paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
   }
 
   // Get drum settings and apply scaling
@@ -1405,6 +1585,9 @@ function paintTimeline(note, velocity) {
   // Size based on velocity
   let size = (8 + scaledVelSize * 15) * sizeMultiplier;
   let alpha = 200 * scaledVelOpacity * opacityMult;
+
+  // Debug: Uncomment to see where notes are painted
+  // console.log(`🥁 Painting ${drumId} at x=${xInStaff.toFixed(1)}, y=${laneY}, lane=${laneIndex}, staff=${staffIndex}, alpha=${alpha.toFixed(0)}`);
 
   paintCanvas.push();
   paintDot(xInStaff, laneY, size, col, alpha, shape, stroke, rotation);
@@ -1429,7 +1612,7 @@ function drawTimelineLaneGuides(offsetX, offsetY, scale) {
   // Calculate beat/measure metrics
   const secondsPerBeat = 60 / timelineBPM;
   const pixelsPerBeat = secondsPerBeat * timelinePixelsPerSecond;
-  const pixelsPerMeasure = pixelsPerBeat * 4; // 4 beats per measure (4/4 time)
+  const pixelsPerMeasure = pixelsPerBeat * timelineBeatsPerMeasure;
   const secondsPerSubdivision = secondsPerBeat / (timelineSubdivision / 4);
   const pixelsPerSubdivision = secondsPerSubdivision * timelinePixelsPerSecond;
 
@@ -1475,8 +1658,6 @@ function drawTimelineLaneGuides(offsetX, offsetY, scale) {
     const maxBeats = Math.ceil(staffWidth / pixelsPerBeat);
     const subdivisionsPerBeat = timelineSubdivision / 4; // How many subdivisions in one quarter note
 
-    console.log(`Grid debug: subdivision=${timelineSubdivision}, subdivisionsPerBeat=${subdivisionsPerBeat}, pixelsPerSubdivision=${pixelsPerSubdivision}`);
-
     // Draw subdivision lines (light grey, visible) - ONLY where they don't overlap with beats
     stroke(190, 190, 190, 200);
     strokeWeight(1);
@@ -1493,14 +1674,13 @@ function drawTimelineLaneGuides(offsetX, offsetY, scale) {
         }
       }
     }
-    console.log(`Drew ${subdivisionCount} subdivision lines for staff ${staffIdx}`);
 
     // Draw beat lines (medium grey, thicker - for quarter notes)
     stroke(170, 170, 170, 180);
     strokeWeight(1.5);
     for (let beat = 0; beat <= maxBeats; beat++) {
       // Skip beats that fall on measure boundaries (we'll draw those separately)
-      if (beat % 4 !== 0) {
+      if (beat % timelineBeatsPerMeasure !== 0) {
         let xPos = beat * pixelsPerBeat;
         if (xPos <= staffWidth) {
           let x = offsetX + xPos * scale;
@@ -1511,11 +1691,11 @@ function drawTimelineLaneGuides(offsetX, offsetY, scale) {
       }
     }
 
-    // Draw measure lines (darkest, every 4 beats)
+    // Draw measure lines (darkest, at measure boundaries)
     stroke(150, 150, 150, 180);
     strokeWeight(2);
-    for (let measure = 0; measure <= maxBeats / 4; measure++) {
-      let xPos = measure * pixelsPerBeat * 4;
+    for (let measure = 0; measure <= maxBeats / timelineBeatsPerMeasure; measure++) {
+      let xPos = measure * pixelsPerBeat * timelineBeatsPerMeasure;
       if (xPos <= staffWidth) {
         let x = offsetX + xPos * scale;
         let y1 = offsetY + staffY * scale;
@@ -1560,8 +1740,16 @@ function drawTimelineLaneGuides(offsetX, offsetY, scale) {
     fill(0, 0, 0, 80);
     const startTime = staffIdx * (staffWidth / timelinePixelsPerSecond);
     const startBeat = Math.floor(startTime / secondsPerBeat);
-    const startMeasure = Math.floor(startBeat / 4);
+    const startMeasure = Math.floor(startBeat / timelineBeatsPerMeasure);
     text(`M${startMeasure + 1}`, offsetX + 5 * scale, offsetY + staffY * scale + 5 * scale);
+
+    // Draw staff separator line (darker horizontal line between staffs)
+    if (staffIdx < maxStaffsToShow - 1) { // Don't draw after last staff
+      stroke(100, 100, 100, 180); // Darker grey
+      strokeWeight(2 * scale);
+      const separatorY = offsetY + (staffY + staffHeight) * scale;
+      line(offsetX, separatorY, offsetX + staffWidth * scale, separatorY);
+    }
   }
 
   // Draw playhead line (current time position)
@@ -1987,6 +2175,8 @@ function changeModeFromDropdown(mode) {
       timelineStartTime = null;
       timelineRecording = false;
       timelinePausedTime = 0;
+      // Ensure timeline lanes match current drum configuration
+      regenerateDrumMappings();
       updateTimelineControlsVisibility();
       updateTimelineButtonsUI('initial');
     } else {
@@ -2150,6 +2340,8 @@ function keyPressed() {
       timelineStartTime = null;
       timelineRecording = false;
       timelinePausedTime = 0;
+      // Ensure timeline lanes match current drum configuration
+      regenerateDrumMappings();
       updateTimelineControlsVisibility();
       updateTimelineButtonsUI('initial');
     } else {
@@ -3594,7 +3786,7 @@ function startTimelineRecording(startOver = false) {
 
   // If starting over, reset everything
   if (startOver) {
-    timelineStartTime = null; // Will be set on first note
+    timelineStartTime = millis(); // Start timing NOW
     timelinePausedTime = 0;
     timelineStopTime = null;
     lastMetronomeClick = -1; // Reset metronome
@@ -3628,7 +3820,7 @@ function startTimelineRecording(startOver = false) {
       showNotification('Recording Continued');
     } else {
       // First time starting
-      timelineStartTime = null; // Will be set on first note
+      timelineStartTime = millis(); // Start timing NOW
       timelinePausedTime = 0;
       timelineStopTime = null;
       lastMetronomeClick = -1; // Reset metronome
@@ -3696,10 +3888,12 @@ function updateTimelineControlsVisibility() {
       const bpmInput = document.getElementById('timeline-bpm');
       const bpmDisplay = document.getElementById('bpm-display');
       const subdivisionSelect = document.getElementById('timeline-subdivision');
+      const timeSignatureSelect = document.getElementById('timeline-time-signature');
 
       if (bpmInput) bpmInput.value = timelineBPM;
       if (bpmDisplay) bpmDisplay.textContent = timelineBPM;
       if (subdivisionSelect) subdivisionSelect.value = timelineSubdivision;
+      if (timeSignatureSelect) timeSignatureSelect.value = timelineBeatsPerMeasure;
     }
   }
 }
@@ -3721,6 +3915,15 @@ function updateTimelineSubdivision(subdivision) {
   timelineSubdivision = subdivision;
   lastMetronomeClick = -1; // Reset metronome on subdivision change
   console.log('Timeline subdivision set to', timelineSubdivision);
+}
+
+/**
+ * Update time signature (beats per measure)
+ */
+function updateTimeSignature(beatsPerMeasure) {
+  timelineBeatsPerMeasure = beatsPerMeasure;
+  lastMetronomeClick = -1; // Reset metronome on time signature change
+  console.log('Time signature set to', timelineBeatsPerMeasure + '/4');
 }
 
 /**
@@ -3773,17 +3976,13 @@ function updateMetronome() {
 
     // Calculate beat position for tone selection
     // Quarter notes are spaced by (timelineSubdivision / 4) subdivisions
-    // Measures are 4 quarter notes = timelineSubdivision subdivisions
+    // Measures have timelineBeatsPerMeasure quarter notes
     const subdivisionsPerQuarter = timelineSubdivision / 4;
-    const subdivisionsPerMeasure = timelineSubdivision;
+    const subdivisionsPerMeasure = timelineSubdivision * (timelineBeatsPerMeasure / 4);
 
     // Check if this subdivision aligns with a measure or quarter note
     const isOnMeasure = (currentSubdivision % subdivisionsPerMeasure) === 0;
     const isOnQuarterNote = (currentSubdivision % subdivisionsPerQuarter) === 0;
-
-    // Debug logging
-    const beatType = isOnMeasure ? 'MEASURE' : (isOnQuarterNote ? 'QUARTER' : 'subdivision');
-    console.log(`Metronome click ${currentSubdivision}: ${beatType}`);
 
     playMetronomeClick(isOnMeasure, isOnQuarterNote);
   }
@@ -3855,7 +4054,26 @@ function saveAsDefault() {
     };
 
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+
+    // Debug: Show what was saved
     console.log('✓ Settings saved to browser storage');
+    console.log('  Bank mode enabled:', state.bankModeSettings.enabled);
+    console.log('  Bank pad assignments:', Object.keys(state.bankModeSettings.padAssignments).length, 'drums');
+    console.log('  Bank global variables:', Object.keys(state.bankModeSettings.globalVariables).length, 'variables');
+
+    // Count MIDI CC mappings in direct mode
+    let directModeCount = 0;
+    for (const drumId in state.drumSettings) {
+      if (state.drumSettings[drumId].midiCC) {
+        for (const param in state.drumSettings[drumId].midiCC) {
+          if (state.drumSettings[drumId].midiCC[param].cc !== null) {
+            directModeCount++;
+          }
+        }
+      }
+    }
+    console.log('  Direct mode CC mappings:', directModeCount);
+
     showNotification('Saved as Default');
   } catch (error) {
     console.error('Error saving settings:', error);
@@ -3891,6 +4109,22 @@ function loadDefault() {
     if (state.drumSettings) {
       applyDrumSettings(state.drumSettings);
     }
+
+    // CRITICAL: Clean up orphaned drums from DRUM_KIT_CONFIG
+    const orphanedDrums = [];
+    for (let i = DRUM_KIT_CONFIG.length - 1; i >= 0; i--) {
+      const drumId = DRUM_KIT_CONFIG[i].id;
+      if (!drumSettings[drumId]) {
+        console.warn(`⚠️ Removing orphaned drum: ${drumId}`);
+        orphanedDrums.push(drumId);
+        DRUM_KIT_CONFIG.splice(i, 1);
+      }
+    }
+    if (orphanedDrums.length > 0) {
+      regenerateDrumMappings();
+      console.log(`🧹 Cleaned up ${orphanedDrums.length} orphaned drums`);
+    }
+
     if (state.globalSettings) {
       if (state.globalSettings.sizeMultiplier !== undefined) {
         globalSizeMultiplier = state.globalSettings.sizeMultiplier;
@@ -3924,7 +4158,25 @@ function loadDefault() {
     // Rebuild UI to reflect changes
     buildDrumSettingsUI();
 
+    // Debug: Show what was loaded
     console.log('✓ Settings loaded from browser storage');
+    console.log('  Bank mode enabled:', bankModeEnabled);
+    console.log('  Bank pad assignments:', Object.keys(bankPadAssignments).length, 'drums');
+    console.log('  Bank global variables:', Object.keys(globalVariableAssignments).length, 'variables');
+
+    // Count MIDI CC mappings in direct mode
+    let directModeCount = 0;
+    for (const drumId in drumSettings) {
+      if (drumSettings[drumId].midiCC) {
+        for (const param in drumSettings[drumId].midiCC) {
+          if (drumSettings[drumId].midiCC[param].cc !== null) {
+            directModeCount++;
+          }
+        }
+      }
+    }
+    console.log('  Direct mode CC mappings:', directModeCount);
+
     showNotification('Default Loaded');
   } catch (error) {
     console.error('Error loading settings:', error);
@@ -3938,13 +4190,20 @@ function loadDefault() {
 function exportToFile() {
   try {
     const state = {
-      version: '1.1',
+      version: '1.3', // Updated to match saveAsDefault version
       drumKitConfig: DRUM_KIT_CONFIG,
       drumSettings: drumSettings,
       globalSettings: {
         sizeMultiplier: globalSizeMultiplier,
         blendMode: currentBlendMode,
         bgColor: currentBgColor
+      },
+      // Bank mode settings
+      bankModeSettings: {
+        enabled: bankModeEnabled,
+        activeDrum: activeDrumBank,
+        padAssignments: bankPadAssignments,
+        globalVariables: globalVariableAssignments
       },
       timestamp: new Date().toISOString()
     };
@@ -4009,6 +4268,22 @@ function handleFileImport(event) {
       if (state.drumSettings) {
         applyDrumSettings(state.drumSettings);
       }
+
+      // CRITICAL: Clean up orphaned drums from DRUM_KIT_CONFIG
+      const orphanedDrums = [];
+      for (let i = DRUM_KIT_CONFIG.length - 1; i >= 0; i--) {
+        const drumId = DRUM_KIT_CONFIG[i].id;
+        if (!drumSettings[drumId]) {
+          console.warn(`⚠️ Removing orphaned drum: ${drumId}`);
+          orphanedDrums.push(drumId);
+          DRUM_KIT_CONFIG.splice(i, 1);
+        }
+      }
+      if (orphanedDrums.length > 0) {
+        regenerateDrumMappings();
+        console.log(`🧹 Cleaned up ${orphanedDrums.length} orphaned drums`);
+      }
+
       if (state.globalSettings) {
         if (state.globalSettings.sizeMultiplier !== undefined) {
           globalSizeMultiplier = state.globalSettings.sizeMultiplier;
@@ -4020,6 +4295,23 @@ function handleFileImport(event) {
         if (state.globalSettings.bgColor !== undefined) {
           currentBgColor = state.globalSettings.bgColor;
         }
+      }
+
+      // Load bank mode settings
+      if (state.bankModeSettings) {
+        if (state.bankModeSettings.enabled !== undefined) {
+          bankModeEnabled = state.bankModeSettings.enabled;
+        }
+        if (state.bankModeSettings.activeDrum) {
+          activeDrumBank = state.bankModeSettings.activeDrum;
+        }
+        if (state.bankModeSettings.padAssignments) {
+          bankPadAssignments = state.bankModeSettings.padAssignments;
+        }
+        if (state.bankModeSettings.globalVariables) {
+          globalVariableAssignments = state.bankModeSettings.globalVariables;
+        }
+        updateActiveDrumIndicator();
       }
 
       // Rebuild UI
@@ -4053,6 +4345,23 @@ function resetToFactory() {
     currentBlendMode = 0;
     currentBgColor = 0;
     paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
+
+    // Reset bank mode settings
+    bankModeEnabled = false;
+    activeDrumBank = 'kick';
+    bankPadAssignments = {};
+    globalVariableAssignments = {
+      size: { cc: null, ccMin: 0, ccMax: 127 },
+      opacity: { cc: null, ccMin: 0, ccMax: 127 },
+      hueVariation: { cc: null, ccMin: 0, ccMax: 127 },
+      rotation: { cc: null, ccMin: 0, ccMax: 127 },
+      strokeWeight: { cc: null, ccMin: 0, ccMax: 127 }
+    };
+    // Initialize bank pad assignments for all drums
+    for (const drum of DRUM_KIT_CONFIG) {
+      bankPadAssignments[drum.id] = { note: null };
+    }
+    updateActiveDrumIndicator();
 
     // Rebuild UI
     buildDrumSettingsUI();
@@ -4182,18 +4491,41 @@ function loadDefaultOnStartup() {
 
     // Load custom drum kit config if available
     if (state.drumKitConfig && Array.isArray(state.drumKitConfig)) {
+      console.log(`📦 Loading ${state.drumKitConfig.length} drums from saved settings:`, state.drumKitConfig.map(d => d.id));
+
       // Clear and reload config
       DRUM_KIT_CONFIG.length = 0;
       state.drumKitConfig.forEach(drum => DRUM_KIT_CONFIG.push(drum));
 
-      // Regenerate mappings
-      regenerateDrumMappings();
+      console.log(`✓ Loaded ${DRUM_KIT_CONFIG.length} drums into DRUM_KIT_CONFIG`);
+    } else {
+      console.log(`No drumKitConfig in saved settings, using ${DRUM_KIT_CONFIG.length} default drums`);
     }
 
     // Validate and apply settings
     if (state.drumSettings) {
       applyDrumSettings(state.drumSettings);
     }
+
+    // CRITICAL: Clean up orphaned drums from DRUM_KIT_CONFIG
+    // (drums that exist in config but have no settings)
+    const orphanedDrums = [];
+    for (let i = DRUM_KIT_CONFIG.length - 1; i >= 0; i--) {
+      const drumId = DRUM_KIT_CONFIG[i].id;
+      if (!drumSettings[drumId]) {
+        console.warn(`⚠️ Removing orphaned drum from config: ${drumId} (no settings found)`);
+        orphanedDrums.push(drumId);
+        DRUM_KIT_CONFIG.splice(i, 1);
+      }
+    }
+    if (orphanedDrums.length > 0) {
+      console.log(`🧹 Cleaned up ${orphanedDrums.length} orphaned drums`);
+      // Regenerate mappings after cleanup
+      regenerateDrumMappings();
+      console.log(`✓ TIMELINE_LANE_COUNT updated to: ${TIMELINE_LANE_COUNT}`);
+      console.log(`✓ Current drums:`, DRUM_KIT_CONFIG.map(d => d.id));
+    }
+
     if (state.globalSettings) {
       if (state.globalSettings.sizeMultiplier !== undefined) {
         globalSizeMultiplier = state.globalSettings.sizeMultiplier;
@@ -4222,6 +4554,13 @@ function loadDefaultOnStartup() {
         globalVariableAssignments = state.bankModeSettings.globalVariables;
       }
       // updateActiveDrumIndicator() will be called after setup completes
+    }
+
+    // IMPORTANT: Always regenerate drum mappings after loading to ensure
+    // timeline lanes and other mappings match the current DRUM_KIT_CONFIG
+    // (This handles cases where drumKitConfig wasn't in the saved state)
+    if (!state.drumKitConfig) {
+      regenerateDrumMappings();
     }
 
     console.log('✓ Loaded saved settings from browser storage');

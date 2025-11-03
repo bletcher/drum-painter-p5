@@ -125,13 +125,30 @@
             style="flex: 1; padding: 4px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px;">
           <span id="bpm-display" style="min-width: 40px; text-align: right; font-weight: bold;">120</span>
         </div>
-        <div style="display: flex; align-items: center; gap: 8px;">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
           <label style="min-width: 45px;">Grid:</label>
           <select id="timeline-subdivision" onchange="updateTimelineSubdivision(parseInt(this.value))"
             style="flex: 1; padding: 4px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px; cursor: pointer;">
             <option value="4" selected>Quarter Notes</option>
             <option value="8">Eighth Notes</option>
             <option value="16">Sixteenth Notes</option>
+          </select>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
+          <label style="min-width: 45px;">Time:</label>
+          <select id="timeline-time-signature" onchange="updateTimeSignature(parseInt(this.value))"
+            style="flex: 1; padding: 4px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px; cursor: pointer;">
+            <option value="2">2/4</option>
+            <option value="3">3/4</option>
+            <option value="4" selected>4/4</option>
+            <option value="5">5/4</option>
+            <option value="6">6/4</option>
+            <option value="7">7/4</option>
+            <option value="8">8/4</option>
+            <option value="9">9/4</option>
+            <option value="10">10/4</option>
+            <option value="11">11/4</option>
+            <option value="12">12/4</option>
           </select>
         </div>
         <div style="display: flex; align-items: center; gap: 8px; margin-top: 5px;">
