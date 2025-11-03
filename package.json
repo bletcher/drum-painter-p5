@@ -1,0 +1,13 @@
+{
+  "name": "drum-painter-p5",
+  "version": "2.0.0",
+  "description": "Paint pointillistic art with MIDI drum triggers - Modular ES6 version",
+  "type": "module",
+  "scripts": {
+    "dev": "python -m http.server 8080",
+    "start": "python -m http.server 8080"
+  },
+  "keywords": ["midi", "drums", "p5js", "art", "generative"],
+  "author": "",
+  "license": "MIT"
+}

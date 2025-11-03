@@ -1,0 +1,112 @@
+/**
+ * Organic Growth Mode
+ * Paints dots near moving growth points
+ */
+
+import { ModeBase } from './ModeBase.js';
+import {
+  BASE_SIZE_ORGANIC,
+  VELOCITY_MULT_ORGANIC,
+  ALPHA_ORGANIC,
+  GROWTH_POINTS_COUNT,
+  ORGANIC_DISTANCE_BASE,
+  ORGANIC_DISTANCE_SPREAD,
+  ORGANIC_MOVE_PROBABILITY,
+  ORGANIC_MOVE_RANGE
+} from '../config/constants.js';
+import { applyScalingCurve } from '../utils/scaling.js';
+import {
+  getDrumColor,
+  getDrumSize,
+  getDrumShape,
+  getDrumOpacity,
+  getDrumStroke,
+  getDrumRotation,
+  findDrumByMidiNote
+} from '../utils/drumHelpers.js';
+import { paintDot } from '../canvas/DrawingUtils.js';
+import { Particle } from '../canvas/Particle.js';
+
+export class OrganicMode extends ModeBase {
+  constructor() {
+    super('Organic Growth', BASE_SIZE_ORGANIC, VELOCITY_MULT_ORGANIC);
+    this.growthPoints = [];
+  }
+
+  onActivate(context) {
+    // Initialize growth points when mode is activated
+    this.resetGrowthPoints(context.paintCanvas);
+  }
+
+  resetGrowthPoints(paintCanvas) {
+    this.growthPoints = [];
+    for (let i = 0; i < GROWTH_POINTS_COUNT; i++) {
+      this.growthPoints.push(createVector(
+        random(paintCanvas.width),
+        random(paintCanvas.height)
+      ));
+    }
+  }
+
+  paint(note, velocity, context) {
+    const { paintCanvas, drumSettings, globalSizeMultiplier, particles } = context;
+
+    // Get drum settings
+    const drumId = findDrumByMidiNote(note, drumSettings);
+    const settings = drumSettings[drumId];
+
+    // Apply scaling curves
+    let scaledVelSize = applyScalingCurve(velocity, settings?.sizeScaling || 'linear');
+    let scaledVelOpacity = applyScalingCurve(velocity, settings?.opacityScaling || 'linear');
+
+    // Find nearest growth point
+    let testPos = createVector(random(paintCanvas.width), random(paintCanvas.height));
+    let nearest = this.growthPoints[0];
+    let minDist = Infinity;
+
+    for (let gp of this.growthPoints) {
+      let d = p5.Vector.dist(testPos, gp);
+      if (d < minDist) {
+        minDist = d;
+        nearest = gp;
+      }
+    }
+
+    // Paint near growth point
+    let angle = random(TWO_PI);
+    let distance = randomGaussian() * ORGANIC_DISTANCE_SPREAD + ORGANIC_DISTANCE_BASE;
+    let x = nearest.x + cos(angle) * distance;
+    let y = nearest.y + sin(angle) * distance;
+    let size = (this.baseSize + scaledVelSize * this.velocityMult) * globalSizeMultiplier * getDrumSize(note, drumSettings);
+
+    // Keep within bounds
+    x = constrain(x, 0, paintCanvas.width);
+    y = constrain(y, 0, paintCanvas.height);
+
+    // Get visual properties
+    let col = getDrumColor(note, scaledVelOpacity, drumSettings);
+    let shape = getDrumShape(note, drumSettings);
+    let opacityMult = getDrumOpacity(note, drumSettings);
+    let stroke = getDrumStroke(note, drumSettings);
+    let rotation = getDrumRotation(note, drumSettings);
+
+    // Paint the dot
+    paintCanvas.push();
+    paintDot(paintCanvas, x, y, size, col, ALPHA_ORGANIC * scaledVelOpacity * opacityMult, shape, stroke, rotation);
+    paintCanvas.pop();
+
+    // Occasionally move growth point
+    if (random(1) < ORGANIC_MOVE_PROBABILITY) {
+      nearest.x += random(-ORGANIC_MOVE_RANGE, ORGANIC_MOVE_RANGE);
+      nearest.y += random(-ORGANIC_MOVE_RANGE, ORGANIC_MOVE_RANGE);
+
+      // Keep growth points within canvas with margin
+      const margin = 50;
+      nearest.x = constrain(nearest.x, margin, paintCanvas.width - margin);
+      nearest.y = constrain(nearest.y, margin, paintCanvas.height - margin);
+    }
+
+    // Add particle effect
+    particles.push(new Particle(x, y, size, col));
+  }
+}
