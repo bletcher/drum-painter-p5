@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Drum Painter</title>
+  <title>Drum Painter - Modular</title>
   <script src="https://cdn.jsdelivr.net/npm/p5@1.7.0/lib/p5.js"></script>
   <style>
     body {
@@ -11,21 +11,29 @@
       padding: 0;
       overflow: hidden;
       background: #f0f0f0;
+      font-family: monospace;
     }
     canvas {
       display: block;
+    }
+    @keyframes pulse {
+      0%, 100% { transform: translateX(-50%) scale(1); }
+      50% { transform: translateX(-50%) scale(1.05); }
+    }
+    #active-drum-indicator {
+      animation: pulse 2s ease-in-out infinite;
     }
     #controls {
       position: fixed;
       top: 10px;
       left: 10px;
-      background: rgba(255, 255, 255, 0.9);
+      background: rgba(255, 255, 255, 0.95);
       padding: 15px;
       border-radius: 8px;
-      font-family: monospace;
       font-size: 12px;
       box-shadow: 0 2px 10px rgba(0,0,0,0.1);
       max-width: 300px;
+      z-index: 1000;
     }
     #controls h3 {
       margin: 0 0 10px 0;
@@ -39,10 +47,6 @@
       color: #00aa00;
       font-weight: bold;
     }
-    #controls .mouse-mode {
-      color: #0088cc;
-      font-weight: bold;
-    }
     #controls .key {
       display: inline-block;
       background: #333;
@@ -51,85 +55,98 @@
       border-radius: 3px;
       margin: 2px;
     }
+    #info {
+      position: fixed;
+      bottom: 10px;
+      left: 10px;
+      background: rgba(255, 255, 255, 0.95);
+      padding: 10px;
+      border-radius: 8px;
+      font-size: 11px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      z-index: 1000;
+    }
+    #info h4 {
+      margin: 0 0 5px 0;
+      font-size: 12px;
+      color: #0066cc;
+    }
   </style>
 </head>
 <body>
   <div id="controls">
     <h3 id="controls-header" style="cursor: move; user-select: none;">🥁 DRUM PAINTER</h3>
-    <div class="status mouse-mode" id="midi-status">Mouse Mode: Ready (checking MIDI...)</div>
-    <div class="status" style="display: flex; flex-direction: column; gap: 8px; margin: 10px 0;">
-      <div style="display: flex; align-items: center; gap: 8px;">
-        <label style="min-width: 50px; font-weight: bold; font-size: 12px;">Mode:</label>
-        <select id="mode-select" onchange="changeModeFromDropdown(parseInt(this.value))" style="
-          flex: 1;
-          padding: 4px 8px;
-          border: 1px solid #ccc;
-          border-radius: 4px;
-          font-size: 11px;
-          font-family: monospace;
-          cursor: pointer;
-          background: white;
-        ">
-          <option value="0">Classic Pointillism</option>
-          <option value="1">Fibonacci Spiral</option>
-          <option value="2">Radial Symmetry</option>
-          <option value="3">Gravity Field</option>
-          <option value="4">Organic Growth</option>
-          <option value="5">Timeline/Sequencer</option>
-          <option value="6">Dendritic Spreading</option>
-          <option value="7">Lightning</option>
-        </select>
-      </div>
-      <div style="display: flex; align-items: center; gap: 8px;">
-        <label style="min-width: 50px; font-weight: bold; font-size: 12px;">Blend:</label>
-        <select id="blend-select" onchange="changeBlendModeFromDropdown(parseInt(this.value))" style="
-          flex: 1;
-          padding: 4px 8px;
-          border: 1px solid #ccc;
-          border-radius: 4px;
-          font-size: 11px;
-          font-family: monospace;
-          cursor: pointer;
-          background: white;
-        ">
-          <option value="0">Normal</option>
-          <option value="1">Multiply</option>
-          <option value="2">Screen</option>
-          <option value="3">Overlay</option>
-          <option value="4">Dodge</option>
-          <option value="5">Burn</option>
-        </select>
-      </div>
-      <div id="additional-status" class="status" style="font-size: 11px; color: #666; margin-top: 2px;"></div>
-    </div>
+    <div class="status" id="midi-status">Checking MIDI...</div>
     <hr style="margin: 10px 0; border: none; border-top: 1px solid #ddd;">
+
+    <!-- Mode Selector -->
+    <div style="margin: 10px 0;">
+      <label style="display: block; margin-bottom: 5px; font-weight: bold; font-size: 11px;">Paint Mode:</label>
+      <select id="mode-select" style="
+        width: 100%;
+        padding: 6px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 11px;
+        background: white;
+      ">
+        <option value="0">Classic Pointillism</option>
+        <option value="1">Fibonacci Spiral</option>
+        <option value="2">Radial Symmetry</option>
+        <option value="3">Gravity Field</option>
+        <option value="4">Organic Growth</option>
+        <option value="5">Dendritic Spreading</option>
+        <option value="6">Lightning</option>
+        <option value="7">Timeline</option>
+      </select>
+    </div>
+
+    <!-- Blend Mode Selector -->
+    <div style="margin: 10px 0;">
+      <label style="display: block; margin-bottom: 5px; font-weight: bold; font-size: 11px;">Blend Mode:</label>
+      <select id="blend-select" style="
+        width: 100%;
+        padding: 6px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 11px;
+        background: white;
+      ">
+        <option value="0">Normal</option>
+        <option value="1">Multiply</option>
+        <option value="2">Screen</option>
+        <option value="3">Overlay</option>
+        <option value="4">Dodge</option>
+        <option value="5">Burn</option>
+      </select>
+    </div>
+
+    <hr style="margin: 10px 0; border: none; border-top: 1px solid #ddd;">
+
     <div style="margin-top: 10px;">
-      <strong>Controls:</strong><br>
+      <strong>Keyboard Shortcuts:</strong><br>
       <span class="key">SPACE</span> Clear canvas<br>
-      <span class="key">S</span> Save painting<br>
+      <span class="key">S</span> Save image<br>
+      <span class="key">D</span> Save settings<br>
       <span class="key">Z</span> Undo<br>
       <span class="key">Y</span> Redo<br>
-      <span class="key">H</span> Hide/show UI
+      <span class="key">H</span> Hide/show UI<br>
+      <span class="key">Click</span> Test paint
     </div>
-    <div style="margin-top: 10px; border-top: 1px solid #ddd; padding-top: 10px;">
-      <strong>Mouse Testing:</strong><br>
-      <span class="key">M</span> Toggle mouse mode<br>
-      <span class="key">[ ]</span> Change drum<br>
-      <span class="key">Click/Drag</span> Paint
-    </div>
-    <div id="timeline-controls" style="margin-top: 10px; border-top: 1px solid #ddd; padding-top: 10px; display: none;">
+
+    <!-- Timeline Settings (shown only in timeline mode) -->
+    <div id="timeline-controls" style="display: none; margin-top: 10px; border-top: 1px solid #ddd; padding-top: 10px;">
       <strong>Timeline Settings:</strong><br>
       <div style="margin-top: 8px; font-size: 11px;">
         <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
           <label style="min-width: 45px;">BPM:</label>
           <input type="number" id="timeline-bpm" value="120" min="40" max="240" step="1"
-            onchange="updateTimelineBPM(parseInt(this.value))"
             style="flex: 1; padding: 4px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px;">
           <span id="bpm-display" style="min-width: 40px; text-align: right; font-weight: bold;">120</span>
         </div>
         <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
           <label style="min-width: 45px;">Grid:</label>
-          <select id="timeline-subdivision" onchange="updateTimelineSubdivision(parseInt(this.value))"
+          <select id="timeline-subdivision"
             style="flex: 1; padding: 4px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px; cursor: pointer;">
             <option value="4" selected>Quarter Notes</option>
             <option value="8">Eighth Notes</option>
@@ -138,7 +155,7 @@
         </div>
         <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
           <label style="min-width: 45px;">Time:</label>
-          <select id="timeline-time-signature" onchange="updateTimeSignature(parseInt(this.value))"
+          <select id="timeline-time-signature"
             style="flex: 1; padding: 4px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px; cursor: pointer;">
             <option value="2">2/4</option>
             <option value="3">3/4</option>
@@ -155,15 +172,13 @@
         </div>
         <div style="display: flex; align-items: center; gap: 8px; margin-top: 5px;">
           <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
-            <input type="checkbox" id="metronome-enabled" onchange="toggleMetronome(this.checked)"
-              style="cursor: pointer;">
+            <input type="checkbox" id="metronome-enabled" style="cursor: pointer;">
             <span style="font-size: 11px;">Metronome</span>
           </label>
         </div>
         <div style="display: flex; align-items: center; gap: 8px; margin-top: 5px;">
           <label style="min-width: 65px; font-size: 11px;">Latency:</label>
           <input type="number" id="midi-latency" value="70" min="0" max="200" step="5"
-            onchange="updateMidiLatency(parseInt(this.value))"
             style="flex: 1; padding: 4px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px;">
           <span style="font-size: 11px; min-width: 30px;">ms</span>
         </div>
@@ -172,7 +187,7 @@
         <strong style="font-size: 12px;">Recording:</strong><br>
       </div>
       <div id="timeline-buttons-initial" style="display: flex; gap: 5px; margin-top: 5px;">
-        <button id="timeline-start-btn" onclick="startTimelineRecording(false)" style="
+        <button id="timeline-start-btn" style="
           flex: 1;
           padding: 8px;
           background: #28a745;
@@ -182,12 +197,10 @@
           font-weight: bold;
           cursor: pointer;
           font-size: 12px;
-        ">
-          ▶ Start
-        </button>
+        ">▶ Start</button>
       </div>
       <div id="timeline-buttons-recording" style="display: none; gap: 5px; margin-top: 5px;">
-        <button id="timeline-stop-btn" onclick="stopTimelineRecording()" style="
+        <button id="timeline-stop-btn" style="
           flex: 1;
           padding: 8px;
           background: #dc3545;
@@ -197,12 +210,10 @@
           font-weight: bold;
           cursor: pointer;
           font-size: 12px;
-        ">
-          ■ Stop
-        </button>
+        ">■ Stop</button>
       </div>
       <div id="timeline-buttons-stopped" style="display: none; gap: 5px; margin-top: 5px;">
-        <button onclick="startTimelineRecording(true)" style="
+        <button id="timeline-start-over-btn" style="
           flex: 1;
           padding: 8px;
           background: #ff6b35;
@@ -212,10 +223,8 @@
           font-weight: bold;
           cursor: pointer;
           font-size: 11px;
-        ">
-          ↻ Start Over
-        </button>
-        <button onclick="startTimelineRecording(false)" style="
+        ">↻ Start Over</button>
+        <button id="timeline-continue-btn" style="
           flex: 1;
           padding: 8px;
           background: #28a745;
@@ -225,46 +234,111 @@
           font-weight: bold;
           cursor: pointer;
           font-size: 11px;
-        ">
-          ▶ Continue
-        </button>
+        ">▶ Continue</button>
       </div>
       <div id="timeline-status" style="margin-top: 5px; font-size: 11px; color: #666; text-align: center;">
         Press Start to begin recording
       </div>
     </div>
-    <div style="margin-top: 10px; border-top: 1px solid #ddd; padding-top: 10px;">
-      <button id="customize-btn" onclick="toggleCustomization()" style="
-        width: 100%;
-        padding: 8px;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        border: none;
-        border-radius: 5px;
-        font-weight: bold;
-        cursor: pointer;
-        font-size: 13px;
-        margin-bottom: 8px;
-      ">
-        🎨 Customize Drums
-      </button>
-      <button id="midi-mapping-btn" onclick="toggleMidiMapping()" style="
-        width: 100%;
-        padding: 8px;
-        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-        color: white;
-        border: none;
-        border-radius: 5px;
-        font-weight: bold;
-        cursor: pointer;
-        font-size: 13px;
-      ">
-        🎹 MIDI Mapping
-      </button>
+  </div>
+
+  <div id="info">
+    <h4>🧪 Modular Version</h4>
+    <div>ES6 module architecture</div>
+    <div>8 modes: Classic, Fibonacci, Radial, Gravity, Organic, Dendritic, Lightning, Timeline</div>
+    <div style="margin-top: 5px; color: #666; font-size: 10px;">
+      Check browser console for logs
     </div>
   </div>
 
-  <!-- Customization Panel -->
+  <!-- Active Drum Indicator (Bank Mode) -->
+  <div id="active-drum-indicator" style="
+    display: none;
+    position: fixed;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(102, 126, 234, 0.95);
+    color: white;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-family: monospace;
+    font-size: 13px;
+    font-weight: bold;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    z-index: 998;
+    pointer-events: none;
+  "></div>
+
+  <!-- Quick Settings Panel (right side) -->
+  <div id="drum-settings" style="
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    background: rgba(255, 255, 255, 0.95);
+    padding: 15px;
+    border-radius: 8px;
+    font-size: 11px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    max-width: 280px;
+    max-height: 90vh;
+    overflow-y: auto;
+    z-index: 1000;
+  ">
+    <h3 style="margin: 0 0 10px 0; font-size: 14px;">🎛️ Quick Settings</h3>
+
+    <!-- Global Controls -->
+    <div style="margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid #ddd;">
+      <strong>Global Size:</strong>
+      <input type="range" id="global-size" min="0.5" max="2.0" step="0.1" value="1.0"
+        style="width: 100%; margin-top: 5px;">
+      <span id="global-size-val">1.0x</span>
+    </div>
+
+    <!-- Customize Button -->
+    <button id="customize-btn" style="
+      width: 100%;
+      padding: 10px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 5px;
+      font-weight: bold;
+      cursor: pointer;
+      font-size: 13px;
+      margin-bottom: 10px;
+    ">
+      🎨 Customize Drums
+    </button>
+
+    <!-- MIDI Mapping Button -->
+    <button id="midi-mapping-btn" style="
+      width: 100%;
+      padding: 10px;
+      background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+      color: white;
+      border: none;
+      border-radius: 5px;
+      font-weight: bold;
+      cursor: pointer;
+      font-size: 13px;
+    ">
+      🎹 MIDI Mapping
+    </button>
+  </div>
+
+  <!-- Customization Panel Modal -->
+  <div id="customization-backdrop" style="
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 999;
+  "></div>
+
   <div id="customization-panel" style="
     display: none;
     position: fixed;
@@ -280,147 +354,6 @@
     overflow: hidden;
     z-index: 1000;
   ">
-    <!-- Sticky Header -->
-    <div style="
-      position: sticky;
-      top: 0;
-      background: white;
-      z-index: 10;
-      padding: 20px 20px 15px 20px;
-      border-bottom: 2px solid #e9ecef;
-      border-radius: 12px 12px 0 0;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    ">
-      <h2 style="margin: 0; margin-right: 2px; color: #333;">🎨 Drum Customization</h2>
-      <button onclick="toggleCustomization()" style="
-        background: #f0f0f0;
-        border: none;
-        border-radius: 50%;
-        width: 35px;
-        height: 35px;
-        cursor: pointer;
-        font-size: 20px;
-        font-weight: bold;
-        color: #666;
-        transition: all 0.2s;
-      " onmouseover="this.style.background='#e0e0e0'" onmouseout="this.style.background='#f0f0f0'">×</button>
-    </div>
-
-    <!-- Scrollable Content -->
-    <div style="
-      max-height: calc(90vh - 150px);
-      overflow-y: auto;
-      overflow-x: hidden;
-      padding: 20px;
-    ">
-      <div id="drum-settings-container" style="max-width: 100%; margin: 0 auto;"></div>
-    </div>
-
-    <!-- Sticky Footer with Save/Load Controls -->
-    <div style="
-      position: sticky;
-      bottom: 0;
-      background: #f8f9fa;
-      border-top: 2px solid #e9ecef;
-      padding: 15px 20px;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    ">
-      <div style="display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;">
-        <button onclick="saveAsDefault()" style="
-          padding: 8px 16px;
-          background: #28a745;
-          color: white;
-          border: none;
-          border-radius: 5px;
-          font-weight: bold;
-          cursor: pointer;
-          font-size: 12px;
-          transition: all 0.2s;
-        " onmouseover="this.style.background='#218838'" onmouseout="this.style.background='#28a745'">
-          💾 Save as Default
-        </button>
-        <button onclick="loadDefault()" style="
-          padding: 8px 16px;
-          background: #007bff;
-          color: white;
-          border: none;
-          border-radius: 5px;
-          font-weight: bold;
-          cursor: pointer;
-          font-size: 12px;
-          transition: all 0.2s;
-        " onmouseover="this.style.background='#0056b3'" onmouseout="this.style.background='#007bff'">
-          📂 Load Default
-        </button>
-        <button onclick="exportToFile()" style="
-          padding: 8px 16px;
-          background: #6c757d;
-          color: white;
-          border: none;
-          border-radius: 5px;
-          font-weight: bold;
-          cursor: pointer;
-          font-size: 12px;
-          transition: all 0.2s;
-        " onmouseover="this.style.background='#5a6268'" onmouseout="this.style.background='#6c757d'">
-          📥 Export to File
-        </button>
-        <button onclick="importFromFile()" style="
-          padding: 8px 16px;
-          background: #6c757d;
-          color: white;
-          border: none;
-          border-radius: 5px;
-          font-weight: bold;
-          cursor: pointer;
-          font-size: 12px;
-          transition: all 0.2s;
-        " onmouseover="this.style.background='#5a6268'" onmouseout="this.style.background='#6c757d'">
-          📤 Import from File
-        </button>
-        <button onclick="resetToFactory()" style="
-          padding: 8px 16px;
-          background: #dc3545;
-          color: white;
-          border: none;
-          border-radius: 5px;
-          font-weight: bold;
-          cursor: pointer;
-          font-size: 12px;
-          transition: all 0.2s;
-        " onmouseover="this.style.background='#c82333'" onmouseout="this.style.background='#dc3545'">
-          🔄 Reset to Factory
-        </button>
-      </div>
-      <div style="text-align: center; font-size: 10px; color: #666;">
-        Save settings to browser storage or export to share between devices
-      </div>
-    </div>
-  </div>
-
-  <!-- Hidden file input for importing -->
-  <input type="file" id="import-file-input" accept=".json" style="display: none;" onchange="handleFileImport(event)">
-
-  <!-- MIDI Mapping Panel -->
-  <div id="midi-mapping-panel" style="
-    display: none;
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    background: white;
-    border-radius: 12px;
-    box-shadow: 0 10px 40px rgba(0,0,0,0.3);
-    max-width: 650px;
-    width: 90vw;
-    max-height: 80vh;
-    overflow: hidden;
-    z-index: 1000;
-  ">
     <!-- Header -->
     <div style="
       position: sticky;
@@ -429,13 +362,12 @@
       z-index: 10;
       padding: 20px;
       border-bottom: 2px solid #e9ecef;
-      border-radius: 12px 12px 0 0;
       display: flex;
       justify-content: space-between;
       align-items: center;
     ">
-      <h2 style="margin: 0; color: #333;">🎹 MIDI Mapping Setup</h2>
-      <button onclick="toggleMidiMapping()" style="
+      <h2 style="margin: 0; font-size: 20px; color: #333;">🥁 Drum Customization</h2>
+      <button id="close-customize-btn" style="
         background: #f0f0f0;
         border: none;
         border-radius: 50%;
@@ -445,21 +377,19 @@
         font-size: 20px;
         font-weight: bold;
         color: #666;
-        transition: all 0.2s;
-      " onmouseover="this.style.background='#e0e0e0'" onmouseout="this.style.background='#f0f0f0'">×</button>
+      ">×</button>
     </div>
 
     <!-- Scrollable Content -->
     <div style="
-      max-height: calc(80vh - 210px);
+      max-height: calc(90vh - 200px);
       overflow-y: auto;
-      overflow-x: hidden;
       padding: 20px;
     ">
-      <div id="midi-mapping-container"></div>
+      <div id="drum-settings-container"></div>
     </div>
 
-    <!-- Sticky Footer with Save/Load Controls -->
+    <!-- Footer with Save/Load -->
     <div style="
       position: sticky;
       bottom: 0;
@@ -471,100 +401,65 @@
       gap: 10px;
     ">
       <div style="display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;">
-        <button onclick="saveAsDefault()" style="
+        <button id="save-default-btn" style="
           padding: 8px 16px;
           background: #28a745;
           color: white;
           border: none;
           border-radius: 5px;
-          font-weight: bold;
           cursor: pointer;
+          font-weight: bold;
           font-size: 12px;
-          transition: all 0.2s;
-        " onmouseover="this.style.background='#218838'" onmouseout="this.style.background='#28a745'">
-          💾 Save as Default
-        </button>
-        <button onclick="loadDefault()" style="
+        ">💾 Save as Default</button>
+        <button id="load-default-btn" style="
           padding: 8px 16px;
-          background: #007bff;
+          background: #17a2b8;
           color: white;
           border: none;
           border-radius: 5px;
-          font-weight: bold;
           cursor: pointer;
+          font-weight: bold;
           font-size: 12px;
-          transition: all 0.2s;
-        " onmouseover="this.style.background='#0056b3'" onmouseout="this.style.background='#007bff'">
-          📂 Load Default
-        </button>
-        <button onclick="exportToFile()" style="
+        ">📂 Load Saved</button>
+        <button id="export-file-btn" style="
           padding: 8px 16px;
           background: #6c757d;
           color: white;
           border: none;
           border-radius: 5px;
-          font-weight: bold;
           cursor: pointer;
+          font-weight: bold;
           font-size: 12px;
-          transition: all 0.2s;
-        " onmouseover="this.style.background='#5a6268'" onmouseout="this.style.background='#6c757d'">
-          📥 Export to File
-        </button>
-        <button onclick="importFromFile()" style="
+        ">📥 Export to File</button>
+        <button id="import-file-btn" style="
           padding: 8px 16px;
           background: #6c757d;
           color: white;
           border: none;
           border-radius: 5px;
-          font-weight: bold;
           cursor: pointer;
+          font-weight: bold;
           font-size: 12px;
-          transition: all 0.2s;
-        " onmouseover="this.style.background='#5a6268'" onmouseout="this.style.background='#6c757d'">
-          📤 Import from File
-        </button>
-        <button onclick="resetToFactory()" style="
+        ">📤 Import from File</button>
+        <button id="reset-factory-btn" style="
           padding: 8px 16px;
-          background: #dc3545;
-          color: white;
+          background: #ffc107;
+          color: #333;
           border: none;
           border-radius: 5px;
-          font-weight: bold;
           cursor: pointer;
+          font-weight: bold;
           font-size: 12px;
-          transition: all 0.2s;
-        " onmouseover="this.style.background='#c82333'" onmouseout="this.style.background='#dc3545'">
-          🔄 Reset to Factory
-        </button>
+        ">🔄 Reset to Factory</button>
       </div>
       <div style="text-align: center; font-size: 10px; color: #666;">
-        Save all settings including Bank Mode configuration
+        Save settings to browser storage or export to share between devices
       </div>
     </div>
   </div>
 
-  <!-- Overlay backdrops -->
-  <div id="customization-backdrop" style="
-    display: none;
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0,0,0,0.5);
-    z-index: 999;
-  " onclick="toggleCustomization()"></div>
-
-  <div id="midi-mapping-backdrop" style="
-    display: none;
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0,0,0,0.5);
-    z-index: 999;
-  " onclick="toggleMidiMapping()"></div>
+  <!-- Hidden file input for importing -->
+  <input type="file" id="import-file-input" accept=".json" style="display: none;">
 
   <script>
     // Global flag to prevent painting while dragging controls
@@ -623,6 +518,69 @@
     })();
   </script>
 
-  <script src="sketch.js"></script>
+  <!-- MIDI Mapping Panel Modal -->
+  <div id="midi-mapping-backdrop" style="
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 999;
+  "></div>
+
+  <div id="midi-mapping-panel" style="
+    display: none;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+    max-width: 700px;
+    width: 95vw;
+    max-height: 90vh;
+    overflow: hidden;
+    z-index: 1000;
+  ">
+    <!-- Header -->
+    <div style="
+      position: sticky;
+      top: 0;
+      background: white;
+      z-index: 10;
+      padding: 20px;
+      border-bottom: 2px solid #e9ecef;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    ">
+      <h2 style="margin: 0; font-size: 20px; color: #333;">🎹 MIDI Mapping</h2>
+      <button id="close-midi-mapping-btn" style="
+        background: #f0f0f0;
+        border: none;
+        border-radius: 50%;
+        width: 35px;
+        height: 35px;
+        cursor: pointer;
+        font-size: 20px;
+        font-weight: bold;
+        color: #666;
+      ">×</button>
+    </div>
+
+    <!-- Scrollable Content -->
+    <div style="
+      max-height: calc(90vh - 100px);
+      overflow-y: auto;
+      padding: 20px;
+    ">
+      <div id="midi-mapping-container"></div>
+    </div>
+  </div>
+
+  <script type="module" src="src/main.js"></script>
 </body>
 </html>

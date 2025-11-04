@@ -1,0 +1,260 @@
+/**
+ * Timeline Controls UI
+ * Provides BPM, time signature, subdivision, latency controls
+ * Plus record, stop, start over, continue buttons
+ */
+
+export class TimelineControls {
+  constructor(timelineMode, notificationSystem) {
+    this.timelineMode = timelineMode;
+    this.notificationSystem = notificationSystem;
+    this.updateInterval = null;
+  }
+
+  /**
+   * Initialize the controls
+   */
+  initialize() {
+    // BPM input
+    const bpmInput = document.getElementById('timeline-bpm');
+    if (bpmInput) {
+      bpmInput.addEventListener('change', (e) => {
+        const bpm = parseInt(e.target.value);
+        this.timelineMode.bpm = Math.max(40, Math.min(240, bpm));
+        this.updateBPMDisplay();
+      });
+    }
+
+    // Grid subdivision selector
+    const subdivisionSelect = document.getElementById('timeline-subdivision');
+    if (subdivisionSelect) {
+      subdivisionSelect.addEventListener('change', (e) => {
+        this.timelineMode.subdivision = parseInt(e.target.value);
+        this.timelineMode.lastMetronomeClick = -1; // Reset metronome
+      });
+    }
+
+    // Time signature selector
+    const timeSignatureSelect = document.getElementById('timeline-time-signature');
+    if (timeSignatureSelect) {
+      timeSignatureSelect.addEventListener('change', (e) => {
+        this.timelineMode.beatsPerMeasure = parseInt(e.target.value);
+        this.timelineMode.lastMetronomeClick = -1; // Reset metronome
+      });
+    }
+
+    // Metronome checkbox
+    const metronomeCheckbox = document.getElementById('metronome-enabled');
+    if (metronomeCheckbox) {
+      metronomeCheckbox.addEventListener('change', (e) => {
+        this.timelineMode.metronomeEnabled = e.target.checked;
+        if (e.target.checked) {
+          this.timelineMode.initializeAudioContext();
+          this.notificationSystem.show('Metronome enabled');
+        } else {
+          this.notificationSystem.show('Metronome disabled');
+        }
+      });
+    }
+
+    // MIDI latency input
+    const latencyInput = document.getElementById('midi-latency');
+    if (latencyInput) {
+      latencyInput.addEventListener('change', (e) => {
+        this.timelineMode.midiLatencyMs = Math.max(0, Math.min(200, parseInt(e.target.value)));
+      });
+    }
+
+    // Start button
+    const startBtn = document.getElementById('timeline-start-btn');
+    if (startBtn) {
+      startBtn.addEventListener('click', () => this.handleStart(false));
+    }
+
+    // Stop button
+    const stopBtn = document.getElementById('timeline-stop-btn');
+    if (stopBtn) {
+      stopBtn.addEventListener('click', () => this.handleStop());
+    }
+
+    // Start Over button
+    const startOverBtn = document.getElementById('timeline-start-over-btn');
+    if (startOverBtn) {
+      startOverBtn.addEventListener('click', () => this.handleStart(true));
+    }
+
+    // Continue button
+    const continueBtn = document.getElementById('timeline-continue-btn');
+    if (continueBtn) {
+      continueBtn.addEventListener('click', () => this.handleStart(false));
+    }
+
+    // Start update loop for UI
+    this.startUpdateLoop();
+  }
+
+  /**
+   * Handle start button click
+   */
+  handleStart(startOver) {
+    if (startOver) {
+      // Clear canvas if starting over
+      const paintCanvas = window.paintCanvas;
+      const currentBgColor = window.currentBgColor || 0;
+      const BG_COLORS = [255, 0, 32, 240, 200];
+      if (paintCanvas) {
+        paintCanvas.background(BG_COLORS[currentBgColor]);
+      }
+      this.notificationSystem.show('Recording Started (New)');
+    } else {
+      this.notificationSystem.show(this.timelineMode.startTime ? 'Recording Continued' : 'Recording Started');
+    }
+
+    this.timelineMode.startRecording(startOver);
+    this.updateButtonsUI();
+    this.updateStatusText();
+  }
+
+  /**
+   * Handle stop button click
+   */
+  handleStop() {
+    this.timelineMode.stopRecording();
+    this.notificationSystem.show('Recording Stopped');
+    this.updateButtonsUI();
+    this.updateStatusText();
+  }
+
+  /**
+   * Update button visibility based on recording state
+   */
+  updateButtonsUI() {
+    const state = this.timelineMode.getRecordingState();
+
+    const initialButtons = document.getElementById('timeline-buttons-initial');
+    const recordingButtons = document.getElementById('timeline-buttons-recording');
+    const stoppedButtons = document.getElementById('timeline-buttons-stopped');
+
+    if (initialButtons) initialButtons.style.display = 'none';
+    if (recordingButtons) recordingButtons.style.display = 'none';
+    if (stoppedButtons) stoppedButtons.style.display = 'none';
+
+    if (state === 'initial') {
+      if (initialButtons) initialButtons.style.display = 'flex';
+    } else if (state === 'recording') {
+      if (recordingButtons) recordingButtons.style.display = 'flex';
+    } else if (state === 'stopped') {
+      if (stoppedButtons) stoppedButtons.style.display = 'flex';
+    }
+  }
+
+  /**
+   * Update status text
+   */
+  updateStatusText() {
+    const statusDiv = document.getElementById('timeline-status');
+    if (!statusDiv) return;
+
+    const state = this.timelineMode.getRecordingState();
+    const elapsed = this.timelineMode.getElapsedTime();
+
+    if (state === 'initial') {
+      statusDiv.textContent = 'Press Start to begin recording';
+    } else if (state === 'recording') {
+      statusDiv.textContent = `🔴 Recording... ${elapsed.toFixed(1)}s`;
+    } else if (state === 'stopped') {
+      statusDiv.textContent = `Recording paused at ${elapsed.toFixed(1)}s`;
+    }
+  }
+
+  /**
+   * Update BPM display
+   */
+  updateBPMDisplay() {
+    const bpmDisplay = document.getElementById('bpm-display');
+    const bpmInput = document.getElementById('timeline-bpm');
+
+    if (bpmDisplay) {
+      bpmDisplay.textContent = this.timelineMode.bpm;
+    }
+    if (bpmInput) {
+      bpmInput.value = this.timelineMode.bpm;
+    }
+  }
+
+  /**
+   * Sync UI with current timeline mode settings
+   */
+  syncUI() {
+    const bpmInput = document.getElementById('timeline-bpm');
+    const bpmDisplay = document.getElementById('bpm-display');
+    const subdivisionSelect = document.getElementById('timeline-subdivision');
+    const timeSignatureSelect = document.getElementById('timeline-time-signature');
+    const metronomeCheckbox = document.getElementById('metronome-enabled');
+    const latencyInput = document.getElementById('midi-latency');
+
+    if (bpmInput) bpmInput.value = this.timelineMode.bpm;
+    if (bpmDisplay) bpmDisplay.textContent = this.timelineMode.bpm;
+    if (subdivisionSelect) subdivisionSelect.value = this.timelineMode.subdivision;
+    if (timeSignatureSelect) timeSignatureSelect.value = this.timelineMode.beatsPerMeasure;
+    if (metronomeCheckbox) metronomeCheckbox.checked = this.timelineMode.metronomeEnabled;
+    if (latencyInput) latencyInput.value = this.timelineMode.midiLatencyMs;
+
+    this.updateButtonsUI();
+    this.updateStatusText();
+  }
+
+  /**
+   * Start update loop for continuous UI updates
+   */
+  startUpdateLoop() {
+    if (this.updateInterval) {
+      clearInterval(this.updateInterval);
+    }
+
+    // Update UI every 100ms
+    this.updateInterval = setInterval(() => {
+      if (this.timelineMode.recording) {
+        this.updateStatusText();
+      }
+    }, 100);
+  }
+
+  /**
+   * Stop update loop
+   */
+  stopUpdateLoop() {
+    if (this.updateInterval) {
+      clearInterval(this.updateInterval);
+      this.updateInterval = null;
+    }
+  }
+
+  /**
+   * Show timeline controls
+   */
+  show() {
+    const container = document.getElementById('timeline-controls');
+    if (container) {
+      container.style.display = 'block';
+      this.syncUI();
+    }
+  }
+
+  /**
+   * Hide timeline controls
+   */
+  hide() {
+    const container = document.getElementById('timeline-controls');
+    if (container) {
+      container.style.display = 'none';
+    }
+  }
+
+  /**
+   * Cleanup
+   */
+  destroy() {
+    this.stopUpdateLoop();
+  }
+}
