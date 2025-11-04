@@ -13,7 +13,7 @@ export const PARTICLE_SIZE_GROWTH = 0.1;
 
 // ===== PAINT SIZE SETTINGS =====
 export const BASE_SIZE_CLASSIC = 5;
-export const VELOCITY_MULT_CLASSIC = 60;
+export const VELOCITY_MULT_CLASSIC = 200;//60;
 export const BASE_SIZE_FIBONACCI = 5;
 export const VELOCITY_MULT_FIBONACCI = 60;
 export const BASE_SIZE_SYMMETRY = 5;
@@ -103,7 +103,7 @@ export const MODE_NAMES = [
 ];
 
 // ===== TIMELINE SETTINGS =====
-export const DEFAULT_TIMELINE_BPM = 120;
+export const DEFAULT_TIMELINE_BPM = 90;
 export const DEFAULT_TIMELINE_SUBDIVISION = 4;
 export const DEFAULT_TIMELINE_BEATS_PER_MEASURE = 4;
 export const DEFAULT_TIMELINE_PIXELS_PER_SECOND = 200;

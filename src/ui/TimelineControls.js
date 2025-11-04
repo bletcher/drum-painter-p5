@@ -103,7 +103,16 @@ export class TimelineControls {
       const currentBgColor = window.currentBgColor || 0;
       const BG_COLORS = [255, 0, 32, 240, 200];
       if (paintCanvas) {
+        // Get current blend mode and temporarily reset to normal for clearing
+        const BLEND_MODES = window.BLEND_MODES || [window.BLEND];
+        const currentBlendMode = window.currentBlendMode || 0;
+        paintCanvas.blendMode(window.BLEND);
         paintCanvas.background(BG_COLORS[currentBgColor]);
+        paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
+      }
+      // Reset scroll position when starting over
+      if (window.resetTimelineScroll) {
+        window.resetTimelineScroll();
       }
       this.notificationSystem.show('Recording Started (New)');
     } else {

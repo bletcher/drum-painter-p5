@@ -31,6 +31,9 @@ let showUI = true;
 let currentBgColor = 0;
 let currentBlendMode = 0;
 let BLEND_MODES = []; // Will be initialized in setup()
+let timelineScrollY = 0; // Vertical scroll offset for timeline mode
+let isDraggingScrollbar = false; // Track if user is dragging scrollbar
+let scrollbarDragStartY = 0; // Starting Y position of drag
 
 // Drum settings
 let drumSettings = generateFactorySettings();
@@ -82,6 +85,14 @@ window.setup = function() {
   // Expose paintCanvas and currentBgColor globally
   window.paintCanvas = paintCanvas;
   window.currentBgColor = currentBgColor;
+  window.BLEND_MODES = BLEND_MODES;
+  window.currentBlendMode = currentBlendMode;
+  window.BLEND = BLEND;
+
+  // Helper function to reset timeline scroll
+  window.resetTimelineScroll = function() {
+    timelineScrollY = 0;
+  };
 
   // Cache DOM elements
   midiStatusEl = document.getElementById('midi-status');
@@ -177,6 +188,7 @@ function initializeUI() {
       currentBlendMode = parseInt(e.target.value);
       paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
       window.currentBgColor = currentBgColor; // Update global
+      window.currentBlendMode = currentBlendMode; // Update global
       console.log(`Blend Mode: ${BLEND_MODE_NAMES[currentBlendMode]}`);
       notificationSystem.show(`Blend: ${BLEND_MODE_NAMES[currentBlendMode]}`);
     });
@@ -287,6 +299,7 @@ function initializeUI() {
         currentBgColor = 0;
         paintCanvas.background(BG_COLORS[currentBgColor]);
         paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
+        window.currentBlendMode = currentBlendMode; // Update global
 
         customizationPanel.build(); // Rebuild UI
         notificationSystem.show('Reset to factory defaults');
@@ -377,10 +390,14 @@ function initializeUI() {
           if (state.globalSettings.blendMode !== undefined) {
             currentBlendMode = state.globalSettings.blendMode;
             paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
+            window.currentBlendMode = currentBlendMode; // Update global
           }
           if (state.globalSettings.bgColor !== undefined) {
             currentBgColor = state.globalSettings.bgColor;
+            // Temporarily reset blend mode to normal for clearing
+            paintCanvas.blendMode(BLEND);
             paintCanvas.background(BG_COLORS[currentBgColor]);
+            paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
           }
         }
 
@@ -407,15 +424,82 @@ function initializeUI() {
   }
 }
 
+/**
+ * Draw scrollbar for timeline mode
+ */
+function drawTimelineScrollbar(displayWidth, displayHeight, offsetX) {
+  const scrollbarWidth = 12;
+  const scrollbarX = offsetX + displayWidth + 5;
+  const scrollbarTrackHeight = height - 20;
+  const scrollbarY = 10;
+
+  // Only show scrollbar if content is larger than viewport
+  if (displayHeight > height) {
+    // Calculate scrollbar thumb size and position
+    const visibleRatio = height / displayHeight;
+    const thumbHeight = Math.max(30, scrollbarTrackHeight * visibleRatio);
+    const scrollRange = displayHeight - height;
+    const scrollRatio = Math.abs(timelineScrollY) / scrollRange;
+    const thumbY = scrollbarY + scrollRatio * (scrollbarTrackHeight - thumbHeight);
+
+    // Draw scrollbar track
+    push();
+    fill(220);
+    noStroke();
+    rect(scrollbarX, scrollbarY, scrollbarWidth, scrollbarTrackHeight, 6);
+
+    // Draw scrollbar thumb
+    if (isDraggingScrollbar || isMouseOverScrollbar(scrollbarX, thumbY, scrollbarWidth, thumbHeight)) {
+      fill(100);
+    } else {
+      fill(150);
+    }
+    rect(scrollbarX, thumbY, scrollbarWidth, thumbHeight, 6);
+    pop();
+
+    // Store scrollbar bounds for mouse interaction
+    window.scrollbarBounds = {
+      x: scrollbarX,
+      y: scrollbarY,
+      width: scrollbarWidth,
+      trackHeight: scrollbarTrackHeight,
+      thumbY: thumbY,
+      thumbHeight: thumbHeight,
+      scrollRange: scrollRange
+    };
+  } else {
+    window.scrollbarBounds = null;
+  }
+}
+
+/**
+ * Check if mouse is over scrollbar thumb
+ */
+function isMouseOverScrollbar(x, y, w, h) {
+  return mouseX >= x && mouseX <= x + w && mouseY >= y && mouseY <= y + h;
+}
+
 window.draw = function() {
   background(240);
 
-  // Calculate scaling to fit paint canvas in window
-  let scaleFactor = min(width / paintCanvas.width, height / paintCanvas.height) * 0.9;
-  let displayWidth = paintCanvas.width * scaleFactor;
-  let displayHeight = paintCanvas.height * scaleFactor;
-  let offsetX = (width - displayWidth) / 2;
-  let offsetY = (height - displayHeight) / 2;
+  // Calculate scaling and offset
+  let scaleFactor, displayWidth, displayHeight, offsetX, offsetY;
+
+  if (currentMode === 7) {
+    // Timeline mode: scale based on width only, allow vertical scrolling
+    scaleFactor = (width / paintCanvas.width) * 0.95;
+    displayWidth = paintCanvas.width * scaleFactor;
+    displayHeight = paintCanvas.height * scaleFactor;
+    offsetX = (width - displayWidth) / 2;
+    offsetY = timelineScrollY; // Apply scroll offset
+  } else {
+    // Other modes: fit to window
+    scaleFactor = min(width / paintCanvas.width, height / paintCanvas.height) * 0.9;
+    displayWidth = paintCanvas.width * scaleFactor;
+    displayHeight = paintCanvas.height * scaleFactor;
+    offsetX = (width - displayWidth) / 2;
+    offsetY = (height - displayHeight) / 2;
+  }
 
   // Draw the paint canvas
   image(paintCanvas, offsetX, offsetY, displayWidth, displayHeight);
@@ -423,6 +507,34 @@ window.draw = function() {
   // Draw timeline guides OVER the canvas if in timeline mode
   if (currentMode === 7) {
     timelineMode.drawLaneGuides(window, offsetX, offsetY, scaleFactor, paintCanvas);
+
+    // Auto-scroll to keep current playhead visible when recording
+    if (timelineMode.recording && timelineMode.startTime !== null) {
+      const timeElapsed = timelineMode.getElapsedTime();
+      const totalX = timeElapsed * timelineMode.pixelsPerSecond;
+      const staffIndex = Math.floor(totalX / timelineMode.staffWidth);
+      const currentStaffY = staffIndex * timelineMode.staffHeight * scaleFactor;
+      const currentStaffBottomY = (staffIndex + 1) * timelineMode.staffHeight * scaleFactor;
+
+      // Auto-scroll if playhead is below viewport
+      const viewportBottom = -timelineScrollY + height - 100; // Leave some margin
+      const viewportTop = -timelineScrollY + 50;
+
+      if (currentStaffBottomY > viewportBottom) {
+        // Scroll down to show current staff
+        timelineScrollY = -(currentStaffBottomY - height + 150);
+      } else if (currentStaffY < viewportTop) {
+        // Scroll up to show current staff
+        timelineScrollY = -currentStaffY + 100;
+      }
+
+      // Clamp auto-scroll to valid range
+      const maxScroll = Math.max(0, displayHeight - height + 50);
+      timelineScrollY = Math.max(-maxScroll, Math.min(10, timelineScrollY));
+    }
+
+    // Draw scrollbar
+    drawTimelineScrollbar(displayWidth, displayHeight, offsetX);
   }
 
   // Update and draw particles
@@ -497,7 +609,12 @@ window.keyPressed = function() {
 
   // Space - clear canvas
   if (key === ' ') {
+    // Temporarily reset blend mode to normal for clearing
+    paintCanvas.blendMode(BLEND);
     paintCanvas.background(BG_COLORS[currentBgColor]);
+    // Restore the current blend mode
+    paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
+
     window.currentBgColor = currentBgColor; // Update global
     strokeCount = 0;
     particles = [];
@@ -715,6 +832,11 @@ function switchMode(newMode) {
   // Show timeline controls if entering timeline mode
   if (currentMode === 7) {
     timelineControls.show();
+    timelineScrollY = 0; // Reset scroll position
+    isDraggingScrollbar = false; // Reset scrollbar state
+  } else {
+    // Reset scrollbar state when leaving timeline mode
+    isDraggingScrollbar = false;
   }
 
   // Update dropdown to match
@@ -787,13 +909,17 @@ function loadSavedSettings() {
     if (savedState.globalSettings.blendMode !== undefined) {
       currentBlendMode = savedState.globalSettings.blendMode;
       paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
+      window.currentBlendMode = currentBlendMode; // Update global
       // Update UI dropdown
       const blendSelect = document.getElementById('blend-select');
       if (blendSelect) blendSelect.value = currentBlendMode.toString();
     }
     if (savedState.globalSettings.bgColor !== undefined) {
       currentBgColor = savedState.globalSettings.bgColor;
+      // Temporarily reset blend mode to normal for clearing
+      paintCanvas.blendMode(BLEND);
       paintCanvas.background(BG_COLORS[currentBgColor]);
+      paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
       // Update global window reference
       window.currentBgColor = currentBgColor;
     }
@@ -817,6 +943,26 @@ let prevMouseX = 0;
 let prevMouseY = 0;
 
 window.mousePressed = function() {
+  // Check if clicking on scrollbar in timeline mode
+  if (currentMode === 7 && window.scrollbarBounds) {
+    const sb = window.scrollbarBounds;
+    if (mouseX >= sb.x && mouseX <= sb.x + sb.width &&
+        mouseY >= sb.thumbY && mouseY <= sb.thumbY + sb.thumbHeight) {
+      isDraggingScrollbar = true;
+      scrollbarDragStartY = mouseY;
+      return;
+    }
+    // Click on scrollbar track (jump to position)
+    if (mouseX >= sb.x && mouseX <= sb.x + sb.width &&
+        mouseY >= sb.y && mouseY <= sb.y + sb.trackHeight) {
+      const clickRatio = (mouseY - sb.y) / sb.trackHeight;
+      timelineScrollY = -clickRatio * sb.scrollRange;
+      isDraggingScrollbar = true;
+      scrollbarDragStartY = mouseY;
+      return;
+    }
+  }
+
   // Don't paint if any panel is open or dragging controls
   if (customizationPanel.isVisible || midiMappingPanel.isVisible || window.isDraggingControls) {
     return;
@@ -833,6 +979,22 @@ window.mousePressed = function() {
 };
 
 window.mouseDragged = function() {
+  // Handle scrollbar dragging in timeline mode
+  if (isDraggingScrollbar && window.scrollbarBounds) {
+    const sb = window.scrollbarBounds;
+    const dragDelta = mouseY - scrollbarDragStartY;
+    const dragRatio = dragDelta / sb.trackHeight;
+    const scrollDelta = dragRatio * sb.scrollRange;
+
+    timelineScrollY -= scrollDelta;
+
+    // Clamp scroll to valid range
+    timelineScrollY = Math.max(-sb.scrollRange, Math.min(10, timelineScrollY));
+
+    scrollbarDragStartY = mouseY;
+    return;
+  }
+
   // Don't paint if any panel is open or dragging controls
   if (customizationPanel.isVisible || midiMappingPanel.isVisible || window.isDraggingControls) {
     return;
@@ -874,6 +1036,31 @@ window.mouseClicked = function() {
 
   console.log(`🖱️ Mouse click: Note ${testNote}, Vel ${testVelocity.toFixed(2)}`);
   handlePaint(testNote, testVelocity);
+};
+
+window.mouseReleased = function() {
+  // Stop dragging scrollbar
+  isDraggingScrollbar = false;
+};
+
+// Mouse wheel handler for timeline scrolling
+window.mouseWheel = function(event) {
+  // Only scroll in timeline mode
+  if (currentMode === 7) {
+    // Scroll the timeline vertically
+    const scrollSpeed = 30;
+    timelineScrollY -= event.delta * scrollSpeed;
+
+    // Calculate maximum scroll (keep at least some content visible)
+    const scaleFactor = (width / paintCanvas.width) * 0.95;
+    const displayHeight = paintCanvas.height * scaleFactor;
+    const maxScroll = Math.max(0, displayHeight - height + 50);
+
+    // Clamp scroll to valid range
+    timelineScrollY = Math.max(-maxScroll, Math.min(10, timelineScrollY));
+
+    return false; // Prevent default scrolling
+  }
 };
 
 console.log('🖱️  Click or drag anywhere to test painting');

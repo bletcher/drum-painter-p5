@@ -260,7 +260,13 @@ export class TimelineMode {
     // Clear canvas
     const bgColor = context.currentBgColor !== undefined ? context.currentBgColor : 0;
     const BG_COLORS = [255, 0, 32, 240, 200];
+
+    // Temporarily reset blend mode to normal for clearing
+    const BLEND_MODES = window.BLEND_MODES || [window.BLEND];
+    const currentBlendMode = window.currentBlendMode || 0;
+    paintCanvas.blendMode(window.BLEND);
     paintCanvas.background(BG_COLORS[bgColor]);
+    paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
 
     console.log('Timeline cleared');
   }
