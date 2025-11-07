@@ -72,7 +72,7 @@
       color: #0066cc;
     }
 
-    /* Tooltip System */
+    /* Tooltip System - appears BELOW element */
     [data-tooltip] {
       position: relative;
       cursor: help;
@@ -80,37 +80,49 @@
     [data-tooltip]::after {
       content: attr(data-tooltip);
       position: absolute;
-      bottom: 100%;
+      top: 100%;
       left: 50%;
-      transform: translateX(-50%) translateY(-8px);
-      padding: 6px 10px;
-      background: rgba(0, 0, 0, 0.9);
+      transform: translateX(-50%) translateY(-4px);
+      padding: 8px 12px;
+      background: rgba(0, 0, 0, 0.95);
       color: white;
-      font-size: 11px;
-      border-radius: 4px;
-      white-space: nowrap;
+      font-size: 12px;
+      line-height: 1.4;
+      border-radius: 6px;
+      white-space: normal;
+      max-width: 250px;
+      text-align: center;
       pointer-events: none;
       opacity: 0;
-      transition: opacity 0.2s ease, transform 0.2s ease;
-      z-index: 10000;
+      visibility: hidden;
+      transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s;
+      z-index: 99999;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      margin-top: 8px;
     }
     [data-tooltip]::before {
       content: '';
       position: absolute;
-      bottom: 100%;
+      top: 100%;
       left: 50%;
-      transform: translateX(-50%) translateY(-2px);
-      border: 4px solid transparent;
-      border-top-color: rgba(0, 0, 0, 0.9);
+      transform: translateX(-50%);
+      border: 6px solid transparent;
+      border-bottom-color: rgba(0, 0, 0, 0.95);
       pointer-events: none;
       opacity: 0;
-      transition: opacity 0.2s ease, transform 0.2s ease;
-      z-index: 10000;
+      visibility: hidden;
+      transition: opacity 0.2s ease, visibility 0.2s;
+      z-index: 99999;
+      margin-top: 2px;
     }
-    [data-tooltip]:hover::after,
+    [data-tooltip]:hover::after {
+      opacity: 1;
+      visibility: visible;
+      transform: translateX(-50%) translateY(0);
+    }
     [data-tooltip]:hover::before {
       opacity: 1;
-      transform: translateX(-50%) translateY(0);
+      visibility: visible;
     }
   </style>
 </head>
@@ -180,31 +192,34 @@
     <!-- Mode Selector -->
     <div style="margin: 10px 0;">
       <label style="display: block; margin-bottom: 5px; font-weight: bold; font-size: 11px;">Paint Mode:</label>
-      <select id="mode-select" data-tooltip="Choose how drum hits create visual patterns" style="
-        width: 100%;
-        padding: 6px;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        font-size: 11px;
-        background: white;
-      ">
-        <option value="0">Classic Pointillism</option>
-        <option value="1">Fibonacci Spiral</option>
-        <option value="2">Radial Symmetry</option>
-        <option value="3">Gravity Field</option>
-        <option value="4">Organic Growth</option>
-        <option value="5">Dendritic Spreading</option>
-        <option value="6">Lightning</option>
-        <option value="7">Timeline</option>
-      </select>
+      <div data-tooltip="Choose how drum hits create visual patterns" style="display: block;">
+        <select id="mode-select" style="
+          width: 100%;
+          padding: 6px;
+          border: 1px solid #ddd;
+          border-radius: 4px;
+          font-size: 11px;
+          background: white;
+        ">
+          <option value="0">Classic Pointillism</option>
+          <option value="1">Fibonacci Spiral</option>
+          <option value="2">Radial Symmetry</option>
+          <option value="3">Gravity Field</option>
+          <option value="4">Organic Growth</option>
+          <option value="5">Dendritic Spreading</option>
+          <option value="6">Lightning</option>
+          <option value="7">Timeline</option>
+        </select>
+      </div>
     </div>
 
     <!-- Blend Mode Selector -->
     <div style="margin: 10px 0;">
       <label style="display: block; margin-bottom: 5px; font-weight: bold; font-size: 11px;">Blend Mode:</label>
-      <select id="blend-select" data-tooltip="How new paint combines with existing layers" style="
-        width: 100%;
-        padding: 6px;
+      <div data-tooltip="How new paint combines with existing layers" style="display: block;">
+        <select id="blend-select" style="
+          width: 100%;
+          padding: 6px;
         border: 1px solid #ddd;
         border-radius: 4px;
         font-size: 11px;
@@ -217,6 +232,7 @@
         <option value="4">Dodge</option>
         <option value="5">Burn</option>
       </select>
+      </div>
     </div>
 
     <hr style="margin: 10px 0; border: none; border-top: 1px solid #ddd;">
@@ -230,6 +246,7 @@
       <span class="key">D</span> Save settings<br>
       <span class="key">Z</span> Undo<br>
       <span class="key">Y</span> Redo<br>
+      <span class="key">?</span> Keyboard shortcuts<br>
       <span class="key">Click</span> Test paint
     </div>
 
@@ -296,7 +313,7 @@
         </div>
       </div>
       <div style="margin-top: 10px; border-top: 1px solid #ddd; padding-top: 8px;">
-        <strong style="font-size: 12px;">Recording:</strong><br>
+        <strong style="font-size: 12px;">Playing:</strong><br>
       </div>
       <div id="timeline-buttons-initial" style="display: flex; gap: 5px; margin-top: 5px;">
         <button id="timeline-start-btn" style="
@@ -348,9 +365,13 @@
           font-size: 11px;
         ">▶ Continue</button>
       </div>
-      <div id="timeline-status" style="margin-top: 5px; font-size: 11px; color: #666; text-align: center;">
-        Press Start to begin recording
-      </div>
+        <div style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
+          <label style="display: flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer;">
+            <input type="checkbox" id="timeline-auto-record" checked
+              style="cursor: pointer;">
+            <span>Auto-record on start</span>
+          </label>
+        </div>
     </div>
   </div>
 
@@ -466,7 +487,6 @@
           type="text"
           id="project-name-input"
           placeholder="Project name..."
-          data-tooltip="Enter a name for your project"
           style="
             flex: 1;
             padding: 6px 8px;
@@ -477,7 +497,6 @@
         />
         <button
           id="save-project-btn"
-          data-tooltip="Save current state as a named project"
           style="
             padding: 6px 12px;
             background: #10b981;
@@ -494,7 +513,6 @@
       <div style="margin-bottom: 8px;">
         <select
           id="projects-list"
-          data-tooltip="Select a project to load"
           style="
             width: 100%;
             padding: 6px;
@@ -511,7 +529,6 @@
       <div style="display: flex; gap: 5px;">
         <button
           id="load-project-btn"
-          data-tooltip="Load the selected project"
           style="
             flex: 1;
             padding: 6px;
@@ -526,7 +543,6 @@
         >Load</button>
         <button
           id="delete-project-btn"
-          data-tooltip="Delete the selected project"
           style="
             flex: 1;
             padding: 6px;
@@ -554,24 +570,25 @@
 
       <div style="margin-bottom: 8px;">
         <label style="display: block; font-size: 11px; margin-bottom: 4px;">Quality:</label>
-        <select
-          id="video-quality"
-          data-tooltip="Select video recording quality"
-          style="
-            width: 100%;
-            padding: 6px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 11px;
-            background: white;
-            cursor: pointer;
-          "
-        >
-          <option value="low">Low (1 Mbps)</option>
-          <option value="medium" selected>Medium (2.5 Mbps)</option>
-          <option value="high">High (5 Mbps)</option>
-          <option value="ultra">Ultra (10 Mbps)</option>
-        </select>
+        <div data-tooltip="Select video recording quality">
+          <select
+            id="video-quality"
+            style="
+              width: 100%;
+              padding: 6px;
+              border: 1px solid #ddd;
+              border-radius: 4px;
+              font-size: 11px;
+              background: white;
+              cursor: pointer;
+            "
+          >
+            <option value="low">Low (1 Mbps)</option>
+            <option value="medium" selected>Medium (2.5 Mbps)</option>
+            <option value="high">High (5 Mbps)</option>
+            <option value="ultra">Ultra (10 Mbps)</option>
+          </select>
+        </div>
       </div>
 
       <button

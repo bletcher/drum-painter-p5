@@ -82,6 +82,14 @@ export class TimelineControls {
       });
     }
 
+    // Auto-record checkbox
+    const autoRecordCheckbox = document.getElementById('timeline-auto-record');
+    if (autoRecordCheckbox) {
+      autoRecordCheckbox.addEventListener('change', () => {
+        this.updateStatusText();
+      });
+    }
+
     // Start button
     const startBtn = document.getElementById('timeline-start-btn');
     if (startBtn) {
@@ -114,6 +122,10 @@ export class TimelineControls {
    * Handle start button click
    */
   handleStart(startOver) {
+    // Check if auto-record is enabled
+    const autoRecordCheckbox = document.getElementById('timeline-auto-record');
+    const shouldAutoRecord = autoRecordCheckbox ? autoRecordCheckbox.checked : true;
+
     if (startOver) {
       // Clear canvas if starting over
       const paintCanvas = window.paintCanvas;
@@ -131,12 +143,30 @@ export class TimelineControls {
       if (window.resetTimelineScroll) {
         window.resetTimelineScroll();
       }
-      this.notificationSystem.show('Recording Started (New)');
+      if (shouldAutoRecord) {
+        this.notificationSystem.show('Recording Started (New)');
+      } else {
+        this.notificationSystem.show('Timeline Started (Not Recording)');
+      }
     } else {
-      this.notificationSystem.show(this.timelineMode.startTime ? 'Recording Continued' : 'Recording Started');
+      if (shouldAutoRecord) {
+        this.notificationSystem.show(this.timelineMode.startTime ? 'Recording Continued' : 'Recording Started');
+      } else {
+        this.notificationSystem.show('Timeline Started (Not Recording)');
+      }
     }
 
-    this.timelineMode.startRecording(startOver);
+    // Only start recording if auto-record is enabled
+    if (shouldAutoRecord) {
+      this.timelineMode.startRecording(startOver);
+    } else {
+      // Start timeline but don't record
+      this.timelineMode.recording = false;
+      if (startOver || !this.timelineMode.startTime) {
+        this.timelineMode.startTime = Date.now();
+      }
+    }
+
     this.updateButtonsUI();
     this.updateStatusText();
   }
@@ -183,13 +213,20 @@ export class TimelineControls {
 
     const state = this.timelineMode.getRecordingState();
     const elapsed = this.timelineMode.getElapsedTime();
+    const autoRecordCheckbox = document.getElementById('timeline-auto-record');
+    const shouldAutoRecord = autoRecordCheckbox ? autoRecordCheckbox.checked : true;
 
     if (state === 'initial') {
-      statusDiv.textContent = 'Press Start to begin recording';
+      statusDiv.textContent = shouldAutoRecord ? 'Press Start to begin recording' : 'Press Start (auto-record OFF)';
     } else if (state === 'recording') {
       statusDiv.textContent = `🔴 Recording... ${elapsed.toFixed(1)}s`;
     } else if (state === 'stopped') {
-      statusDiv.textContent = `Recording paused at ${elapsed.toFixed(1)}s`;
+      // Check if timeline is running but not recording
+      if (this.timelineMode.startTime && !this.timelineMode.recording && !shouldAutoRecord) {
+        statusDiv.textContent = `⏸ Timeline running... ${elapsed.toFixed(1)}s (not recording)`;
+      } else {
+        statusDiv.textContent = `Recording paused at ${elapsed.toFixed(1)}s`;
+      }
     }
   }
 
