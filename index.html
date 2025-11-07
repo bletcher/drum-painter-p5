@@ -71,18 +71,104 @@
       font-size: 12px;
       color: #0066cc;
     }
+
+    /* Tooltip System */
+    [data-tooltip] {
+      position: relative;
+      cursor: help;
+    }
+    [data-tooltip]::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      bottom: 100%;
+      left: 50%;
+      transform: translateX(-50%) translateY(-8px);
+      padding: 6px 10px;
+      background: rgba(0, 0, 0, 0.9);
+      color: white;
+      font-size: 11px;
+      border-radius: 4px;
+      white-space: nowrap;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s ease, transform 0.2s ease;
+      z-index: 10000;
+    }
+    [data-tooltip]::before {
+      content: '';
+      position: absolute;
+      bottom: 100%;
+      left: 50%;
+      transform: translateX(-50%) translateY(-2px);
+      border: 4px solid transparent;
+      border-top-color: rgba(0, 0, 0, 0.9);
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s ease, transform 0.2s ease;
+      z-index: 10000;
+    }
+    [data-tooltip]:hover::after,
+    [data-tooltip]:hover::before {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
   </style>
 </head>
 <body>
   <div id="controls">
-    <h3 id="controls-header" style="cursor: move; user-select: none;">🥁 DRUM PAINTER</h3>
-    <div class="status" id="midi-status">Checking MIDI...</div>
+    <h3 id="controls-header" style="cursor: move; user-select: none; display: flex; align-items: center; gap: 8px;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"/>
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>
+      </svg>
+      DRUM PAINTER
+    </h3>
+    <div id="midi-status" style="
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      background: #f8f9fa;
+      border-radius: 6px;
+      font-size: 11px;
+      margin-bottom: 5px;
+    ">
+      <div style="position: relative;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M6 9H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2h-2"/>
+          <path d="M6 9V21"/>
+          <path d="M18 9V21"/>
+        </svg>
+        <span id="midi-activity-light" style="
+          position: absolute;
+          top: -2px;
+          right: -2px;
+          width: 6px;
+          height: 6px;
+          background: #10b981;
+          border-radius: 50%;
+          opacity: 0;
+          transition: opacity 0.1s;
+        "></span>
+      </div>
+      <div style="flex: 1;">
+        <div id="midi-status-text" style="font-weight: 500; color: #666;">Checking MIDI...</div>
+        <div id="midi-device-name" style="font-size: 10px; color: #999; display: none;"></div>
+      </div>
+      <div id="midi-status-indicator" style="
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #fbbf24;
+      "></div>
+    </div>
     <hr style="margin: 10px 0; border: none; border-top: 1px solid #ddd;">
 
     <!-- Mode Selector -->
     <div style="margin: 10px 0;">
       <label style="display: block; margin-bottom: 5px; font-weight: bold; font-size: 11px;">Paint Mode:</label>
-      <select id="mode-select" style="
+      <select id="mode-select" data-tooltip="Choose how drum hits create visual patterns" style="
         width: 100%;
         padding: 6px;
         border: 1px solid #ddd;
@@ -104,7 +190,7 @@
     <!-- Blend Mode Selector -->
     <div style="margin: 10px 0;">
       <label style="display: block; margin-bottom: 5px; font-weight: bold; font-size: 11px;">Blend Mode:</label>
-      <select id="blend-select" style="
+      <select id="blend-select" data-tooltip="How new paint combines with existing layers" style="
         width: 100%;
         padding: 6px;
         border: 1px solid #ddd;
@@ -176,6 +262,18 @@
             <input type="checkbox" id="metronome-enabled" style="cursor: pointer;">
             <span style="font-size: 11px;">Metronome</span>
           </label>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; margin-top: 5px;">
+          <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+            <input type="checkbox" id="timeline-show-grid" checked style="cursor: pointer;">
+            <span style="font-size: 11px;">Show Grid</span>
+          </label>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; margin-top: 5px;">
+          <label style="min-width: 70px; font-size: 11px;">Row Space:</label>
+          <input type="range" id="timeline-row-spacing" value="10" min="0" max="50" step="1"
+            style="flex: 1; cursor: pointer;">
+          <span id="row-spacing-display" style="font-size: 11px; min-width: 30px;">10px</span>
         </div>
         <div style="display: flex; align-items: center; gap: 8px; margin-top: 5px;">
           <label style="min-width: 65px; font-size: 11px;">Latency:</label>
@@ -277,18 +375,24 @@
     overflow-y: auto;
     z-index: 1000;
   ">
-    <h3 style="margin: 0 0 10px 0; font-size: 14px;">🎛️ Quick Settings</h3>
+    <h3 id="quick-settings-header" style="margin: 0 0 10px 0; font-size: 14px; display: flex; align-items: center; gap: 6px; cursor: move; user-select: none;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>
+      </svg>
+      Quick Settings
+    </h3>
 
     <!-- Global Controls -->
     <div style="margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid #ddd;">
       <strong>Global Size:</strong>
       <input type="range" id="global-size" min="0.5" max="2.0" step="0.1" value="1.0"
+        data-tooltip="Adjust overall size of all drum marks"
         style="width: 100%; margin-top: 5px;">
       <span id="global-size-val">1.0x</span>
     </div>
 
     <!-- Customize Button -->
-    <button id="customize-btn" style="
+    <button id="customize-btn" data-tooltip="Configure individual drum colors, sizes, and shapes" style="
       width: 100%;
       padding: 10px;
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -299,12 +403,20 @@
       cursor: pointer;
       font-size: 13px;
       margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
     ">
-      🎨 Customize Drums
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2a10 10 0 1 0 10 10 4 4 0 0 1-5-5 4 4 0 0 1-5-5"/>
+        <path d="M8.5 8.5a2.5 2.5 0 1 1 3.536 3.536L10.5 13.5l-3 1 1-3 1.536-1.536z"/>
+      </svg>
+      Customize Drums
     </button>
 
     <!-- MIDI Mapping Button -->
-    <button id="midi-mapping-btn" style="
+    <button id="midi-mapping-btn" data-tooltip="Map MIDI notes to specific drums in your kit" style="
       width: 100%;
       padding: 10px;
       background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
@@ -314,9 +426,108 @@
       font-weight: bold;
       cursor: pointer;
       font-size: 13px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
     ">
-      🎹 MIDI Mapping
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="4" width="20" height="16" rx="2"/>
+        <path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01"/>
+        <path d="M8 12v4M12 12v4M16 12v4"/>
+      </svg>
+      MIDI Mapping
     </button>
+
+    <!-- Projects Section -->
+    <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #ddd;">
+      <strong style="display: flex; align-items: center; gap: 6px; margin-bottom: 10px; font-size: 12px;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+        </svg>
+        Projects
+      </strong>
+
+      <div style="display: flex; gap: 5px; margin-bottom: 8px;">
+        <input
+          type="text"
+          id="project-name-input"
+          placeholder="Project name..."
+          data-tooltip="Enter a name for your project"
+          style="
+            flex: 1;
+            padding: 6px 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 11px;
+          "
+        />
+        <button
+          id="save-project-btn"
+          data-tooltip="Save current state as a named project"
+          style="
+            padding: 6px 12px;
+            background: #10b981;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+            cursor: pointer;
+          "
+        >Save</button>
+      </div>
+
+      <div style="margin-bottom: 8px;">
+        <select
+          id="projects-list"
+          data-tooltip="Select a project to load"
+          style="
+            width: 100%;
+            padding: 6px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 11px;
+            background: white;
+          "
+        >
+          <option value="">Select a project...</option>
+        </select>
+      </div>
+
+      <div style="display: flex; gap: 5px;">
+        <button
+          id="load-project-btn"
+          data-tooltip="Load the selected project"
+          style="
+            flex: 1;
+            padding: 6px;
+            background: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+            cursor: pointer;
+          "
+        >Load</button>
+        <button
+          id="delete-project-btn"
+          data-tooltip="Delete the selected project"
+          style="
+            flex: 1;
+            padding: 6px;
+            background: #ef4444;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+            cursor: pointer;
+          "
+        >Delete</button>
+      </div>
+    </div>
   </div>
 
   <!-- Customization Panel Modal -->
@@ -358,7 +569,14 @@
       justify-content: space-between;
       align-items: center;
     ">
-      <h2 style="margin: 0; font-size: 20px; color: #333;">🥁 Drum Customization</h2>
+      <h2 style="margin: 0; font-size: 20px; color: #333; display: flex; align-items: center; gap: 8px;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/>
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>
+        </svg>
+        Drum Customization
+      </h2>
       <button id="close-customize-btn" style="
         background: #f0f0f0;
         border: none;
@@ -508,6 +726,85 @@
         el.style.transform = `translate(${xPos}px, ${yPos}px)`;
       }
     })();
+
+    // Make quick settings panel draggable
+    (function() {
+      const quickSettings = document.getElementById('drum-settings');
+      const header = document.getElementById('quick-settings-header');
+      let isDragging = false;
+      let currentX;
+      let currentY;
+      let initialX;
+      let initialY;
+      let xOffset = 0;
+      let yOffset = 0;
+
+      if (!quickSettings || !header) return;
+
+      header.addEventListener('mousedown', dragStart);
+      document.addEventListener('mousemove', drag);
+      document.addEventListener('mouseup', dragEnd);
+
+      function dragStart(e) {
+        initialX = e.clientX - xOffset;
+        initialY = e.clientY - yOffset;
+
+        if (e.target === header || header.contains(e.target)) {
+          isDragging = true;
+          window.isDraggingControls = true;
+        }
+      }
+
+      function drag(e) {
+        if (isDragging) {
+          e.preventDefault();
+
+          currentX = e.clientX - initialX;
+          currentY = e.clientY - initialY;
+
+          xOffset = currentX;
+          yOffset = currentY;
+
+          setTranslate(currentX, currentY, quickSettings);
+        }
+      }
+
+      function dragEnd(e) {
+        initialX = currentX;
+        initialY = currentY;
+        isDragging = false;
+        window.isDraggingControls = false;
+      }
+
+      function setTranslate(xPos, yPos, el) {
+        el.style.transform = `translate(${xPos}px, ${yPos}px)`;
+      }
+    })();
+
+    // Prevent clicks on panels from going through to canvas
+    (function() {
+      const panelIds = [
+        'controls',
+        'drum-settings',
+        'customization-panel',
+        'customization-backdrop',
+        'midi-mapping-panel',
+        'midi-mapping-backdrop',
+        'shortcuts-panel',
+        'shortcuts-backdrop'
+      ];
+
+      panelIds.forEach(id => {
+        const panel = document.getElementById(id);
+        if (panel) {
+          // Stop propagation for mouse events on panels
+          // Note: Don't stop mouseup propagation - it's needed for drag end handlers
+          panel.addEventListener('mousedown', (e) => e.stopPropagation());
+          panel.addEventListener('click', (e) => e.stopPropagation());
+          panel.addEventListener('dblclick', (e) => e.stopPropagation());
+        }
+      });
+    })();
   </script>
 
   <!-- MIDI Mapping Panel Modal -->
@@ -549,7 +846,14 @@
       justify-content: space-between;
       align-items: center;
     ">
-      <h2 style="margin: 0; font-size: 20px; color: #333;">🎹 MIDI Mapping</h2>
+      <h2 style="margin: 0; font-size: 20px; color: #333; display: flex; align-items: center; gap: 8px;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="4" width="20" height="16" rx="2"/>
+          <path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01"/>
+          <path d="M8 12v4M12 12v4M16 12v4"/>
+        </svg>
+        MIDI Mapping
+      </h2>
       <button id="close-midi-mapping-btn" style="
         background: #f0f0f0;
         border: none;
@@ -570,6 +874,166 @@
       padding: 20px;
     ">
       <div id="midi-mapping-container"></div>
+    </div>
+  </div>
+
+  <!-- Keyboard Shortcuts Panel -->
+  <div id="shortcuts-backdrop" style="
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 9999;
+  "></div>
+
+  <div id="shortcuts-panel" style="
+    display: none;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+    max-width: 600px;
+    width: 90vw;
+    max-height: 80vh;
+    overflow: hidden;
+    z-index: 10000;
+  ">
+    <!-- Header -->
+    <div style="
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    ">
+      <h2 style="margin: 0; font-size: 20px; display: flex; align-items: center; gap: 8px;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="4" width="20" height="16" rx="2"/>
+          <path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01"/>
+        </svg>
+        Keyboard Shortcuts
+      </h2>
+      <button id="close-shortcuts-btn" style="
+        background: rgba(255, 255, 255, 0.2);
+        border: none;
+        border-radius: 50%;
+        width: 32px;
+        height: 32px;
+        cursor: pointer;
+        font-size: 20px;
+        font-weight: bold;
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      ">×</button>
+    </div>
+
+    <!-- Content -->
+    <div style="
+      padding: 24px;
+      overflow-y: auto;
+      max-height: calc(80vh - 80px);
+    ">
+      <!-- General Actions -->
+      <div style="margin-bottom: 20px;">
+        <h3 style="margin: 0 0 12px 0; font-size: 14px; color: #667eea; text-transform: uppercase; letter-spacing: 0.5px;">General</h3>
+        <div style="display: grid; gap: 8px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
+            <span style="font-size: 13px;">Clear canvas</span>
+            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">SPACE</kbd>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
+            <span style="font-size: 13px;">Save image</span>
+            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">S</kbd>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
+            <span style="font-size: 13px;">Save settings</span>
+            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">D</kbd>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
+            <span style="font-size: 13px;">Undo</span>
+            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">Z</kbd>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
+            <span style="font-size: 13px;">Redo</span>
+            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">Y</kbd>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
+            <span style="font-size: 13px;">Hide/Show UI</span>
+            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">H</kbd>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
+            <span style="font-size: 13px;">Show this help</span>
+            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">?</kbd>
+          </div>
+        </div>
+      </div>
+
+      <!-- Mode Switching -->
+      <div style="margin-bottom: 20px;">
+        <h3 style="margin: 0 0 12px 0; font-size: 14px; color: #667eea; text-transform: uppercase; letter-spacing: 0.5px;">Paint Modes</h3>
+        <div style="display: grid; gap: 8px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
+            <span style="font-size: 13px;">Classic Pointillism</span>
+            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">1</kbd>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
+            <span style="font-size: 13px;">Fibonacci Spiral</span>
+            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">2</kbd>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
+            <span style="font-size: 13px;">Radial Symmetry</span>
+            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">3</kbd>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
+            <span style="font-size: 13px;">Gravity Field</span>
+            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">4</kbd>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
+            <span style="font-size: 13px;">Organic Growth</span>
+            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">5</kbd>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
+            <span style="font-size: 13px;">Dendritic Spreading</span>
+            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">6</kbd>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
+            <span style="font-size: 13px;">Lightning</span>
+            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">7</kbd>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
+            <span style="font-size: 13px;">Timeline</span>
+            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">8</kbd>
+          </div>
+        </div>
+      </div>
+
+      <!-- Mouse -->
+      <div style="margin-bottom: 20px;">
+        <h3 style="margin: 0 0 12px 0; font-size: 14px; color: #667eea; text-transform: uppercase; letter-spacing: 0.5px;">Mouse</h3>
+        <div style="display: grid; gap: 8px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
+            <span style="font-size: 13px;">Test paint</span>
+            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">Click / Drag</kbd>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
+            <span style="font-size: 13px;">Scroll timeline (mode 8)</span>
+            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">Mouse Wheel</kbd>
+          </div>
+        </div>
+      </div>
+
+      <div style="text-align: center; padding-top: 16px; border-top: 1px solid #e9ecef; color: #666; font-size: 12px;">
+        Press <kbd style="background: white; padding: 2px 6px; border-radius: 3px; font-family: monospace; font-size: 11px; border: 1px solid #ddd;">?</kbd> or <kbd style="background: white; padding: 2px 6px; border-radius: 3px; font-family: monospace; font-size: 11px; border: 1px solid #ddd;">ESC</kbd> to close
+      </div>
     </div>
   </div>
 

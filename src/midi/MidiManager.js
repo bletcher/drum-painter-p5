@@ -89,7 +89,8 @@ export class MidiManager {
 
     this.midiReady = true;
     if (this.onMidiStatusChange) {
-      this.onMidiStatusChange(true, 'MIDI: Connected ✓');
+      const deviceNames = inputs.map(i => i.name).join(', ');
+      this.onMidiStatusChange(true, 'MIDI: Connected', deviceNames);
     }
   }
 

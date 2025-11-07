@@ -27,6 +27,8 @@ export class TimelineMode {
     this.staffHeight = 80; // Total height of one staff (all drums)
     this.drumLineSpacing = 15; // Vertical spacing between drum lines
     this.measuresPerStaff = 4; // Number of complete measures per staff row
+    this.showGrid = true; // Show/hide grid lines
+    this.rowSpacing = 10; // Vertical spacing between staff rows (pixels)
 
     // Metronome state
     this.metronomeEnabled = false;
@@ -102,11 +104,11 @@ export class TimelineMode {
 
     // Calculate y position within the staff
     const laneIndex = this.timelineLanes[drumId];
-    const staffY = staffIndex * this.staffHeight;
+    const staffY = staffIndex * (this.staffHeight + this.rowSpacing);
     const laneY = staffY + (laneIndex * this.drumLineSpacing) + this.drumLineSpacing;
 
     // Ensure paintCanvas is tall enough for this staff
-    const requiredHeight = (staffIndex + 1) * this.staffHeight + 100;
+    const requiredHeight = (staffIndex + 1) * (this.staffHeight + this.rowSpacing) + 100;
     if (paintCanvas.height < requiredHeight) {
       this.expandCanvasHeight(paintCanvas, requiredHeight, context);
     }
@@ -396,28 +398,58 @@ export class TimelineMode {
 
     // Draw staffs
     for (let staffIdx = 0; staffIdx < maxStaffsToShow; staffIdx++) {
-      const staffY = staffIdx * this.staffHeight;
+      const staffY = staffIdx * (this.staffHeight + this.rowSpacing);
 
-      // Draw horizontal staff lines for each drum
-      p5Instance.stroke(200, 200, 200, 120);
-      p5Instance.strokeWeight(1);
+      if (this.showGrid) {
+        // Draw horizontal staff lines for each drum
+        p5Instance.stroke(200, 200, 200, 120);
+        p5Instance.strokeWeight(1);
 
-      for (let i = 0; i < this.timelineLaneCount; i++) {
-        const y = (staffY + (i * this.drumLineSpacing) + this.drumLineSpacing) * scale + offsetY;
-        const x1 = offsetX;
-        const x2 = offsetX + this.staffWidth * scale;
-        p5Instance.line(x1, y, x2, y);
-      }
+        for (let i = 0; i < this.timelineLaneCount; i++) {
+          const y = (staffY + (i * this.drumLineSpacing) + this.drumLineSpacing) * scale + offsetY;
+          const x1 = offsetX;
+          const x2 = offsetX + this.staffWidth * scale;
+          p5Instance.line(x1, y, x2, y);
+        }
 
-      // Draw subdivision lines
-      const maxBeats = Math.ceil(this.staffWidth / pixelsPerBeat);
-      const subdivisionsPerBeat = this.subdivision / 4;
+        // Draw subdivision lines
+        const maxBeats = Math.ceil(this.staffWidth / pixelsPerBeat);
+        const subdivisionsPerBeat = this.subdivision / 4;
 
-      p5Instance.stroke(190, 190, 190, 200);
-      p5Instance.strokeWeight(1);
-      for (let beat = 0; beat <= maxBeats; beat++) {
-        for (let sub = 1; sub < subdivisionsPerBeat; sub++) {
-          const xPos = beat * pixelsPerBeat + sub * pixelsPerSubdivision;
+        p5Instance.stroke(190, 190, 190, 200);
+        p5Instance.strokeWeight(1);
+        for (let beat = 0; beat <= maxBeats; beat++) {
+          for (let sub = 1; sub < subdivisionsPerBeat; sub++) {
+            const xPos = beat * pixelsPerBeat + sub * pixelsPerSubdivision;
+            if (xPos <= this.staffWidth) {
+              const x = offsetX + xPos * scale;
+              const y1 = offsetY + staffY * scale;
+              const y2 = offsetY + (staffY + this.staffHeight) * scale;
+              p5Instance.line(x, y1, x, y2);
+            }
+          }
+        }
+
+        // Draw beat lines
+        p5Instance.stroke(170, 170, 170, 180);
+        p5Instance.strokeWeight(1.5);
+        for (let beat = 0; beat <= maxBeats; beat++) {
+          if (beat % this.beatsPerMeasure !== 0) {
+            const xPos = beat * pixelsPerBeat;
+            if (xPos <= this.staffWidth) {
+              const x = offsetX + xPos * scale;
+              const y1 = offsetY + staffY * scale;
+              const y2 = offsetY + (staffY + this.staffHeight) * scale;
+              p5Instance.line(x, y1, x, y2);
+            }
+          }
+        }
+
+        // Draw measure lines
+        p5Instance.stroke(150, 150, 150, 180);
+        p5Instance.strokeWeight(2);
+        for (let measure = 0; measure <= maxBeats / this.beatsPerMeasure; measure++) {
+          const xPos = measure * pixelsPerBeat * this.beatsPerMeasure;
           if (xPos <= this.staffWidth) {
             const x = offsetX + xPos * scale;
             const y1 = offsetY + staffY * scale;
@@ -427,32 +459,21 @@ export class TimelineMode {
         }
       }
 
-      // Draw beat lines
-      p5Instance.stroke(170, 170, 170, 180);
-      p5Instance.strokeWeight(1.5);
-      for (let beat = 0; beat <= maxBeats; beat++) {
-        if (beat % this.beatsPerMeasure !== 0) {
-          const xPos = beat * pixelsPerBeat;
-          if (xPos <= this.staffWidth) {
-            const x = offsetX + xPos * scale;
-            const y1 = offsetY + staffY * scale;
-            const y2 = offsetY + (staffY + this.staffHeight) * scale;
-            p5Instance.line(x, y1, x, y2);
-          }
-        }
-      }
+      // Draw two thin separator lines between staff rows
+      if (staffIdx > 0 && this.rowSpacing > 0) {
+        const gapStart = (staffY - this.rowSpacing) * scale + offsetY;
+        const gapEnd = staffY * scale + offsetY;
+        const lineSpacing = this.rowSpacing * scale / 3; // Divide gap into thirds
 
-      // Draw measure lines
-      p5Instance.stroke(150, 150, 150, 180);
-      p5Instance.strokeWeight(2);
-      for (let measure = 0; measure <= maxBeats / this.beatsPerMeasure; measure++) {
-        const xPos = measure * pixelsPerBeat * this.beatsPerMeasure;
-        if (xPos <= this.staffWidth) {
-          const x = offsetX + xPos * scale;
-          const y1 = offsetY + staffY * scale;
-          const y2 = offsetY + (staffY + this.staffHeight) * scale;
-          p5Instance.line(x, y1, x, y2);
-        }
+        // First thin line (1/3 into the gap)
+        const line1Y = gapStart + lineSpacing;
+        p5Instance.stroke(180, 180, 180, 150);
+        p5Instance.strokeWeight(0.5);
+        p5Instance.line(offsetX, line1Y, offsetX + this.staffWidth * scale, line1Y);
+
+        // Second thin line (2/3 into the gap)
+        const line2Y = gapStart + lineSpacing * 2;
+        p5Instance.line(offsetX, line2Y, offsetX + this.staffWidth * scale, line2Y);
       }
 
       // Draw drum labels on left side with matching colors
@@ -512,7 +533,7 @@ export class TimelineMode {
     if (this.startTime !== null && totalX > 0) {
       const staffIndex = Math.floor(totalX / this.staffWidth);
       const xInStaff = totalX % this.staffWidth;
-      const staffY = staffIndex * this.staffHeight;
+      const staffY = staffIndex * (this.staffHeight + this.rowSpacing);
 
       // Red when recording, grey when stopped
       if (this.recording) {

@@ -116,10 +116,26 @@ window.setup = function() {
   timelineControls.initialize();
 
   // Set MIDI status callback
-  midiManager.onMidiStatusChange = (connected, message) => {
-    if (midiStatusEl) {
-      midiStatusEl.textContent = message;
-      midiStatusEl.className = connected ? 'status connected' : 'status';
+  midiManager.onMidiStatusChange = (connected, message, deviceName = '') => {
+    const statusText = document.getElementById('midi-status-text');
+    const statusIndicator = document.getElementById('midi-status-indicator');
+    const deviceNameEl = document.getElementById('midi-device-name');
+
+    if (statusText) {
+      statusText.textContent = message;
+      statusText.style.color = connected ? '#10b981' : (message.includes('No') ? '#ef4444' : '#666');
+    }
+
+    if (statusIndicator) {
+      // Green = connected, Red = no MIDI, Yellow = checking
+      statusIndicator.style.background = connected ? '#10b981' : (message.includes('No') ? '#ef4444' : '#fbbf24');
+    }
+
+    if (deviceNameEl && deviceName) {
+      deviceNameEl.textContent = deviceName;
+      deviceNameEl.style.display = 'block';
+    } else if (deviceNameEl) {
+      deviceNameEl.style.display = 'none';
     }
   };
 
@@ -422,6 +438,225 @@ function initializeUI() {
       e.target.value = '';
     });
   }
+
+  // Keyboard Shortcuts Panel
+  const shortcutsPanel = document.getElementById('shortcuts-panel');
+  const shortcutsBackdrop = document.getElementById('shortcuts-backdrop');
+  const closeShortcutsBtn = document.getElementById('close-shortcuts-btn');
+
+  function toggleShortcutsPanel() {
+    const isVisible = shortcutsPanel.style.display === 'block';
+    shortcutsPanel.style.display = isVisible ? 'none' : 'block';
+    shortcutsBackdrop.style.display = isVisible ? 'none' : 'block';
+  }
+
+  function hideShortcutsPanel() {
+    shortcutsPanel.style.display = 'none';
+    shortcutsBackdrop.style.display = 'none';
+  }
+
+  if (closeShortcutsBtn) {
+    closeShortcutsBtn.addEventListener('click', hideShortcutsPanel);
+  }
+
+  if (shortcutsBackdrop) {
+    shortcutsBackdrop.addEventListener('click', hideShortcutsPanel);
+  }
+
+  // Expose toggle function globally for keyboard handler
+  window.toggleShortcutsPanel = toggleShortcutsPanel;
+  window.hideShortcutsPanel = hideShortcutsPanel;
+
+  // Projects System
+  const projectNameInput = document.getElementById('project-name-input');
+  const saveProjectBtn = document.getElementById('save-project-btn');
+  const loadProjectBtn = document.getElementById('load-project-btn');
+  const deleteProjectBtn = document.getElementById('delete-project-btn');
+  const projectsList = document.getElementById('projects-list');
+
+  // Load projects list on startup
+  function refreshProjectsList() {
+    if (!projectsList) return;
+
+    const projects = getAllProjects();
+    projectsList.innerHTML = '<option value="">Select a project...</option>';
+
+    Object.keys(projects).forEach(name => {
+      const option = document.createElement('option');
+      option.value = name;
+      const timestamp = new Date(projects[name].timestamp);
+      option.textContent = `${name} (${timestamp.toLocaleDateString()})`;
+      projectsList.appendChild(option);
+    });
+  }
+
+  function getAllProjects() {
+    const projects = {};
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key.startsWith('drum-painter-project-')) {
+        const projectName = key.replace('drum-painter-project-', '');
+        try {
+          projects[projectName] = JSON.parse(localStorage.getItem(key));
+        } catch (e) {
+          console.error(`Failed to parse project: ${projectName}`, e);
+        }
+      }
+    }
+    return projects;
+  }
+
+  if (saveProjectBtn && projectNameInput) {
+    saveProjectBtn.addEventListener('click', () => {
+      const projectName = projectNameInput.value.trim();
+      if (!projectName) {
+        notificationSystem.show('Please enter a project name', 'warning');
+        return;
+      }
+
+      // Ensure window.drumSettings is synced
+      window.drumSettings = drumSettings;
+
+      const projectData = {
+        drumSettings,
+        globalSizeMultiplier,
+        currentBlendMode,
+        currentBgColor,
+        currentMode,
+        bankModeSettings: midiManager.getState(),
+        timelineSettings: {
+          bpm: timelineMode.bpm,
+          subdivision: timelineMode.subdivision,
+          beatsPerMeasure: timelineMode.beatsPerMeasure,
+          metronomeEnabled: timelineMode.metronomeEnabled,
+          midiLatencyMs: timelineMode.midiLatencyMs,
+          showGrid: timelineMode.showGrid,
+          rowSpacing: timelineMode.rowSpacing
+        },
+        timestamp: new Date().toISOString()
+      };
+
+      localStorage.setItem(`drum-painter-project-${projectName}`, JSON.stringify(projectData));
+      notificationSystem.show(`Project "${projectName}" saved!`, 'success');
+      projectNameInput.value = '';
+      refreshProjectsList();
+    });
+  }
+
+  if (loadProjectBtn && projectsList) {
+    loadProjectBtn.addEventListener('click', () => {
+      const projectName = projectsList.value;
+      if (!projectName) {
+        notificationSystem.show('Please select a project', 'warning');
+        return;
+      }
+
+      try {
+        const projectData = JSON.parse(localStorage.getItem(`drum-painter-project-${projectName}`));
+        if (!projectData) {
+          notificationSystem.show('Project not found', 'error');
+          return;
+        }
+
+        // Load drum settings
+        if (projectData.drumSettings) {
+          Object.assign(drumSettings, projectData.drumSettings);
+          window.drumSettings = drumSettings;
+        }
+
+        // Load global settings
+        if (projectData.globalSizeMultiplier !== undefined) {
+          globalSizeMultiplier = projectData.globalSizeMultiplier;
+          const globalSizeSlider = document.getElementById('global-size');
+          const globalSizeVal = document.getElementById('global-size-val');
+          if (globalSizeSlider) globalSizeSlider.value = globalSizeMultiplier;
+          if (globalSizeVal) globalSizeVal.textContent = `${globalSizeMultiplier.toFixed(1)}x`;
+        }
+
+        if (projectData.currentBlendMode !== undefined) {
+          currentBlendMode = projectData.currentBlendMode;
+          paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
+          window.currentBlendMode = currentBlendMode;
+          const blendSelect = document.getElementById('blend-select');
+          if (blendSelect) blendSelect.value = currentBlendMode.toString();
+        }
+
+        if (projectData.currentBgColor !== undefined) {
+          currentBgColor = projectData.currentBgColor;
+          paintCanvas.blendMode(BLEND);
+          paintCanvas.background(BG_COLORS[currentBgColor]);
+          paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
+          window.currentBgColor = currentBgColor;
+        }
+
+        if (projectData.currentMode !== undefined) {
+          switchMode(projectData.currentMode);
+        }
+
+        // Load bank mode settings
+        if (projectData.bankModeSettings && midiManager) {
+          midiManager.loadState(projectData.bankModeSettings);
+        }
+
+        // Load timeline settings
+        if (projectData.timelineSettings && timelineMode) {
+          if (projectData.timelineSettings.bpm !== undefined) {
+            timelineMode.bpm = projectData.timelineSettings.bpm;
+          }
+          if (projectData.timelineSettings.subdivision !== undefined) {
+            timelineMode.subdivision = projectData.timelineSettings.subdivision;
+          }
+          if (projectData.timelineSettings.beatsPerMeasure !== undefined) {
+            timelineMode.beatsPerMeasure = projectData.timelineSettings.beatsPerMeasure;
+          }
+          if (projectData.timelineSettings.metronomeEnabled !== undefined) {
+            timelineMode.metronomeEnabled = projectData.timelineSettings.metronomeEnabled;
+          }
+          if (projectData.timelineSettings.midiLatencyMs !== undefined) {
+            timelineMode.midiLatencyMs = projectData.timelineSettings.midiLatencyMs;
+          }
+          if (projectData.timelineSettings.showGrid !== undefined) {
+            timelineMode.showGrid = projectData.timelineSettings.showGrid;
+          }
+          if (projectData.timelineSettings.rowSpacing !== undefined) {
+            timelineMode.rowSpacing = projectData.timelineSettings.rowSpacing;
+          }
+          // Sync UI with loaded settings
+          if (timelineControls) {
+            timelineControls.syncUI();
+          }
+        }
+
+        // Rebuild UI
+        customizationPanel.build();
+        updateActiveDrumIndicator();
+
+        notificationSystem.show(`Project "${projectName}" loaded!`, 'success');
+      } catch (error) {
+        console.error('Error loading project:', error);
+        notificationSystem.show('Failed to load project', 'error');
+      }
+    });
+  }
+
+  if (deleteProjectBtn && projectsList) {
+    deleteProjectBtn.addEventListener('click', () => {
+      const projectName = projectsList.value;
+      if (!projectName) {
+        notificationSystem.show('Please select a project', 'warning');
+        return;
+      }
+
+      if (confirm(`Delete project "${projectName}"?`)) {
+        localStorage.removeItem(`drum-painter-project-${projectName}`);
+        notificationSystem.show(`Project "${projectName}" deleted`, 'info');
+        refreshProjectsList();
+      }
+    });
+  }
+
+  // Initialize projects list
+  refreshProjectsList();
 }
 
 /**
@@ -493,12 +728,19 @@ window.draw = function() {
     offsetX = (width - displayWidth) / 2;
     offsetY = timelineScrollY; // Apply scroll offset
   } else {
-    // Other modes: fit to window
-    scaleFactor = min(width / paintCanvas.width, height / paintCanvas.height) * 0.9;
+    // Other modes: scale based on width, allow vertical scrolling if canvas is tall
+    scaleFactor = (width / paintCanvas.width) * 0.95;
     displayWidth = paintCanvas.width * scaleFactor;
     displayHeight = paintCanvas.height * scaleFactor;
     offsetX = (width - displayWidth) / 2;
-    offsetY = (height - displayHeight) / 2;
+
+    // If canvas fits in height, center it. Otherwise allow scrolling
+    if (displayHeight <= height) {
+      offsetY = (height - displayHeight) / 2;
+      timelineScrollY = 0; // Reset scroll when canvas fits
+    } else {
+      offsetY = timelineScrollY; // Use scroll offset for tall canvases
+    }
   }
 
   // Draw the paint canvas
@@ -533,7 +775,10 @@ window.draw = function() {
       timelineScrollY = Math.max(-maxScroll, Math.min(10, timelineScrollY));
     }
 
-    // Draw scrollbar
+  }
+
+  // Draw scrollbar for any mode if canvas is taller than viewport
+  if (displayHeight > height) {
     drawTimelineScrollbar(displayWidth, displayHeight, offsetX);
   }
 
@@ -602,6 +847,22 @@ window.keyPressed = function() {
     return false;
   }
 
+  // ? - show keyboard shortcuts (always allow this)
+  if (key === '?' || key === '/') {
+    if (window.toggleShortcutsPanel) {
+      window.toggleShortcutsPanel();
+    }
+    return false;
+  }
+
+  // ESC - close shortcuts panel (always allow this)
+  if (keyCode === 27) { // ESC key
+    if (window.hideShortcutsPanel) {
+      window.hideShortcutsPanel();
+    }
+    return false;
+  }
+
   // Block all other keyboard shortcuts if a panel is open
   if (panelOpen) {
     return true; // Allow default behavior (typing in inputs)
@@ -609,6 +870,11 @@ window.keyPressed = function() {
 
   // Space - clear canvas
   if (key === ' ') {
+    // Ask for confirmation before clearing
+    if (!confirm('Clear the entire canvas? This cannot be undone.')) {
+      return false;
+    }
+
     // Temporarily reset blend mode to normal for clearing
     paintCanvas.blendMode(BLEND);
     paintCanvas.background(BG_COLORS[currentBgColor]);
@@ -631,7 +897,7 @@ window.keyPressed = function() {
     stateManager.saveCanvasState(paintCanvas);
 
     console.log('Canvas cleared');
-    notificationSystem.show('Canvas cleared');
+    notificationSystem.show('Canvas cleared', 'success');
     return false;
   }
 
@@ -701,6 +967,15 @@ window.windowResized = function() {
  */
 function handlePaint(note, velocity) {
   console.log(`🎵 Paint: Note ${note}, Vel ${velocity.toFixed(2)}`);
+
+  // Flash MIDI activity indicator
+  const activityLight = document.getElementById('midi-activity-light');
+  if (activityLight) {
+    activityLight.style.opacity = '1';
+    setTimeout(() => {
+      activityLight.style.opacity = '0';
+    }, 100);
+  }
 
   // Create context for mode
   const context = {
@@ -942,9 +1217,35 @@ function loadSavedSettings() {
 let prevMouseX = 0;
 let prevMouseY = 0;
 
+// Helper function to check if mouse is over any UI panel
+function isMouseOverPanel() {
+  const panels = [
+    document.getElementById('controls'),
+    document.getElementById('drum-settings'),
+    document.getElementById('customization-panel'),
+    document.getElementById('midi-mapping-panel'),
+    document.getElementById('shortcuts-panel')
+  ];
+
+  for (const panel of panels) {
+    if (!panel) continue;
+    const rect = panel.getBoundingClientRect();
+    if (mouseX >= rect.left && mouseX <= rect.right &&
+        mouseY >= rect.top && mouseY <= rect.bottom) {
+      return true;
+    }
+  }
+  return false;
+}
+
 window.mousePressed = function() {
-  // Check if clicking on scrollbar in timeline mode
-  if (currentMode === 7 && window.scrollbarBounds) {
+  // Don't interact if mouse is over any panel
+  if (isMouseOverPanel()) {
+    return;
+  }
+
+  // Check if clicking on scrollbar (any mode with tall canvas)
+  if (window.scrollbarBounds) {
     const sb = window.scrollbarBounds;
     if (mouseX >= sb.x && mouseX <= sb.x + sb.width &&
         mouseY >= sb.thumbY && mouseY <= sb.thumbY + sb.thumbHeight) {
@@ -979,7 +1280,7 @@ window.mousePressed = function() {
 };
 
 window.mouseDragged = function() {
-  // Handle scrollbar dragging in timeline mode
+  // Handle scrollbar dragging (any mode with tall canvas)
   if (isDraggingScrollbar && window.scrollbarBounds) {
     const sb = window.scrollbarBounds;
     const dragDelta = mouseY - scrollbarDragStartY;
@@ -992,6 +1293,11 @@ window.mouseDragged = function() {
     timelineScrollY = Math.max(-sb.scrollRange, Math.min(10, timelineScrollY));
 
     scrollbarDragStartY = mouseY;
+    return;
+  }
+
+  // Don't interact if mouse is over any panel
+  if (isMouseOverPanel()) {
     return;
   }
 
@@ -1020,6 +1326,11 @@ window.mouseDragged = function() {
 };
 
 window.mouseClicked = function() {
+  // Don't interact if mouse is over any panel
+  if (isMouseOverPanel()) {
+    return;
+  }
+
   // Don't paint if any panel is open or dragging controls
   if (customizationPanel.isVisible || midiMappingPanel.isVisible || window.isDraggingControls) {
     return;
@@ -1043,17 +1354,19 @@ window.mouseReleased = function() {
   isDraggingScrollbar = false;
 };
 
-// Mouse wheel handler for timeline scrolling
+// Mouse wheel handler for vertical scrolling
 window.mouseWheel = function(event) {
-  // Only scroll in timeline mode
-  if (currentMode === 7) {
-    // Scroll the timeline vertically
+  // Calculate display dimensions
+  const scaleFactor = (width / paintCanvas.width) * 0.95;
+  const displayHeight = paintCanvas.height * scaleFactor;
+
+  // Only scroll if canvas is taller than viewport
+  if (displayHeight > height) {
+    // Scroll vertically
     const scrollSpeed = 30;
     timelineScrollY -= event.delta * scrollSpeed;
 
     // Calculate maximum scroll (keep at least some content visible)
-    const scaleFactor = (width / paintCanvas.width) * 0.95;
-    const displayHeight = paintCanvas.height * scaleFactor;
     const maxScroll = Math.max(0, displayHeight - height + 50);
 
     // Clamp scroll to valid range

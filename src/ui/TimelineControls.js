@@ -65,6 +65,23 @@ export class TimelineControls {
       });
     }
 
+    // Show grid checkbox
+    const showGridCheckbox = document.getElementById('timeline-show-grid');
+    if (showGridCheckbox) {
+      showGridCheckbox.addEventListener('change', (e) => {
+        this.timelineMode.showGrid = e.target.checked;
+      });
+    }
+
+    // Row spacing slider
+    const rowSpacingSlider = document.getElementById('timeline-row-spacing');
+    if (rowSpacingSlider) {
+      rowSpacingSlider.addEventListener('input', (e) => {
+        this.timelineMode.rowSpacing = parseInt(e.target.value);
+        this.updateRowSpacingDisplay();
+      });
+    }
+
     // Start button
     const startBtn = document.getElementById('timeline-start-btn');
     if (startBtn) {
@@ -192,6 +209,16 @@ export class TimelineControls {
   }
 
   /**
+   * Update row spacing display
+   */
+  updateRowSpacingDisplay() {
+    const rowSpacingDisplay = document.getElementById('row-spacing-display');
+    if (rowSpacingDisplay) {
+      rowSpacingDisplay.textContent = `${this.timelineMode.rowSpacing}px`;
+    }
+  }
+
+  /**
    * Sync UI with current timeline mode settings
    */
   syncUI() {
@@ -201,6 +228,9 @@ export class TimelineControls {
     const timeSignatureSelect = document.getElementById('timeline-time-signature');
     const metronomeCheckbox = document.getElementById('metronome-enabled');
     const latencyInput = document.getElementById('midi-latency');
+    const showGridCheckbox = document.getElementById('timeline-show-grid');
+    const rowSpacingSlider = document.getElementById('timeline-row-spacing');
+    const rowSpacingDisplay = document.getElementById('row-spacing-display');
 
     if (bpmInput) bpmInput.value = this.timelineMode.bpm;
     if (bpmDisplay) bpmDisplay.textContent = this.timelineMode.bpm;
@@ -208,6 +238,9 @@ export class TimelineControls {
     if (timeSignatureSelect) timeSignatureSelect.value = this.timelineMode.beatsPerMeasure;
     if (metronomeCheckbox) metronomeCheckbox.checked = this.timelineMode.metronomeEnabled;
     if (latencyInput) latencyInput.value = this.timelineMode.midiLatencyMs;
+    if (showGridCheckbox) showGridCheckbox.checked = this.timelineMode.showGrid;
+    if (rowSpacingSlider) rowSpacingSlider.value = this.timelineMode.rowSpacing;
+    if (rowSpacingDisplay) rowSpacingDisplay.textContent = `${this.timelineMode.rowSpacing}px`;
 
     this.updateButtonsUI();
     this.updateStatusText();
