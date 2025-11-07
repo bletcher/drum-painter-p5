@@ -35,13 +35,15 @@ export class FibonacciMode extends ModeBase {
   }
 
   paint(note, velocity, context) {
-    const { paintCanvas, drumSettings, globalSizeMultiplier, particles, strokeCount } = context;
+    const { paintCanvas, drumSettings, globalSizeMultiplier, particles, strokeCount, midiDeviceId } = context;
 
     const goldenAngle = Math.PI * (3 - Math.sqrt(5)); // ~137.5 degrees
     this.spiralAngle += goldenAngle;
 
     // Get drum settings
-    const drumId = findDrumByMidiNote(note, drumSettings);
+    const drumId = findDrumByMidiNote(note, midiDeviceId, drumSettings);
+    if (!drumId) return; // Safety check - should never happen due to handlePaint check
+
     const settings = drumSettings[drumId];
 
     // Apply scaling curves
@@ -52,18 +54,20 @@ export class FibonacciMode extends ModeBase {
     let radius = Math.sqrt(strokeCount) * FIBONACCI_RADIUS_MULT;
     let x = paintCanvas.width / 2 + Math.cos(this.spiralAngle) * radius;
     let y = paintCanvas.height / 2 + Math.sin(this.spiralAngle) * radius;
-    let size = (this.baseSize + scaledVelSize * this.velocityMult) * globalSizeMultiplier * getDrumSize(note, drumSettings);
+    let size = (this.baseSize + scaledVelSize * this.velocityMult) * globalSizeMultiplier * getDrumSize(note, midiDeviceId, drumSettings);
 
     // Keep within bounds
     x = constrain(x, 0, paintCanvas.width);
     y = constrain(y, 0, paintCanvas.height);
 
     // Get visual properties
-    let col = getDrumColor(note, scaledVelOpacity, drumSettings);
-    let shape = getDrumShape(note, drumSettings);
-    let opacityMult = getDrumOpacity(note, drumSettings);
-    let stroke = getDrumStroke(note, drumSettings);
-    let rotation = getDrumRotation(note, drumSettings);
+    let col = getDrumColor(note, midiDeviceId, scaledVelOpacity, drumSettings);
+    if (!col) return; // Safety check - should not happen but handle gracefully
+
+    let shape = getDrumShape(note, midiDeviceId, drumSettings);
+    let opacityMult = getDrumOpacity(note, midiDeviceId, drumSettings);
+    let stroke = getDrumStroke(note, midiDeviceId, drumSettings);
+    let rotation = getDrumRotation(note, midiDeviceId, drumSettings);
 
     // Paint the dot
     paintCanvas.push();

@@ -7,29 +7,43 @@ import { SCALING_CURVES } from '../config/constants.js';
 import { applyScalingCurve } from './scaling.js';
 
 /**
- * Find which drum ID is mapped to a given MIDI note
+ * Find which drum ID is mapped to a given MIDI note from a specific device
  * @param {number} midiNote - MIDI note number
+ * @param {string} deviceId - MIDI device ID
  * @param {Object} drumSettings - Current drum settings object
  * @returns {string|null} - Drum ID or null if not found
  */
-export function findDrumByMidiNote(midiNote, drumSettings) {
+export function findDrumByMidiNote(midiNote, deviceId, drumSettings) {
+  // First try to find exact device+note match
   for (let drumId in drumSettings) {
-    if (drumSettings[drumId].midiNote === midiNote) {
+    const drum = drumSettings[drumId];
+    if (drum.midiNote === midiNote && drum.midiDevice === deviceId) {
       return drumId;
     }
   }
+
+  // If no device-specific mapping found, check for "any device" mappings (midiDevice is null/undefined)
+  // This provides backward compatibility and allows global mappings
+  for (let drumId in drumSettings) {
+    const drum = drumSettings[drumId];
+    if (drum.midiNote === midiNote && !drum.midiDevice) {
+      return drumId;
+    }
+  }
+
   return null;
 }
 
 /**
  * Get drum color with optional hue variation
  * @param {number} note - MIDI note number
+ * @param {string} deviceId - MIDI device ID
  * @param {number} velocityNorm - Normalized velocity (0-1)
  * @param {Object} drumSettings - Current drum settings object
- * @returns {p5.Color} - Color object
+ * @returns {p5.Color|null} - Color object or null if not mapped
  */
-export function getDrumColor(note, velocityNorm = 1.0, drumSettings) {
-  const drumId = findDrumByMidiNote(note, drumSettings);
+export function getDrumColor(note, deviceId, velocityNorm = 1.0, drumSettings) {
+  const drumId = findDrumByMidiNote(note, deviceId, drumSettings);
   if (drumId && drumSettings[drumId]) {
     const settings = drumSettings[drumId];
     // color is a p5.js function
@@ -57,60 +71,64 @@ export function getDrumColor(note, velocityNorm = 1.0, drumSettings) {
 
     return col;
   }
-  // Default color
-  return color(255, 0, 0);
+  // Return null if no mapping found - don't paint!
+  return null;
 }
 
 /**
  * Get drum shape
  * @param {number} note - MIDI note number
+ * @param {string} deviceId - MIDI device ID
  * @param {Object} drumSettings - Current drum settings object
- * @returns {string} - Shape name
+ * @returns {string|null} - Shape name or null if not mapped
  */
-export function getDrumShape(note, drumSettings) {
-  const drumId = findDrumByMidiNote(note, drumSettings);
+export function getDrumShape(note, deviceId, drumSettings) {
+  const drumId = findDrumByMidiNote(note, deviceId, drumSettings);
   if (drumId && drumSettings[drumId]) {
     return drumSettings[drumId].shape;
   }
-  return 'circle';
+  return null;
 }
 
 /**
  * Get drum opacity multiplier
  * @param {number} note - MIDI note number
+ * @param {string} deviceId - MIDI device ID
  * @param {Object} drumSettings - Current drum settings object
- * @returns {number} - Opacity multiplier (0-1)
+ * @returns {number|null} - Opacity multiplier (0-1) or null if not mapped
  */
-export function getDrumOpacity(note, drumSettings) {
-  const drumId = findDrumByMidiNote(note, drumSettings);
+export function getDrumOpacity(note, deviceId, drumSettings) {
+  const drumId = findDrumByMidiNote(note, deviceId, drumSettings);
   if (drumId && drumSettings[drumId]) {
     return drumSettings[drumId].opacity;
   }
-  return 1.0;
+  return null;
 }
 
 /**
  * Get drum size multiplier
  * @param {number} note - MIDI note number
+ * @param {string} deviceId - MIDI device ID
  * @param {Object} drumSettings - Current drum settings object
- * @returns {number} - Size multiplier
+ * @returns {number|null} - Size multiplier or null if not mapped
  */
-export function getDrumSize(note, drumSettings) {
-  const drumId = findDrumByMidiNote(note, drumSettings);
+export function getDrumSize(note, deviceId, drumSettings) {
+  const drumId = findDrumByMidiNote(note, deviceId, drumSettings);
   if (drumId && drumSettings[drumId]) {
     return drumSettings[drumId].size;
   }
-  return 1.0;
+  return null;
 }
 
 /**
  * Get drum stroke settings
  * @param {number} note - MIDI note number
+ * @param {string} deviceId - MIDI device ID
  * @param {Object} drumSettings - Current drum settings object
- * @returns {Object} - Stroke settings {enabled, weight, color}
+ * @returns {Object|null} - Stroke settings {enabled, weight, color} or null if not mapped
  */
-export function getDrumStroke(note, drumSettings) {
-  const drumId = findDrumByMidiNote(note, drumSettings);
+export function getDrumStroke(note, deviceId, drumSettings) {
+  const drumId = findDrumByMidiNote(note, deviceId, drumSettings);
   if (drumId && drumSettings[drumId]) {
     return {
       enabled: drumSettings[drumId].strokeEnabled,
@@ -118,19 +136,20 @@ export function getDrumStroke(note, drumSettings) {
       color: drumSettings[drumId].strokeColor
     };
   }
-  return { enabled: false, weight: 2, color: '#000000' };
+  return null;
 }
 
 /**
  * Get drum rotation angle
  * @param {number} note - MIDI note number
+ * @param {string} deviceId - MIDI device ID
  * @param {Object} drumSettings - Current drum settings object
- * @returns {number} - Rotation angle in degrees
+ * @returns {number|null} - Rotation angle in degrees or null if not mapped
  */
-export function getDrumRotation(note, drumSettings) {
-  const drumId = findDrumByMidiNote(note, drumSettings);
+export function getDrumRotation(note, deviceId, drumSettings) {
+  const drumId = findDrumByMidiNote(note, deviceId, drumSettings);
   if (drumId && drumSettings[drumId]) {
     return drumSettings[drumId].rotation;
   }
-  return 0;
+  return null;
 }

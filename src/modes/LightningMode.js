@@ -23,10 +23,12 @@ export class LightningMode extends ModeBase {
   }
 
   paint(note, velocity, context) {
-    const { paintCanvas, drumSettings, globalSizeMultiplier, particles } = context;
+    const { paintCanvas, drumSettings, globalSizeMultiplier, particles, midiDeviceId } = context;
 
     // Get drum settings
-    const drumId = findDrumByMidiNote(note, drumSettings);
+    const drumId = findDrumByMidiNote(note, midiDeviceId, drumSettings);
+    if (!drumId) return; // Safety check - should never happen due to handlePaint check
+
     const settings = drumSettings[drumId];
 
     // Apply scaling curves
@@ -56,11 +58,13 @@ export class LightningMode extends ModeBase {
       endY = startY + random(-100, 100);
     }
 
-    let col = getDrumColor(note, scaledVelOpacity, drumSettings);
-    let shape = getDrumShape(note, drumSettings);
-    let opacityMult = getDrumOpacity(note, drumSettings);
-    let stroke = getDrumStroke(note, drumSettings);
-    let rotation = getDrumRotation(note, drumSettings);
+    let col = getDrumColor(note, midiDeviceId, scaledVelOpacity, drumSettings);
+    if (!col) return; // Safety check - should not happen but handle gracefully
+
+    let shape = getDrumShape(note, midiDeviceId, drumSettings);
+    let opacityMult = getDrumOpacity(note, midiDeviceId, drumSettings);
+    let stroke = getDrumStroke(note, midiDeviceId, drumSettings);
+    let rotation = getDrumRotation(note, midiDeviceId, drumSettings);
 
     paintCanvas.push();
 
@@ -110,7 +114,7 @@ export class LightningMode extends ModeBase {
     };
 
     // Main lightning bolt
-    const mainThickness = (3 + scaledVelSize * 10) * globalSizeMultiplier * getDrumSize(note, drumSettings);
+    const mainThickness = (3 + scaledVelSize * 10) * globalSizeMultiplier * getDrumSize(note, midiDeviceId, drumSettings);
     const mainAlpha = 220 * scaledVelOpacity * opacityMult;
     drawLightningBolt(startX, startY, endX, endY, mainThickness, mainAlpha);
 

@@ -74,10 +74,10 @@ export class TimelineMode {
    * Paint method - draws notes on timeline lanes
    */
   paint(note, velocity, context) {
-    const { paintCanvas, drumSettings } = context;
+    const { paintCanvas, drumSettings, midiDeviceId } = context;
 
     // Find which drum this is
-    const drumId = this.findDrumIdByNote(note, drumSettings);
+    const drumId = this.findDrumIdByNote(note, midiDeviceId, drumSettings);
     if (!drumId || !(drumId in this.timelineLanes)) {
       console.warn(`Drum ${note} not mapped to timeline lane`);
       return;
@@ -118,7 +118,8 @@ export class TimelineMode {
     const scaledVelSize = this.applyScalingCurve(velocity, settings?.sizeScaling || 'linear');
     const scaledVelOpacity = this.applyScalingCurve(velocity, settings?.opacityScaling || 'linear');
 
-    const col = this.getDrumColor(note, scaledVelOpacity, drumSettings);
+    const col = this.getDrumColor(note, midiDeviceId, scaledVelOpacity, drumSettings);
+    if (!col) return; // Safety check - should not happen but handle gracefully
     const shape = settings?.shape || 'circle';
     const sizeMultiplier = settings?.size || 1.0;
     const opacityMult = settings?.opacity || 1.0;
@@ -476,6 +477,14 @@ export class TimelineMode {
         p5Instance.line(offsetX, line2Y, offsetX + this.staffWidth * scale, line2Y);
       }
 
+      // Draw top line for staff when spacing is significant (> 6px)
+      if (this.rowSpacing > 6) {
+        const topLineY = staffY * scale + offsetY;
+        p5Instance.stroke(150, 150, 150, 200);
+        p5Instance.strokeWeight(1);
+        p5Instance.line(offsetX, topLineY, offsetX + this.staffWidth * scale, topLineY);
+      }
+
       // Draw drum labels on left side with matching colors
       p5Instance.noStroke();
       p5Instance.textAlign(p5Instance.LEFT, p5Instance.CENTER);
@@ -554,17 +563,18 @@ export class TimelineMode {
   /**
    * Helper functions
    */
-  findDrumIdByNote(note, drumSettings) {
+  findDrumIdByNote(note, midiDeviceId, drumSettings) {
     for (const drumId in drumSettings) {
-      if (drumSettings[drumId].midiNote === note) {
+      const settings = drumSettings[drumId];
+      if (settings.midiDeviceId === midiDeviceId && settings.midiNote === note) {
         return drumId;
       }
     }
     return null;
   }
 
-  getDrumColor(note, velocityNorm, drumSettings) {
-    const drumId = this.findDrumIdByNote(note, drumSettings);
+  getDrumColor(note, midiDeviceId, velocityNorm, drumSettings) {
+    const drumId = this.findDrumIdByNote(note, midiDeviceId, drumSettings);
     if (drumId && drumSettings[drumId]) {
       const settings = drumSettings[drumId];
       const colorHex = settings.color;

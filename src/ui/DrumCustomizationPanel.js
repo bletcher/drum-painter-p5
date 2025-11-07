@@ -285,7 +285,7 @@ export class DrumCustomizationPanel {
     group.innerHTML = `
       <label style="display: block; margin-bottom: 3px; font-weight: 600; font-size: 10px; color: #666;">Note</label>
       <div style="display: flex; gap: 3px;">
-        <input type="number" id="midinote-${drumId}" value="${settings.midiNote}" min="0" max="127"
+        <input type="number" id="midinote-${drumId}" value="${settings.midiNote !== null && settings.midiNote !== undefined ? settings.midiNote : ''}" min="0" max="127"
           style="width: 100%; padding: 5px 4px; border: 1px solid #ddd; border-radius: 3px; font-size: 12px; text-align: center;">
         <button id="learn-${drumId}" title="Learn MIDI Note" style="
           padding: 5px 7px;
@@ -313,8 +313,8 @@ export class DrumCustomizationPanel {
 
       // Update when learn completes
       const originalCallback = this.midiManager.onDrumNoteAssigned;
-      this.midiManager.onDrumNoteAssigned = (learnedDrumId, note) => {
-        if (originalCallback) originalCallback(learnedDrumId, note);
+      this.midiManager.onDrumNoteAssigned = (learnedDrumId, note, deviceId) => {
+        if (originalCallback) originalCallback(learnedDrumId, note, deviceId);
         if (learnedDrumId === drumId) {
           input.value = note;
           learnButton.textContent = '🎛';

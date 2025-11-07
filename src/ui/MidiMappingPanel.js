@@ -160,7 +160,7 @@ export class MidiMappingPanel {
 
       // Ensure assignment exists
       if (!this.midiManager.bankPadAssignments[drumId]) {
-        this.midiManager.bankPadAssignments[drumId] = { note: null };
+        this.midiManager.bankPadAssignments[drumId] = { note: null, deviceId: null };
       }
 
       const assignment = this.midiManager.bankPadAssignments[drumId];
@@ -179,13 +179,34 @@ export class MidiMappingPanel {
       label.textContent = this.drumSettings[drumId]?.name || drum.name;
       label.style.cssText = 'font-weight: bold; font-size: 12px; flex: 1;';
 
-      const assignmentDisplay = document.createElement('span');
+      const assignmentDisplay = document.createElement('div');
+      assignmentDisplay.style.cssText = 'display: flex; flex-direction: column; gap: 2px; font-size: 10px; margin-right: 5px;';
+
       if (assignment.note !== null) {
-        assignmentDisplay.textContent = `Note ${assignment.note}`;
-        assignmentDisplay.style.cssText = 'font-size: 11px; color: #667eea; font-weight: bold; padding: 3px 8px; background: #e8eaff; border-radius: 3px; margin-right: 5px;';
+        const noteSpan = document.createElement('span');
+        noteSpan.textContent = `Note ${assignment.note}`;
+        noteSpan.style.cssText = 'color: #667eea; font-weight: bold; padding: 3px 8px; background: #e8eaff; border-radius: 3px;';
+        assignmentDisplay.appendChild(noteSpan);
+
+        if (assignment.deviceId) {
+          // Find device name
+          const device = this.midiManager.connectedDevices.find(d => d.id === assignment.deviceId);
+          const deviceName = device ? device.name : assignment.deviceId.substring(0, 20);
+          const deviceSpan = document.createElement('span');
+          deviceSpan.textContent = `${deviceName}`;
+          deviceSpan.style.cssText = 'color: #10b981; font-size: 9px; padding: 2px 6px;';
+          assignmentDisplay.appendChild(deviceSpan);
+        } else {
+          const anyDeviceSpan = document.createElement('span');
+          anyDeviceSpan.textContent = 'Any Device';
+          anyDeviceSpan.style.cssText = 'color: #f59e0b; font-size: 9px; padding: 2px 6px;';
+          assignmentDisplay.appendChild(anyDeviceSpan);
+        }
       } else {
-        assignmentDisplay.textContent = 'Not Set';
-        assignmentDisplay.style.cssText = 'font-size: 11px; color: #999; margin-right: 5px;';
+        const notSetSpan = document.createElement('span');
+        notSetSpan.textContent = 'Not Set';
+        notSetSpan.style.cssText = 'color: #999;';
+        assignmentDisplay.appendChild(notSetSpan);
       }
 
       const learnBtn = document.createElement('button');
@@ -203,6 +224,7 @@ export class MidiMappingPanel {
       removeBtn.style.display = assignment.note !== null ? 'inline-block' : 'none';
       removeBtn.onclick = () => {
         this.midiManager.bankPadAssignments[drumId].note = null;
+        this.midiManager.bankPadAssignments[drumId].deviceId = null;
         this.build();
       };
 
@@ -262,14 +284,35 @@ export class MidiMappingPanel {
       label.textContent = variable.label;
       label.style.cssText = 'font-weight: bold; font-size: 12px; flex: 1;';
 
-      const assignmentDisplay = document.createElement('span');
+      const assignmentDisplay = document.createElement('div');
+      assignmentDisplay.style.cssText = 'display: flex; flex-direction: column; gap: 2px; font-size: 10px; margin-right: 5px;';
+
       if (assignment.cc !== null) {
         const rangeInfo = (assignment.ccMin === 0 && assignment.ccMax === 127) ? '' : ` (${assignment.ccMin}-${assignment.ccMax})`;
-        assignmentDisplay.textContent = `CC${assignment.cc}${rangeInfo}`;
-        assignmentDisplay.style.cssText = 'font-size: 11px; color: #667eea; font-weight: bold; padding: 3px 8px; background: #e8eaff; border-radius: 3px; margin-right: 5px;';
+        const ccSpan = document.createElement('span');
+        ccSpan.textContent = `CC${assignment.cc}${rangeInfo}`;
+        ccSpan.style.cssText = 'color: #667eea; font-weight: bold; padding: 3px 8px; background: #e8eaff; border-radius: 3px;';
+        assignmentDisplay.appendChild(ccSpan);
+
+        if (assignment.deviceId) {
+          // Find device name
+          const device = this.midiManager.connectedDevices.find(d => d.id === assignment.deviceId);
+          const deviceName = device ? device.name : assignment.deviceId.substring(0, 20);
+          const deviceSpan = document.createElement('span');
+          deviceSpan.textContent = `${deviceName}`;
+          deviceSpan.style.cssText = 'color: #10b981; font-size: 9px; padding: 2px 6px;';
+          assignmentDisplay.appendChild(deviceSpan);
+        } else {
+          const anyDeviceSpan = document.createElement('span');
+          anyDeviceSpan.textContent = 'Any Device';
+          anyDeviceSpan.style.cssText = 'color: #f59e0b; font-size: 9px; padding: 2px 6px;';
+          assignmentDisplay.appendChild(anyDeviceSpan);
+        }
       } else {
-        assignmentDisplay.textContent = 'Not Set';
-        assignmentDisplay.style.cssText = 'font-size: 11px; color: #999; margin-right: 5px;';
+        const notSetSpan = document.createElement('span');
+        notSetSpan.textContent = 'Not Set';
+        notSetSpan.style.cssText = 'color: #999;';
+        assignmentDisplay.appendChild(notSetSpan);
       }
 
       const learnBtn = document.createElement('button');
@@ -289,6 +332,7 @@ export class MidiMappingPanel {
         this.midiManager.globalVariableAssignments[variable.key].cc = null;
         this.midiManager.globalVariableAssignments[variable.key].ccMin = 0;
         this.midiManager.globalVariableAssignments[variable.key].ccMax = 127;
+        this.midiManager.globalVariableAssignments[variable.key].deviceId = null;
         this.build();
       };
 
@@ -304,18 +348,97 @@ export class MidiMappingPanel {
   }
 
   /**
-   * Create direct mode message
+   * Create direct mode message with drum mappings display
    */
   createDirectModeMessage() {
-    const message = document.createElement('div');
-    message.style.cssText = 'padding: 20px; background: #e8eaff; border-radius: 8px; text-align: center;';
-    message.innerHTML = `
-      <p style="margin: 0; font-size: 13px; color: #667eea;"><strong>Direct Mode Active</strong></p>
-      <p style="margin: 10px 0 0 0; font-size: 12px; color: #666;">
-        Use the 🎛 learn buttons in the Drum Customization panel to assign controllers to specific drum parameters.
-      </p>
-    `;
-    return message;
+    const section = document.createElement('div');
+    section.style.cssText = 'padding: 15px; background: #f8f9fa; border-radius: 8px;';
+
+    const title = document.createElement('h3');
+    title.textContent = 'Direct Mode - Drum Mappings';
+    title.style.cssText = 'margin: 0 0 15px 0; font-size: 14px; color: #333;';
+    section.appendChild(title);
+
+    const info = document.createElement('p');
+    info.style.cssText = 'margin: 0 0 15px 0; font-size: 11px; color: #666;';
+    info.textContent = 'Each drum can be mapped to a specific MIDI device + note. Use 🎹 buttons in Drum Customization to learn mappings.';
+    section.appendChild(info);
+
+    // Create table of drum mappings
+    const table = document.createElement('div');
+    table.style.cssText = 'display: grid; gap: 8px;';
+
+    for (const drum of DRUM_KIT_CONFIG) {
+      const drumId = drum.id;
+      const settings = this.drumSettings[drumId];
+      const midiNote = settings?.midiNote;
+      const midiDevice = settings?.midiDevice;
+
+      const row = document.createElement('div');
+      row.style.cssText = `
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px;
+        background: white;
+        border-radius: 5px;
+        border-left: 4px solid ${settings?.color || '#666'};
+      `;
+
+      const drumName = document.createElement('span');
+      drumName.textContent = settings?.name || drumId;
+      drumName.style.cssText = 'font-weight: bold; font-size: 12px; flex: 1;';
+
+      const mappingInfo = document.createElement('div');
+      mappingInfo.style.cssText = 'display: flex; flex-direction: column; gap: 2px; font-size: 10px;';
+
+      if (midiNote !== undefined && midiNote !== null) {
+        const noteSpan = document.createElement('span');
+        noteSpan.textContent = `Note: ${midiNote}`;
+        noteSpan.style.cssText = 'color: #667eea; font-weight: bold;';
+        mappingInfo.appendChild(noteSpan);
+
+        if (midiDevice) {
+          // Find device name
+          const device = this.midiManager.connectedDevices.find(d => d.id === midiDevice);
+          const deviceName = device ? device.name : midiDevice.substring(0, 20);
+          const deviceSpan = document.createElement('span');
+          deviceSpan.textContent = `Device: ${deviceName}`;
+          deviceSpan.style.cssText = 'color: #10b981;';
+          mappingInfo.appendChild(deviceSpan);
+        } else {
+          const anyDeviceSpan = document.createElement('span');
+          anyDeviceSpan.textContent = 'Device: Any';
+          anyDeviceSpan.style.cssText = 'color: #f59e0b;';
+          mappingInfo.appendChild(anyDeviceSpan);
+        }
+      } else {
+        const notMappedSpan = document.createElement('span');
+        notMappedSpan.textContent = 'Not mapped';
+        notMappedSpan.style.cssText = 'color: #999;';
+        mappingInfo.appendChild(notMappedSpan);
+      }
+
+      const clearBtn = document.createElement('button');
+      clearBtn.textContent = '×';
+      clearBtn.title = 'Clear mapping';
+      clearBtn.style.cssText = 'padding: 4px 8px; font-size: 12px; background: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer;';
+      clearBtn.style.display = midiNote !== undefined && midiNote !== null ? 'block' : 'none';
+      clearBtn.onclick = () => {
+        settings.midiNote = null;
+        settings.midiDevice = null;
+        this.notificationSystem.show(`Cleared ${settings.name} mapping`);
+        this.build();
+      };
+
+      row.appendChild(drumName);
+      row.appendChild(mappingInfo);
+      row.appendChild(clearBtn);
+      table.appendChild(row);
+    }
+
+    section.appendChild(table);
+    return section;
   }
 
   /**

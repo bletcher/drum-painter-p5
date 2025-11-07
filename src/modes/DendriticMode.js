@@ -23,10 +23,12 @@ export class DendriticMode extends ModeBase {
   }
 
   paint(note, velocity, context) {
-    const { paintCanvas, drumSettings, globalSizeMultiplier, particles } = context;
+    const { paintCanvas, drumSettings, globalSizeMultiplier, particles, midiDeviceId } = context;
 
     // Get drum settings
-    const drumId = findDrumByMidiNote(note, drumSettings);
+    const drumId = findDrumByMidiNote(note, midiDeviceId, drumSettings);
+    if (!drumId) return; // Safety check - should never happen due to handlePaint check
+
     const settings = drumSettings[drumId];
 
     // Apply scaling curves
@@ -37,11 +39,13 @@ export class DendriticMode extends ModeBase {
     let somaX = random(paintCanvas.width * 0.3, paintCanvas.width * 0.7);
     let somaY = random(paintCanvas.height * 0.3, paintCanvas.height * 0.6);
 
-    let col = getDrumColor(note, scaledVelOpacity, drumSettings);
-    let shape = getDrumShape(note, drumSettings);
-    let opacityMult = getDrumOpacity(note, drumSettings);
-    let stroke = getDrumStroke(note, drumSettings);
-    let rotation = getDrumRotation(note, drumSettings);
+    let col = getDrumColor(note, midiDeviceId, scaledVelOpacity, drumSettings);
+    if (!col) return; // Safety check - should not happen but handle gracefully
+
+    let shape = getDrumShape(note, midiDeviceId, drumSettings);
+    let opacityMult = getDrumOpacity(note, midiDeviceId, drumSettings);
+    let stroke = getDrumStroke(note, midiDeviceId, drumSettings);
+    let rotation = getDrumRotation(note, midiDeviceId, drumSettings);
 
     paintCanvas.push();
 
@@ -120,7 +124,7 @@ export class DendriticMode extends ModeBase {
       const maxDist = paintCanvas.width * 0.6;
       const thicknessFactor = map(distToRoot, maxDist, 0, 0.3, 1.5);
 
-      const baseSize = (2 + scaledVelSize * 8) * globalSizeMultiplier * getDrumSize(note, drumSettings);
+      const baseSize = (2 + scaledVelSize * 8) * globalSizeMultiplier * getDrumSize(note, midiDeviceId, drumSettings);
       const nodeSize = baseSize * node.thickness * thicknessFactor;
       const parentSize = baseSize * parent.thickness * thicknessFactor * 1.2;
 
@@ -149,7 +153,7 @@ export class DendriticMode extends ModeBase {
     }
 
     // Draw the soma (central convergence point) last, making it prominent
-    const somaSize = (10 + scaledVelSize * 18) * globalSizeMultiplier * getDrumSize(note, drumSettings);
+    const somaSize = (10 + scaledVelSize * 18) * globalSizeMultiplier * getDrumSize(note, midiDeviceId, drumSettings);
     paintDot(paintCanvas, somaX, somaY, somaSize, col, 240 * scaledVelOpacity * opacityMult, shape, stroke, rotation);
 
     // Add some extra emphasis dots around soma

@@ -133,7 +133,9 @@
       border-radius: 6px;
       font-size: 11px;
       margin-bottom: 5px;
-    ">
+      cursor: pointer;
+      transition: background 0.2s;
+    " data-tooltip="Click to view connected devices">
       <div style="position: relative;">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M6 9H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2h-2"/>
@@ -152,16 +154,26 @@
           transition: opacity 0.1s;
         "></span>
       </div>
-      <div style="flex: 1;">
-        <div id="midi-status-text" style="font-weight: 500; color: #666;">Checking MIDI...</div>
-        <div id="midi-device-name" style="font-size: 10px; color: #999; display: none;"></div>
+      <div style="flex: 1; min-width: 0;">
+        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px;">
+          <div id="midi-status-indicator" style="
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #fbbf24;
+            flex-shrink: 0;
+          "></div>
+          <div id="midi-device-name" style="font-weight: 500; color: #666; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Checking MIDI...</div>
+        </div>
+        <div style="display: flex; gap: 10px; font-size: 10px; color: #999;">
+          <div>Ch: <span id="midi-channel">-</span></div>
+          <div>Note: <span id="midi-note">-</span></div>
+          <div>Vel: <span id="midi-velocity">-</span></div>
+        </div>
       </div>
-      <div id="midi-status-indicator" style="
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        background: #fbbf24;
-      "></div>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink: 0; opacity: 0.4;">
+        <polyline points="9 18 15 12 9 6"></polyline>
+      </svg>
     </div>
     <hr style="margin: 10px 0; border: none; border-top: 1px solid #ddd;">
 
@@ -211,12 +223,13 @@
 
     <div style="margin-top: 10px;">
       <strong>Keyboard Shortcuts:</strong><br>
-      <span class="key">SPACE</span> Clear canvas<br>
+      <span class="key">H</span> Hide/show UI<br>
+      <span class="key">BKSP</span> Clear canvas<br>
+      <span class="key">SPACE</span> Record video<br>
       <span class="key">S</span> Save image<br>
       <span class="key">D</span> Save settings<br>
       <span class="key">Z</span> Undo<br>
       <span class="key">Y</span> Redo<br>
-      <span class="key">H</span> Hide/show UI<br>
       <span class="key">Click</span> Test paint
     </div>
 
@@ -528,6 +541,78 @@
         >Delete</button>
       </div>
     </div>
+
+    <!-- Video Recording Section -->
+    <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #ddd;">
+      <strong style="display: flex; align-items: center; gap: 6px; margin-bottom: 10px; font-size: 12px;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/>
+          <circle cx="12" cy="12" r="3" fill="currentColor"/>
+        </svg>
+        Video Recording
+      </strong>
+
+      <div style="margin-bottom: 8px;">
+        <label style="display: block; font-size: 11px; margin-bottom: 4px;">Quality:</label>
+        <select
+          id="video-quality"
+          data-tooltip="Select video recording quality"
+          style="
+            width: 100%;
+            padding: 6px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 11px;
+            background: white;
+            cursor: pointer;
+          "
+        >
+          <option value="low">Low (1 Mbps)</option>
+          <option value="medium" selected>Medium (2.5 Mbps)</option>
+          <option value="high">High (5 Mbps)</option>
+          <option value="ultra">Ultra (10 Mbps)</option>
+        </select>
+      </div>
+
+      <button
+        id="video-record-btn"
+        data-tooltip="Start/stop recording video"
+        style="
+          width: 100%;
+          padding: 8px;
+          background: #dc2626;
+          color: white;
+          border: none;
+          border-radius: 4px;
+          font-size: 12px;
+          font-weight: bold;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+        "
+      >
+        <span id="video-record-icon">●</span>
+        <span id="video-record-text">Start Recording</span>
+      </button>
+
+      <div id="video-recording-status" style="
+        display: none;
+        margin-top: 8px;
+        padding: 8px;
+        background: #fee2e2;
+        border-left: 3px solid #dc2626;
+        border-radius: 4px;
+        font-size: 11px;
+      ">
+        <div style="display: flex; align-items: center; gap: 6px; font-weight: bold; color: #991b1b; margin-bottom: 4px;">
+          <span style="animation: pulse 1.5s ease-in-out infinite;">●</span>
+          Recording...
+        </div>
+        <div id="video-recording-time" style="color: #7f1d1d;">00:00</div>
+      </div>
+    </div>
   </div>
 
   <!-- Customization Panel Modal -->
@@ -791,7 +876,9 @@
         'midi-mapping-panel',
         'midi-mapping-backdrop',
         'shortcuts-panel',
-        'shortcuts-backdrop'
+        'shortcuts-backdrop',
+        'midi-devices-panel',
+        'midi-devices-backdrop'
       ];
 
       panelIds.forEach(id => {
@@ -947,8 +1034,12 @@
         <h3 style="margin: 0 0 12px 0; font-size: 14px; color: #667eea; text-transform: uppercase; letter-spacing: 0.5px;">General</h3>
         <div style="display: grid; gap: 8px;">
           <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
-            <span style="font-size: 13px;">Clear canvas</span>
+            <span style="font-size: 13px;">Start/Stop recording video</span>
             <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">SPACE</kbd>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
+            <span style="font-size: 13px;">Clear canvas</span>
+            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">BACKSPACE</kbd>
           </div>
           <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
             <span style="font-size: 13px;">Save image</span>
@@ -1033,6 +1124,69 @@
 
       <div style="text-align: center; padding-top: 16px; border-top: 1px solid #e9ecef; color: #666; font-size: 12px;">
         Press <kbd style="background: white; padding: 2px 6px; border-radius: 3px; font-family: monospace; font-size: 11px; border: 1px solid #ddd;">?</kbd> or <kbd style="background: white; padding: 2px 6px; border-radius: 3px; font-family: monospace; font-size: 11px; border: 1px solid #ddd;">ESC</kbd> to close
+      </div>
+    </div>
+  </div>
+
+  <!-- MIDI Devices Panel -->
+  <div id="midi-devices-backdrop" style="
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+    z-index: 9999;
+    align-items: center;
+    justify-content: center;
+  ">
+    <div id="midi-devices-panel" style="
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+      width: 90%;
+      max-width: 500px;
+      max-height: 70vh;
+      overflow: hidden;
+      animation: slideIn 0.3s ease-out;
+    ">
+      <div style="padding: 20px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.1);">
+        <h2 style="margin: 0; color: white; font-size: 18px; display: flex; align-items: center; gap: 8px;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6 9H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2h-2"/>
+            <path d="M6 9V21"/>
+            <path d="M18 9V21"/>
+          </svg>
+          MIDI Devices
+        </h2>
+        <button id="close-midi-devices-btn" style="
+          background: rgba(255, 255, 255, 0.2);
+          border: none;
+          color: white;
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: background 0.2s;
+        ">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div id="midi-devices-list" style="
+        padding: 20px;
+        overflow-y: auto;
+        max-height: calc(70vh - 80px);
+        color: white;
+      ">
+        <!-- Devices will be populated here -->
       </div>
     </div>
   </div>

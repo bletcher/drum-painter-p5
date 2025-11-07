@@ -10,6 +10,10 @@ export class MidiManager {
     this.onPaintCallback = onPaintCallback;
     this.midiReady = false;
     this.midiInput = null;
+    this.connectedDevices = [];
+    this.lastChannel = null;
+    this.lastNote = null;
+    this.lastVelocity = null;
 
     // MIDI Learn state
     this.midiLearnMode = false;
@@ -25,11 +29,11 @@ export class MidiManager {
     this.activeDrumBank = 'kick';
     this.bankPadAssignments = {};
     this.globalVariableAssignments = {
-      size: { cc: null, ccMin: 0, ccMax: 127 },
-      opacity: { cc: null, ccMin: 0, ccMax: 127 },
-      hueVariation: { cc: null, ccMin: 0, ccMax: 127 },
-      rotation: { cc: null, ccMin: 0, ccMax: 127 },
-      strokeWeight: { cc: null, ccMin: 0, ccMax: 127 }
+      size: { cc: null, ccMin: 0, ccMax: 127, deviceId: null },
+      opacity: { cc: null, ccMin: 0, ccMax: 127, deviceId: null },
+      hueVariation: { cc: null, ccMin: 0, ccMax: 127, deviceId: null },
+      rotation: { cc: null, ccMin: 0, ccMax: 127, deviceId: null },
+      strokeWeight: { cc: null, ccMin: 0, ccMax: 127, deviceId: null }
     };
     this.bankLearnMode = false;
     this.bankLearnType = null;
@@ -37,7 +41,7 @@ export class MidiManager {
 
     // Initialize bank pad assignments
     for (const drum of DRUM_KIT_CONFIG) {
-      this.bankPadAssignments[drum.id] = { note: null };
+      this.bankPadAssignments[drum.id] = { note: null, deviceId: null };
     }
 
     // Callbacks
@@ -69,28 +73,76 @@ export class MidiManager {
    */
   onMIDISuccess(midi) {
     console.log('✓ MIDI Access granted');
+    console.log('🔍 Raw MIDI object:', midi);
+    console.log('🔍 MIDI inputs map:', midi.inputs);
+    console.log('🔍 MIDI outputs map:', midi.outputs);
 
     const inputs = Array.from(midi.inputs.values());
-    console.log('Available MIDI inputs:', inputs.map(i => i.name));
+    console.log('📥 Available MIDI inputs:', inputs.map(i => i.name));
+    console.log('📥 Full input details:', inputs.map(i => ({
+      name: i.name,
+      id: i.id,
+      manufacturer: i.manufacturer,
+      state: i.state,
+      connection: i.connection
+    })));
 
     if (inputs.length === 0) {
       console.warn('No MIDI devices found');
+      this.connectedDevices = [];
       if (this.onMidiStatusChange) {
-        this.onMidiStatusChange(false, 'No MIDI devices found');
+        this.onMidiStatusChange(false, 'No MIDI devices found', '', []);
       }
       return;
     }
 
-    // Connect to all inputs
+    // Store connected devices
+    this.connectedDevices = inputs.map(input => ({
+      id: input.id,
+      name: input.name,
+      manufacturer: input.manufacturer || 'Unknown',
+      state: input.state
+    }));
+
+    console.log('📱 Connected devices:', this.connectedDevices);
+
+    // Connect to all inputs - pass device ID with message
     inputs.forEach(input => {
-      input.onmidimessage = (message) => this.handleMIDIMessage(message);
-      console.log(`Connected to: ${input.name}`);
+      input.onmidimessage = (message) => this.handleMIDIMessage(message, input.id);
+      console.log(`Connected to: ${input.name} (ID: ${input.id})`);
     });
+
+    // Listen for device state changes (connect/disconnect)
+    midi.onstatechange = (e) => {
+      console.log('🔄 MIDI device state changed:', e.port.name, e.port.state);
+      // Re-scan devices
+      const newInputs = Array.from(midi.inputs.values());
+      this.connectedDevices = newInputs.map(input => ({
+        id: input.id,
+        name: input.name,
+        manufacturer: input.manufacturer || 'Unknown',
+        state: input.state
+      }));
+      console.log('📱 Updated connected devices:', this.connectedDevices);
+
+      // Update status callback
+      if (this.onMidiStatusChange) {
+        const primaryDevice = newInputs.length > 0 ? newInputs[0].name : '';
+        const connected = newInputs.length > 0;
+        this.onMidiStatusChange(connected, connected ? 'Connected' : 'No devices', primaryDevice, this.connectedDevices);
+      }
+
+      // Connect to new inputs
+      if (e.port.type === 'input' && e.port.state === 'connected') {
+        e.port.onmidimessage = (message) => this.handleMIDIMessage(message, e.port.id);
+        console.log(`🔌 Newly connected: ${e.port.name}`);
+      }
+    };
 
     this.midiReady = true;
     if (this.onMidiStatusChange) {
-      const deviceNames = inputs.map(i => i.name).join(', ');
-      this.onMidiStatusChange(true, 'MIDI: Connected', deviceNames);
+      const primaryDevice = inputs[0].name;
+      this.onMidiStatusChange(true, 'Connected', primaryDevice, this.connectedDevices);
     }
   }
 
@@ -107,23 +159,40 @@ export class MidiManager {
   /**
    * Handle incoming MIDI message
    */
-  handleMIDIMessage(message) {
+  handleMIDIMessage(message, deviceId) {
     try {
       const [command, note, velocity] = message.data;
 
-      // Note On message (144) with velocity > 0
-      if (command === 144 && velocity > 0) {
-        this.handleNoteOn(note, velocity);
+      // Extract MIDI channel (channels 1-16 from command byte)
+      const channel = (command & 0x0F) + 1;
+
+      // Note On message (144-159 for channels 1-16) with velocity > 0
+      if (command >= 144 && command <= 159 && velocity > 0) {
+        this.lastChannel = channel;
+        this.lastNote = note;
+        this.lastVelocity = velocity;
+        this.handleNoteOn(note, velocity, deviceId);
+        if (this.onMidiActivity) {
+          this.onMidiActivity(channel, note, velocity);
+        }
       }
 
       // CC messages (176-191 for channels 1-16)
       if (command >= 176 && command <= 191) {
-        this.handleCC(note, velocity); // note=CC number, velocity=CC value
+        this.lastChannel = channel;
+        this.handleCC(note, velocity, deviceId); // note=CC number, velocity=CC value
+        if (this.onMidiActivity) {
+          this.onMidiActivity(channel, null, null);
+        }
       }
 
       // Pitch Bend messages (224-239 for channels 1-16)
       if (command >= 224 && command <= 239) {
-        this.handlePitchBend(command, note, velocity);
+        this.lastChannel = channel;
+        this.handlePitchBend(command, note, velocity, deviceId);
+        if (this.onMidiActivity) {
+          this.onMidiActivity(channel, null, null);
+        }
       }
     } catch (error) {
       console.error('Error handling MIDI message:', error);
@@ -133,11 +202,14 @@ export class MidiManager {
   /**
    * Handle Note On message
    */
-  handleNoteOn(note, velocity) {
+  handleNoteOn(note, velocity, deviceId) {
     // Handle bank mode pad learn
     if (this.bankLearnMode && this.bankLearnType === 'pad' && this.bankLearnTarget) {
       this.bankPadAssignments[this.bankLearnTarget].note = note;
-      console.log(`Bank Pad Learn: Assigned note ${note} to ${this.bankLearnTarget}`);
+      this.bankPadAssignments[this.bankLearnTarget].deviceId = deviceId;
+      const device = this.connectedDevices.find(d => d.id === deviceId);
+      const deviceName = device ? device.name : deviceId;
+      console.log(`Bank Pad Learn: Assigned note ${note} from ${deviceName} to ${this.bankLearnTarget}`);
       this.exitLearnMode();
       return;
     }
@@ -145,7 +217,9 @@ export class MidiManager {
     // Handle bank mode pad selection (switch active drum)
     if (this.bankModeEnabled) {
       for (const drumId in this.bankPadAssignments) {
-        if (this.bankPadAssignments[drumId].note === note) {
+        const assignment = this.bankPadAssignments[drumId];
+        // Match both note and device (or deviceId is null for "any device")
+        if (assignment.note === note && (!assignment.deviceId || assignment.deviceId === deviceId)) {
           this.activeDrumBank = drumId;
           console.log(`🎚️ BANK PAD: Note ${note} switched active drum to ${drumId}`);
           if (this.onBankModeChange) {
@@ -158,31 +232,31 @@ export class MidiManager {
 
     // Handle MIDI learn mode (for drum note mapping)
     if (this.midiLearnMode && this.midiLearnDrumId) {
-      this.assignDrumNote(this.midiLearnDrumId, note);
+      this.assignDrumNote(this.midiLearnDrumId, note, deviceId);
       this.exitLearnMode();
       return;
     }
 
-    // Normal painting - normalize velocity to 0-1
+    // Normal painting - normalize velocity to 0-1 and pass device ID
     const vel = velocity / 127;
     if (this.onPaintCallback) {
-      this.onPaintCallback(note, vel);
+      this.onPaintCallback(note, vel, deviceId);
     }
   }
 
   /**
    * Handle CC message
    */
-  handleCC(ccNumber, ccValue) {
+  handleCC(ccNumber, ccValue, deviceId) {
     // Handle bank mode variable learn with calibration
     if (this.bankLearnMode && this.bankLearnType === 'variable' && this.bankLearnTarget) {
-      this.handleCCLearnCalibration(ccNumber, ccValue, this.bankLearnTarget, true);
+      this.handleCCLearnCalibration(ccNumber, ccValue, this.bankLearnTarget, true, deviceId);
       return;
     }
 
     // Handle bank mode CC processing (route to active drum)
     if (this.bankModeEnabled) {
-      this.handleBankModeCC(ccNumber, ccValue);
+      this.handleBankModeCC(ccNumber, ccValue, deviceId);
       return;
     }
 
@@ -199,7 +273,7 @@ export class MidiManager {
   /**
    * Handle Pitch Bend message
    */
-  handlePitchBend(command, lsb, msb) {
+  handlePitchBend(command, lsb, msb, deviceId) {
     const pitchBendValue = (msb * 128) + lsb; // 0-16383
     const normalizedValue = pitchBendValue / 16383; // 0.0-1.0
     const ccValue = Math.round(normalizedValue * 127); // Convert to 0-127 like CC
@@ -209,18 +283,18 @@ export class MidiManager {
 
     // Handle learn mode
     if (this.bankLearnMode && this.bankLearnType === 'variable' && this.bankLearnTarget) {
-      this.handleCCLearnCalibration(pseudoCC, ccValue, this.bankLearnTarget, true);
+      this.handleCCLearnCalibration(pseudoCC, ccValue, this.bankLearnTarget, true, deviceId);
       return;
     }
 
     if (this.ccLearnMode && this.ccLearnDrumId && this.ccLearnParameter) {
-      this.handleCCLearnCalibration(pseudoCC, ccValue, this.ccLearnParameter, false);
+      this.handleCCLearnCalibration(pseudoCC, ccValue, this.ccLearnParameter, false, deviceId);
       return;
     }
 
     // Normal processing
     if (this.bankModeEnabled) {
-      this.handleBankModeCC(pseudoCC, ccValue);
+      this.handleBankModeCC(pseudoCC, ccValue, deviceId);
     } else {
       this.handleCCValue(pseudoCC, ccValue);
     }
@@ -229,7 +303,7 @@ export class MidiManager {
   /**
    * Handle CC learn calibration (3-second range detection)
    */
-  handleCCLearnCalibration(ccNumber, ccValue, target, isBankMode) {
+  handleCCLearnCalibration(ccNumber, ccValue, target, isBankMode, deviceId) {
     // Start timer on first value
     if (this.ccLearnCalibrationValues.length === 0) {
       this.ccLearnStartTime = Date.now();
@@ -248,7 +322,10 @@ export class MidiManager {
         this.globalVariableAssignments[target].cc = ccNumber;
         this.globalVariableAssignments[target].ccMin = ccMin;
         this.globalVariableAssignments[target].ccMax = ccMax;
-        console.log(`Bank Variable Learn Complete: CC ${ccNumber} assigned to ${target}`);
+        this.globalVariableAssignments[target].deviceId = deviceId;
+        const device = this.connectedDevices.find(d => d.id === deviceId);
+        const deviceName = device ? device.name : deviceId;
+        console.log(`Bank Variable Learn Complete: CC ${ccNumber} from ${deviceName} assigned to ${target}`);
       } else {
         // Store CC assignment for drum parameter
         this.ccAssignments = this.ccAssignments || {};
@@ -275,12 +352,13 @@ export class MidiManager {
   /**
    * Handle CC value for bank mode
    */
-  handleBankModeCC(ccNumber, ccValue, drumSettings, updateUICallback) {
+  handleBankModeCC(ccNumber, ccValue, deviceId, drumSettings, updateUICallback) {
     // Find which global variable uses this CC number
     for (const paramKey in this.globalVariableAssignments) {
       const assignment = this.globalVariableAssignments[paramKey];
 
-      if (assignment.cc === ccNumber) {
+      // Match both CC number and device (or deviceId is null for "any device")
+      if (assignment.cc === ccNumber && (!assignment.deviceId || assignment.deviceId === deviceId)) {
         // Map CC value using detected range
         const ccMin = assignment.ccMin || 0;
         const ccMax = assignment.ccMax || 127;
@@ -363,11 +441,14 @@ export class MidiManager {
   /**
    * Assign drum note (called from external when MIDI learn completes)
    */
-  assignDrumNote(drumId, note) {
-    console.log(`MIDI Learn: Assigned note ${note} to ${drumId}`);
+  assignDrumNote(drumId, note, deviceId) {
+    // Get device name for logging
+    const device = this.connectedDevices.find(d => d.id === deviceId);
+    const deviceName = device ? device.name : deviceId;
+    console.log(`MIDI Learn: Assigned note ${note} from ${deviceName} to ${drumId}`);
     // This will be handled by callback
     if (this.onDrumNoteAssigned) {
-      this.onDrumNoteAssigned(drumId, note);
+      this.onDrumNoteAssigned(drumId, note, deviceId);
     }
   }
 

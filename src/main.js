@@ -19,6 +19,7 @@ import { NotificationSystem } from './ui/Notification.js';
 import { DrumCustomizationPanel } from './ui/DrumCustomizationPanel.js';
 import { MidiMappingPanel } from './ui/MidiMappingPanel.js';
 import { TimelineControls } from './ui/TimelineControls.js';
+import { VideoRecorder } from './ui/VideoRecorder.js';
 import { findDrumByMidiNote } from './utils/drumHelpers.js';
 
 // ===== GLOBAL STATE =====
@@ -48,6 +49,7 @@ let notificationSystem;
 let customizationPanel;
 let midiMappingPanel;
 let timelineControls;
+let videoRecorder;
 
 // DOM elements
 let midiStatusEl;
@@ -103,7 +105,7 @@ window.setup = function() {
   notificationSystem = new NotificationSystem();
 
   // Initialize MIDI manager with paint callback
-  midiManager = new MidiManager((note, velocity) => handlePaint(note, velocity));
+  midiManager = new MidiManager((note, velocity, deviceId) => handlePaint(note, velocity, deviceId));
 
   // Initialize customization panel
   customizationPanel = new DrumCustomizationPanel(drumSettings, midiManager, stateManager, notificationSystem);
@@ -115,27 +117,53 @@ window.setup = function() {
   timelineControls = new TimelineControls(timelineMode, notificationSystem);
   timelineControls.initialize();
 
+  // Initialize video recorder
+  videoRecorder = new VideoRecorder(paintCanvas, notificationSystem);
+  setupVideoRecorderUI();
+
   // Set MIDI status callback
-  midiManager.onMidiStatusChange = (connected, message, deviceName = '') => {
-    const statusText = document.getElementById('midi-status-text');
+  midiManager.onMidiStatusChange = (connected, message, deviceName = '', devices = []) => {
     const statusIndicator = document.getElementById('midi-status-indicator');
     const deviceNameEl = document.getElementById('midi-device-name');
-
-    if (statusText) {
-      statusText.textContent = message;
-      statusText.style.color = connected ? '#10b981' : (message.includes('No') ? '#ef4444' : '#666');
-    }
 
     if (statusIndicator) {
       // Green = connected, Red = no MIDI, Yellow = checking
       statusIndicator.style.background = connected ? '#10b981' : (message.includes('No') ? '#ef4444' : '#fbbf24');
     }
 
-    if (deviceNameEl && deviceName) {
-      deviceNameEl.textContent = deviceName;
-      deviceNameEl.style.display = 'block';
-    } else if (deviceNameEl) {
-      deviceNameEl.style.display = 'none';
+    if (deviceNameEl) {
+      deviceNameEl.textContent = deviceName || message;
+    }
+
+    // Store devices for modal
+    window.midiDevicesList = devices;
+  };
+
+  // Set MIDI activity callback
+  midiManager.onMidiActivity = (channel, note, velocity) => {
+    const channelEl = document.getElementById('midi-channel');
+    const noteEl = document.getElementById('midi-note');
+    const velocityEl = document.getElementById('midi-velocity');
+    const activityLight = document.getElementById('midi-activity-light');
+
+    if (channelEl) {
+      channelEl.textContent = channel;
+    }
+
+    if (note !== null && noteEl) {
+      noteEl.textContent = note;
+    }
+
+    if (velocity !== null && velocityEl) {
+      velocityEl.textContent = velocity;
+    }
+
+    // Flash activity light
+    if (activityLight) {
+      activityLight.style.opacity = '1';
+      setTimeout(() => {
+        activityLight.style.opacity = '0';
+      }, 100);
     }
   };
 
@@ -148,9 +176,16 @@ window.setup = function() {
     handleBankModeCC(drumId, paramKey, normalizedValue, ccValue, ccNumber);
   };
 
-  midiManager.onDrumNoteAssigned = (drumId, note) => {
+  midiManager.onDrumNoteAssigned = (drumId, note, deviceId) => {
     drumSettings[drumId].midiNote = note;
-    notificationSystem.show(`${drumId}: Note ${note}`);
+    drumSettings[drumId].midiDevice = deviceId;
+
+    // Get device name for notification
+    const device = midiManager.connectedDevices.find(d => d.id === deviceId);
+    const deviceName = device ? device.name : 'Unknown';
+
+    notificationSystem.show(`${drumId}: Note ${note} (${deviceName})`);
+    console.log(`✓ Mapped ${drumId} to Note ${note} from ${deviceName} (${deviceId})`);
   };
 
   // Set Bank Mode change callback (updates active drum indicator)
@@ -161,6 +196,9 @@ window.setup = function() {
 
   // Setup MIDI
   midiManager.setup();
+
+  // Setup MIDI devices modal
+  setupMidiDevicesModal();
 
   // Save initial canvas state
   stateManager.saveCanvasState(paintCanvas);
@@ -660,6 +698,195 @@ function initializeUI() {
 }
 
 /**
+ * Setup MIDI Devices Modal
+ */
+function setupMidiDevicesModal() {
+  const midiStatus = document.getElementById('midi-status');
+  const backdrop = document.getElementById('midi-devices-backdrop');
+  const closeBtn = document.getElementById('close-midi-devices-btn');
+
+  // Open modal when clicking MIDI status
+  if (midiStatus) {
+    midiStatus.addEventListener('click', () => {
+      openMidiDevicesModal();
+    });
+
+    // Hover effect
+    midiStatus.addEventListener('mouseenter', () => {
+      midiStatus.style.background = '#e9ecef';
+    });
+
+    midiStatus.addEventListener('mouseleave', () => {
+      midiStatus.style.background = '#f8f9fa';
+    });
+  }
+
+  // Close modal
+  if (closeBtn) {
+    closeBtn.addEventListener('click', closeMidiDevicesModal);
+  }
+
+  if (backdrop) {
+    backdrop.addEventListener('click', (e) => {
+      if (e.target === backdrop) {
+        closeMidiDevicesModal();
+      }
+    });
+  }
+}
+
+/**
+ * Open MIDI devices modal
+ */
+function openMidiDevicesModal() {
+  const backdrop = document.getElementById('midi-devices-backdrop');
+  const devicesList = document.getElementById('midi-devices-list');
+
+  if (!backdrop || !devicesList) return;
+
+  // Populate devices list - prefer direct midiManager access
+  const devices = midiManager?.connectedDevices || window.midiDevicesList || [];
+  console.log('🎹 Opening MIDI devices modal, found devices:', devices);
+
+  if (devices.length === 0) {
+    devicesList.innerHTML = `
+      <div style="text-align: center; padding: 20px; opacity: 0.7;">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-bottom: 12px; opacity: 0.5;">
+          <path d="M6 9H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2h-2"/>
+          <path d="M6 9V21"/>
+          <path d="M18 9V21"/>
+        </svg>
+        <div style="font-size: 14px;">No MIDI devices connected</div>
+      </div>
+    `;
+  } else {
+    devicesList.innerHTML = devices.map((device, index) => `
+      <div style="
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: ${index < devices.length - 1 ? '12px' : '0'};
+        border: 1px solid rgba(255, 255, 255, 0.2);
+      ">
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M6 9H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2h-2"/>
+            <path d="M6 9V21"/>
+            <path d="M18 9V21"/>
+          </svg>
+          <div style="font-weight: bold; font-size: 14px;">${device.name}</div>
+        </div>
+        <div style="font-size: 12px; opacity: 0.8; display: flex; flex-direction: column; gap: 4px; margin-left: 28px;">
+          <div>Manufacturer: ${device.manufacturer}</div>
+          <div>State: ${device.state === 'connected' ? '✓ Connected' : device.state}</div>
+          <div style="font-size: 11px; opacity: 0.6; margin-top: 4px;">ID: ${device.id}</div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  backdrop.style.display = 'flex';
+}
+
+/**
+ * Close MIDI devices modal
+ */
+function closeMidiDevicesModal() {
+  const backdrop = document.getElementById('midi-devices-backdrop');
+  if (backdrop) {
+    backdrop.style.display = 'none';
+  }
+}
+
+/**
+ * Setup Video Recorder UI
+ */
+function setupVideoRecorderUI() {
+  const recordBtn = document.getElementById('video-record-btn');
+  const recordIcon = document.getElementById('video-record-icon');
+  const recordText = document.getElementById('video-record-text');
+  const recordingStatus = document.getElementById('video-recording-status');
+  const qualitySelect = document.getElementById('video-quality');
+
+  // Check if recording is supported
+  if (!VideoRecorder.isSupported()) {
+    if (recordBtn) {
+      recordBtn.disabled = true;
+      recordBtn.style.opacity = '0.5';
+      recordBtn.style.cursor = 'not-allowed';
+      recordText.textContent = 'Not Supported';
+    }
+    console.warn('⚠️ Video recording not supported in this browser');
+    return;
+  }
+
+  // Quality selector
+  if (qualitySelect) {
+    qualitySelect.addEventListener('change', (e) => {
+      videoRecorder.setQuality(e.target.value);
+    });
+  }
+
+  // Record button
+  if (recordBtn) {
+    recordBtn.addEventListener('click', () => {
+      if (!videoRecorder.isRecording) {
+        // Start recording
+        videoRecorder.startRecording().then(success => {
+          if (success) {
+            updateVideoRecordingUI(true);
+          }
+        });
+      } else {
+        // Stop recording
+        videoRecorder.stopRecording();
+        updateVideoRecordingUI(false);
+      }
+    });
+  }
+}
+
+/**
+ * Update video recording UI state
+ */
+function updateVideoRecordingUI(isRecording) {
+  const recordBtn = document.getElementById('video-record-btn');
+  const recordIcon = document.getElementById('video-record-icon');
+  const recordText = document.getElementById('video-record-text');
+  const recordingStatus = document.getElementById('video-recording-status');
+
+  if (isRecording) {
+    // Recording state
+    if (recordBtn) {
+      recordBtn.style.background = '#7f1d1d';
+    }
+    if (recordIcon) {
+      recordIcon.textContent = '■';
+    }
+    if (recordText) {
+      recordText.textContent = 'Stop Recording';
+    }
+    if (recordingStatus) {
+      recordingStatus.style.display = 'block';
+    }
+  } else {
+    // Stopped state
+    if (recordBtn) {
+      recordBtn.style.background = '#dc2626';
+    }
+    if (recordIcon) {
+      recordIcon.textContent = '●';
+    }
+    if (recordText) {
+      recordText.textContent = 'Start Recording';
+    }
+    if (recordingStatus) {
+      recordingStatus.style.display = 'none';
+    }
+  }
+}
+
+/**
  * Draw scrollbar for timeline mode
  */
 function drawTimelineScrollbar(displayWidth, displayHeight, offsetX) {
@@ -855,11 +1082,14 @@ window.keyPressed = function() {
     return false;
   }
 
-  // ESC - close shortcuts panel (always allow this)
+  // ESC - close modals and panels (always allow this)
   if (keyCode === 27) { // ESC key
+    // Close shortcuts panel
     if (window.hideShortcutsPanel) {
       window.hideShortcutsPanel();
     }
+    // Close MIDI devices modal
+    closeMidiDevicesModal();
     return false;
   }
 
@@ -868,8 +1098,25 @@ window.keyPressed = function() {
     return true; // Allow default behavior (typing in inputs)
   }
 
-  // Space - clear canvas
+  // Space - toggle video recording
   if (key === ' ') {
+    if (!videoRecorder.isRecording) {
+      // Start recording
+      videoRecorder.startRecording().then(success => {
+        if (success) {
+          updateVideoRecordingUI(true);
+        }
+      });
+    } else {
+      // Stop recording
+      videoRecorder.stopRecording();
+      updateVideoRecordingUI(false);
+    }
+    return false;
+  }
+
+  // Backspace - clear canvas
+  if (keyCode === BACKSPACE) {
     // Ask for confirmation before clearing
     if (!confirm('Clear the entire canvas? This cannot be undone.')) {
       return false;
@@ -965,8 +1212,19 @@ window.windowResized = function() {
  * Handle MIDI note painting
  * Called by MidiManager when a note is played
  */
-function handlePaint(note, velocity) {
-  console.log(`🎵 Paint: Note ${note}, Vel ${velocity.toFixed(2)}`);
+function handlePaint(note, velocity, deviceId) {
+  // Check if this device+note combination is mapped to a drum
+  const drumId = findDrumByMidiNote(note, deviceId, drumSettings);
+
+  if (!drumId) {
+    // No mapping found - don't paint
+    const device = midiManager.connectedDevices.find(d => d.id === deviceId);
+    const deviceName = device ? device.name : deviceId;
+    console.log(`⚠️ Unmapped MIDI: Note ${note} from ${deviceName} - not painting`);
+    return;
+  }
+
+  console.log(`🎵 Paint: Note ${note} (${drumId}), Vel ${velocity.toFixed(2)}`);
 
   // Flash MIDI activity indicator
   const activityLight = document.getElementById('midi-activity-light');
@@ -983,7 +1241,8 @@ function handlePaint(note, velocity) {
     drumSettings,
     globalSizeMultiplier,
     particles,
-    strokeCount
+    strokeCount,
+    midiDeviceId: deviceId  // Add device ID to context
   };
 
   // Add currentBgColor to context

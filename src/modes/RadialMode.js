@@ -31,10 +31,12 @@ export class RadialMode extends ModeBase {
   }
 
   paint(note, velocity, context) {
-    const { paintCanvas, drumSettings, globalSizeMultiplier, particles } = context;
+    const { paintCanvas, drumSettings, globalSizeMultiplier, particles, midiDeviceId } = context;
 
     // Get drum settings
-    const drumId = findDrumByMidiNote(note, drumSettings);
+    const drumId = findDrumByMidiNote(note, midiDeviceId, drumSettings);
+    if (!drumId) return; // Safety check - should never happen due to handlePaint check
+
     const settings = drumSettings[drumId];
 
     // Apply scaling curves
@@ -44,14 +46,16 @@ export class RadialMode extends ModeBase {
     // Random starting angle and radius
     let angle = random(TWO_PI / SYMMETRY_ORDER);
     let radius = random(SYMMETRY_RADIUS_MIN, SYMMETRY_RADIUS_MAX);
-    let size = (this.baseSize + scaledVelSize * this.velocityMult) * globalSizeMultiplier * getDrumSize(note, drumSettings);
+    let size = (this.baseSize + scaledVelSize * this.velocityMult) * globalSizeMultiplier * getDrumSize(note, midiDeviceId, drumSettings);
 
     // Get visual properties
-    let col = getDrumColor(note, scaledVelOpacity, drumSettings);
-    let shape = getDrumShape(note, drumSettings);
-    let opacityMult = getDrumOpacity(note, drumSettings);
-    let stroke = getDrumStroke(note, drumSettings);
-    let rotation = getDrumRotation(note, drumSettings);
+    let col = getDrumColor(note, midiDeviceId, scaledVelOpacity, drumSettings);
+    if (!col) return; // Safety check - should not happen but handle gracefully
+
+    let shape = getDrumShape(note, midiDeviceId, drumSettings);
+    let opacityMult = getDrumOpacity(note, midiDeviceId, drumSettings);
+    let stroke = getDrumStroke(note, midiDeviceId, drumSettings);
+    let rotation = getDrumRotation(note, midiDeviceId, drumSettings);
 
     paintCanvas.push();
 
