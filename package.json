@@ -4,10 +4,22 @@
   "description": "Paint pointillistic art with MIDI drum triggers - Modular ES6 version",
   "type": "module",
   "scripts": {
-    "dev": "python -m http.server 8080",
-    "start": "python -m http.server 8080"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "serve": "python -m http.server 8080"
   },
-  "keywords": ["midi", "drums", "p5js", "art", "generative"],
+  "keywords": [
+    "midi",
+    "drums",
+    "p5js",
+    "art",
+    "generative"
+  ],
   "author": "",
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "terser": "^5.24.0",
+    "vite": "^7.2.2"
+  }
 }

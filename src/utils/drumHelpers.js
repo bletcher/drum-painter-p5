@@ -14,14 +14,10 @@ import { applyScalingCurve } from './scaling.js';
  * @returns {string|null} - Drum ID or null if not found
  */
 export function findDrumByMidiNote(midiNote, deviceId, drumSettings) {
-  console.log(`🔍 Looking for: Note ${midiNote} from device ${deviceId}`);
-
   // First try to find exact device+note match
   for (let drumId in drumSettings) {
     const drum = drumSettings[drumId];
-    console.log(`  Checking ${drumId}: midiNote=${drum.midiNote}, midiDevice=${drum.midiDevice}`);
     if (drum.midiNote === midiNote && drum.midiDevice === deviceId) {
-      console.log(`  ✓ Exact match found: ${drumId}`);
       return drumId;
     }
   }
@@ -31,12 +27,10 @@ export function findDrumByMidiNote(midiNote, deviceId, drumSettings) {
   for (let drumId in drumSettings) {
     const drum = drumSettings[drumId];
     if (drum.midiNote === midiNote && !drum.midiDevice) {
-      console.log(`  ✓ "Any device" match found: ${drumId}`);
       return drumId;
     }
   }
 
-  console.log(`  ✗ No match found`);
   return null;
 }
 

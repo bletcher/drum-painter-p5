@@ -12,6 +12,7 @@ import { GravityMode } from './modes/GravityMode.js';
 import { OrganicMode } from './modes/OrganicMode.js';
 import { DendriticMode } from './modes/DendriticMode.js';
 import { LightningMode } from './modes/LightningMode.js';
+import { SpiralMode } from './modes/SpiralMode.js';
 import { TimelineMode } from './modes/TimelineMode.js';
 import { MidiManager } from './midi/MidiManager.js';
 import { StateManager } from './state/StateManager.js';
@@ -57,6 +58,7 @@ let controlsEl;
 
 // Initialize paint modes
 const timelineMode = new TimelineMode(DRUM_KIT_CONFIG);
+const spiralMode = new SpiralMode();
 const modes = [
   new ClassicMode(),
   new FibonacciMode(),
@@ -65,6 +67,7 @@ const modes = [
   new OrganicMode(),
   new DendriticMode(),
   new LightningMode(),
+  spiralMode,
   timelineMode
 ];
 
@@ -262,6 +265,35 @@ function initializeUI() {
     });
   }
 
+  // Spiral controls
+  const spiralTightnessSlider = document.getElementById('spiral-tightness');
+  const spiralTightnessDisplay = document.getElementById('spiral-tightness-display');
+  if (spiralTightnessSlider && spiralTightnessDisplay) {
+    spiralTightnessSlider.addEventListener('input', (e) => {
+      const value = parseInt(e.target.value);
+      spiralTightnessDisplay.textContent = value;
+      spiralMode.setParameters({ tightness: value });
+    });
+  }
+
+  const spiralSpeedSlider = document.getElementById('spiral-speed');
+  const spiralSpeedDisplay = document.getElementById('spiral-speed-display');
+  if (spiralSpeedSlider && spiralSpeedDisplay) {
+    spiralSpeedSlider.addEventListener('input', (e) => {
+      const value = parseFloat(e.target.value);
+      spiralSpeedDisplay.textContent = value;
+      spiralMode.setParameters({ rotationsPerMinute: value });
+    });
+  }
+
+  const spiralResetBtn = document.getElementById('spiral-reset-btn');
+  if (spiralResetBtn) {
+    spiralResetBtn.addEventListener('click', () => {
+      spiralMode.reset();
+      notificationSystem.show('Spiral Reset');
+    });
+  }
+
   // Customize button
   const customizeBtn = document.getElementById('customize-btn');
   if (customizeBtn) {
@@ -275,6 +307,16 @@ function initializeUI() {
   if (midiMappingBtn) {
     midiMappingBtn.addEventListener('click', () => {
       midiMappingPanel.toggle();
+    });
+  }
+
+  // User Guide button
+  const userGuideBtn = document.getElementById('user-guide-btn');
+  if (userGuideBtn) {
+    userGuideBtn.addEventListener('click', () => {
+      if (window.toggleUserGuide) {
+        window.toggleUserGuide();
+      }
     });
   }
 
@@ -504,6 +546,74 @@ function initializeUI() {
   // Expose toggle function globally for keyboard handler
   window.toggleShortcutsPanel = toggleShortcutsPanel;
   window.hideShortcutsPanel = hideShortcutsPanel;
+
+  // User Guide Panel
+  const userGuidePanel = document.getElementById('user-guide-panel');
+  const userGuideBackdrop = document.getElementById('user-guide-backdrop');
+  const closeUserGuideBtn = document.getElementById('close-user-guide-btn');
+
+  function toggleUserGuide() {
+    const isVisible = userGuideBackdrop.style.display === 'flex';
+    userGuideBackdrop.style.display = isVisible ? 'none' : 'flex';
+  }
+
+  function hideUserGuide() {
+    userGuideBackdrop.style.display = 'none';
+  }
+
+  if (closeUserGuideBtn) {
+    closeUserGuideBtn.addEventListener('click', hideUserGuide);
+  }
+
+  if (userGuideBackdrop) {
+    userGuideBackdrop.addEventListener('click', hideUserGuide);
+  }
+
+  // Prevent clicks on the panel from closing it (stop propagation to backdrop)
+  if (userGuidePanel) {
+    userGuidePanel.addEventListener('click', (e) => {
+      e.stopPropagation();
+    });
+
+    // Prevent scroll events from affecting the canvas
+    userGuidePanel.addEventListener('wheel', (e) => {
+      e.stopPropagation();
+    }, { passive: false });
+  }
+
+  // User guide tabs
+  const guideTabs = document.querySelectorAll('.guide-level-tab');
+  const guideContents = document.querySelectorAll('.guide-content');
+
+  guideTabs.forEach(tab => {
+    tab.addEventListener('click', (e) => {
+      e.stopPropagation(); // Prevent closing the guide
+      const targetLevel = tab.dataset.level;
+
+      // Update active tab styling (directly manipulate inline styles)
+      guideTabs.forEach(t => {
+        t.style.background = 'transparent';
+        t.style.color = '#666';
+        t.style.borderBottom = '3px solid transparent';
+      });
+      tab.style.background = '#667eea';
+      tab.style.color = 'white';
+      tab.style.borderBottom = '3px solid #667eea';
+
+      // Show corresponding content (use display property)
+      guideContents.forEach(content => {
+        if (content.id === `guide-${targetLevel}`) {
+          content.style.display = 'block';
+        } else {
+          content.style.display = 'none';
+        }
+      });
+    });
+  });
+
+  // Expose toggle function globally for keyboard handler
+  window.toggleUserGuide = toggleUserGuide;
+  window.hideUserGuide = hideUserGuide;
 
   // Projects System
   const projectNameInput = document.getElementById('project-name-input');
@@ -1082,8 +1192,20 @@ window.keyPressed = function() {
     return false;
   }
 
+  // U - show user guide (always allow this)
+  if (key === 'u' || key === 'U') {
+    if (window.toggleUserGuide) {
+      window.toggleUserGuide();
+    }
+    return false;
+  }
+
   // ESC - close modals and panels (always allow this)
   if (keyCode === 27) { // ESC key
+    // Close user guide
+    if (window.hideUserGuide) {
+      window.hideUserGuide();
+    }
     // Close shortcuts panel
     if (window.hideShortcutsPanel) {
       window.hideShortcutsPanel();
@@ -1351,8 +1473,14 @@ function switchMode(newMode) {
   // Deactivate old mode
   modes[currentMode].onDeactivate({ paintCanvas });
 
-  // Hide timeline controls if leaving timeline mode
+  // Hide mode-specific controls when leaving
   if (currentMode === 7) {
+    // Leaving Spiral mode
+    const spiralControls = document.getElementById('spiral-controls');
+    if (spiralControls) spiralControls.style.display = 'none';
+  }
+  if (currentMode === 8) {
+    // Leaving Timeline mode
     timelineControls.hide();
   }
 
@@ -1363,8 +1491,13 @@ function switchMode(newMode) {
   // Activate new mode
   modes[currentMode].onActivate({ paintCanvas });
 
-  // Show timeline controls if entering timeline mode
+  // Show mode-specific controls when entering
   if (currentMode === 7) {
+    // Entering Spiral mode
+    const spiralControls = document.getElementById('spiral-controls');
+    if (spiralControls) spiralControls.style.display = 'block';
+  } else if (currentMode === 8) {
+    // Entering Timeline mode
     timelineControls.show();
     timelineScrollY = 0; // Reset scroll position
     isDraggingScrollbar = false; // Reset scrollbar state
@@ -1483,11 +1616,17 @@ function isMouseOverPanel() {
     document.getElementById('drum-settings'),
     document.getElementById('customization-panel'),
     document.getElementById('midi-mapping-panel'),
-    document.getElementById('shortcuts-panel')
+    document.getElementById('shortcuts-panel'),
+    document.getElementById('shortcuts-backdrop'),
+    document.getElementById('user-guide-panel'),
+    document.getElementById('user-guide-backdrop')
   ];
 
   for (const panel of panels) {
     if (!panel) continue;
+    // Skip if element is not visible
+    if (panel.style.display === 'none' || panel.style.display === '') continue;
+
     const rect = panel.getBoundingClientRect();
     if (mouseX >= rect.left && mouseX <= rect.right &&
         mouseY >= rect.top && mouseY <= rect.bottom) {

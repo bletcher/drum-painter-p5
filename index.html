@@ -201,14 +201,15 @@
           font-size: 11px;
           background: white;
         ">
-          <option value="0">Classic Pointillism</option>
-          <option value="1">Fibonacci Spiral</option>
-          <option value="2">Radial Symmetry</option>
-          <option value="3">Gravity Field</option>
-          <option value="4">Organic Growth</option>
-          <option value="5">Dendritic Spreading</option>
-          <option value="6">Lightning</option>
-          <option value="7">Timeline</option>
+          <option value="0">Classic Pointillism — Random dots across canvas</option>
+          <option value="1">Fibonacci Spiral — Golden ratio spiral pattern</option>
+          <option value="2">Radial Symmetry — Mirror around center point</option>
+          <option value="3">Gravity Field — Dots fall with physics</option>
+          <option value="4">Organic Growth — Natural branching patterns</option>
+          <option value="5">Dendritic Spreading — Tree-like neural growth</option>
+          <option value="6">Lightning — Electric branching bolts</option>
+          <option value="7">Spiral Chronicle — Time flows outward in spiral</option>
+          <option value="8">Timeline — Musical staff notation recording</option>
         </select>
       </div>
     </div>
@@ -225,12 +226,12 @@
         font-size: 11px;
         background: white;
       ">
-        <option value="0">Normal</option>
-        <option value="1">Multiply</option>
-        <option value="2">Screen</option>
-        <option value="3">Overlay</option>
-        <option value="4">Dodge</option>
-        <option value="5">Burn</option>
+        <option value="0">Normal — Standard opaque painting</option>
+        <option value="1">Multiply — Darkens, like ink layers</option>
+        <option value="2">Screen — Lightens, adds brightness</option>
+        <option value="3">Overlay — Contrast boost, vivid colors</option>
+        <option value="4">Dodge — Brighten highlights, glowing effect</option>
+        <option value="5">Burn — Deepen shadows, darkens</option>
       </select>
       </div>
     </div>
@@ -373,6 +374,38 @@
           </label>
         </div>
     </div>
+
+    <!-- Spiral Settings (shown only in spiral mode) -->
+    <div id="spiral-controls" style="display: none; margin-top: 10px; border-top: 1px solid #ddd; padding-top: 10px;">
+      <strong>Spiral Settings:</strong><br>
+      <div style="margin-top: 8px; font-size: 11px;">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
+          <label style="min-width: 70px;">Tightness:</label>
+          <input type="range" id="spiral-tightness" value="15" min="5" max="40" step="1"
+            style="flex: 1; cursor: pointer;">
+          <span id="spiral-tightness-display" style="min-width: 30px; text-align: right;">15</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
+          <label style="min-width: 70px;">Speed:</label>
+          <input type="range" id="spiral-speed" value="4" min="1" max="12" step="0.5"
+            style="flex: 1; cursor: pointer;">
+          <span id="spiral-speed-display" style="min-width: 30px; text-align: right;">4</span>
+        </div>
+        <div style="margin-top: 8px;">
+          <button id="spiral-reset-btn" style="
+            width: 100%;
+            padding: 6px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+            cursor: pointer;
+          ">↻ Reset Spiral</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- Active Drum Indicator (Bank Mode) -->
@@ -471,6 +504,31 @@
         <path d="M8 12v4M12 12v4M16 12v4"/>
       </svg>
       MIDI Mapping
+    </button>
+
+    <!-- User Guide Button -->
+    <button id="user-guide-btn" data-tooltip="Open comprehensive 3-level user guide (Press U)" style="
+      width: 100%;
+      padding: 10px;
+      background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+      color: white;
+      border: none;
+      border-radius: 5px;
+      font-weight: bold;
+      cursor: pointer;
+      font-size: 13px;
+      margin-top: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    ">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"/>
+        <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+        <line x1="12" y1="17" x2="12.01" y2="17"/>
+      </svg>
+      User Guide
     </button>
 
     <!-- Projects Section -->
@@ -1082,6 +1140,10 @@
             <span style="font-size: 13px;">Show this help</span>
             <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">?</kbd>
           </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
+            <span style="font-size: 13px;">Show user guide</span>
+            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">U</kbd>
+          </div>
         </div>
       </div>
 
@@ -1141,6 +1203,304 @@
 
       <div style="text-align: center; padding-top: 16px; border-top: 1px solid #e9ecef; color: #666; font-size: 12px;">
         Press <kbd style="background: white; padding: 2px 6px; border-radius: 3px; font-family: monospace; font-size: 11px; border: 1px solid #ddd;">?</kbd> or <kbd style="background: white; padding: 2px 6px; border-radius: 3px; font-family: monospace; font-size: 11px; border: 1px solid #ddd;">ESC</kbd> to close
+      </div>
+    </div>
+  </div>
+
+  <!-- User Guide Panel -->
+  <div id="user-guide-backdrop" style="
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(4px);
+    z-index: 10000;
+    align-items: center;
+    justify-content: center;
+  ">
+    <div id="user-guide-panel" style="
+      background: white;
+      border-radius: 12px;
+      max-width: 800px;
+      max-height: 85vh;
+      overflow-y: auto;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      margin: 20px;
+    ">
+      <!-- Header -->
+      <div style="
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 20px;
+        border-radius: 12px 12px 0 0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      ">
+        <h2 style="margin: 0; display: flex; align-items: center; gap: 12px; font-size: 22px;">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+            <line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+          User Guide
+        </h2>
+        <button id="close-user-guide-btn" style="
+          background: rgba(255, 255, 255, 0.2);
+          border: none;
+          border-radius: 50%;
+          color: white;
+          width: 36px;
+          height: 36px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          transition: background 0.2s;
+        ">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Content -->
+      <div style="padding: 24px;">
+        <!-- Level Selector Tabs -->
+        <div style="display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 2px solid #e0e0e0;">
+          <button class="guide-level-tab" data-level="overview" style="
+            flex: 1;
+            padding: 12px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-bottom: 3px solid #667eea;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 14px;
+            transition: all 0.2s;
+          ">Quick Start</button>
+          <button class="guide-level-tab" data-level="detailed" style="
+            flex: 1;
+            padding: 12px;
+            background: transparent;
+            color: #666;
+            border: none;
+            border-bottom: 3px solid transparent;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 14px;
+            transition: all 0.2s;
+          ">Full Guide</button>
+          <button class="guide-level-tab" data-level="power" style="
+            flex: 1;
+            padding: 12px;
+            background: transparent;
+            color: #666;
+            border: none;
+            border-bottom: 3px solid transparent;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 14px;
+            transition: all 0.2s;
+          ">Power User</button>
+        </div>
+
+        <!-- Overview Level -->
+        <div id="guide-overview" class="guide-content" style="display: block;">
+          <h3 style="color: #667eea; margin-top: 0;">🚀 Quick Start Guide</h3>
+
+          <div style="background: #f0f7ff; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #667eea;">
+            <strong style="color: #667eea;">Drum Painter</strong> turns your MIDI drums into a generative art tool. Paint visual patterns by playing your drums!
+          </div>
+
+          <h4 style="color: #333; margin-top: 20px;">1️⃣ Connect Your MIDI Device</h4>
+          <ul style="line-height: 1.8; color: #444;">
+            <li>Plug in your MIDI drums/controller via USB</li>
+            <li>Click <strong>"Allow"</strong> when browser asks for MIDI permission</li>
+            <li>Check MIDI status indicator in Quick Settings panel shows connected</li>
+          </ul>
+
+          <h4 style="color: #333; margin-top: 20px;">2️⃣ Map Your Drums</h4>
+          <ul style="line-height: 1.8; color: #444;">
+            <li>Click <strong style="color: #667eea;">Customize Drums</strong> button</li>
+            <li>Click the <strong>🎛 Learn</strong> button next to a drum</li>
+            <li>Hit that drum pad on your controller</li>
+            <li>Repeat for all drums you want to use</li>
+          </ul>
+
+          <h4 style="color: #333; margin-top: 20px;">3️⃣ Start Playing!</h4>
+          <ul style="line-height: 1.8; color: #444;">
+            <li><strong>Play your drums</strong> - each hit paints on the canvas</li>
+            <li><strong>Try different paint modes</strong> (dropdown at top)</li>
+            <li><strong>Press SPACE</strong> to start/stop video recording</li>
+            <li><strong>Press S</strong> to save an image</li>
+            <li><strong>Press BACKSPACE</strong> to clear and start fresh</li>
+          </ul>
+
+          <div style="background: #fff3cd; padding: 12px; border-radius: 6px; margin-top: 20px; font-size: 13px;">
+            <strong>💡 Tip:</strong> Start with <em>Classic Pointillism</em> mode and experiment with blend modes to see beautiful color interactions!
+          </div>
+        </div>
+
+        <!-- Detailed Level -->
+        <div id="guide-detailed" class="guide-content" style="display: none;">
+          <h3 style="color: #667eea; margin-top: 0;">📖 Complete User Guide</h3>
+
+          <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px;">MIDI Setup</h4>
+          <p style="color: #444; line-height: 1.7;">
+            <strong>Direct Mode:</strong> Each drum is mapped to a specific MIDI note and device. Hit a pad → paint appears.<br>
+            <strong>Bank Mode:</strong> Hit pads to select which drum, use faders to control that drum's parameters (Alesis workflow).
+          </p>
+          <p style="color: #444; line-height: 1.7;">
+            To switch modes, click <strong>MIDI Mapping</strong> and choose your control mode at the top.
+          </p>
+
+          <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Paint Modes</h4>
+          <ul style="line-height: 1.8; color: #444;">
+            <li><strong>Classic Pointillism:</strong> Random placement, pointillist style</li>
+            <li><strong>Fibonacci Spiral:</strong> Golden ratio spiral emanating from center</li>
+            <li><strong>Radial Symmetry:</strong> Mirrored radial patterns</li>
+            <li><strong>Gravity Field:</strong> Dots fall with physics simulation</li>
+            <li><strong>Organic Growth:</strong> Natural branching, vine-like patterns</li>
+            <li><strong>Dendritic Spreading:</strong> Neural network, tree-like growth</li>
+            <li><strong>Lightning:</strong> Electric branching bolts</li>
+            <li><strong>Spiral Chronicle:</strong> Time flows outward in expanding spiral, each drum at fixed angle</li>
+            <li><strong>Timeline:</strong> Musical staff notation with tempo sync and grid</li>
+          </ul>
+
+          <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Blend Modes</h4>
+          <p style="color: #444; line-height: 1.7;">
+            Control how new paint combines with existing layers:
+          </p>
+          <ul style="line-height: 1.8; color: #444;">
+            <li><strong>Normal:</strong> Standard opaque painting</li>
+            <li><strong>Multiply:</strong> Darkens, like overlapping ink</li>
+            <li><strong>Screen:</strong> Lightens, additive brightness</li>
+            <li><strong>Overlay:</strong> Boosts contrast, vivid results</li>
+            <li><strong>Dodge:</strong> Brightens highlights, glowing effect</li>
+            <li><strong>Burn:</strong> Deepens shadows, dramatic darkening</li>
+          </ul>
+
+          <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Drum Customization</h4>
+          <p style="color: #444; line-height: 1.7;">
+            Click <strong>Customize Drums</strong> to access per-drum settings:
+          </p>
+          <ul style="line-height: 1.8; color: #444;">
+            <li><strong>Color:</strong> Base color for this drum</li>
+            <li><strong>Size:</strong> Size multiplier (0.3x to 3.0x)</li>
+            <li><strong>Opacity:</strong> Transparency (10% to 100%)</li>
+            <li><strong>Shape:</strong> Circle, square, triangle, or custom shapes</li>
+            <li><strong>Hue Variation:</strong> Random color shift for organic feel</li>
+            <li><strong>Rotation:</strong> Angle of shapes (0-360°)</li>
+            <li><strong>Stroke:</strong> Add outline with custom weight and color</li>
+          </ul>
+
+          <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Recording & Export</h4>
+          <ul style="line-height: 1.8; color: #444;">
+            <li><strong>Video Recording:</strong> Press SPACE or click recording button. Choose quality first. Saves as .webm</li>
+            <li><strong>Image Save:</strong> Press S to save current canvas as PNG</li>
+            <li><strong>Timeline Recording:</strong> Use Timeline mode with Start button. Syncs to BPM with optional auto-record</li>
+          </ul>
+
+          <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Projects</h4>
+          <p style="color: #444; line-height: 1.7;">
+            Save complete configurations including drum settings, mappings, and visual preferences. Name your project, click Save, then load it anytime from the dropdown.
+          </p>
+        </div>
+
+        <!-- Power User Level -->
+        <div id="guide-power" class="guide-content" style="display: none;">
+          <h3 style="color: #667eea; margin-top: 0;">⚡ Power User Guide</h3>
+
+          <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px;">Device-Specific MIDI Mapping</h4>
+          <p style="color: #444; line-height: 1.7; font-size: 14px;">
+            Each drum can be mapped to a specific <strong>MIDI note + device combination</strong>. This prevents conflicts when multiple MIDI controllers send the same note numbers.
+          </p>
+          <ul style="line-height: 1.8; color: #444; font-size: 14px;">
+            <li><strong>Exact Match:</strong> Drum only triggers from specific device + note</li>
+            <li><strong>"Any Device" Mode:</strong> Clear device mapping to allow any source</li>
+            <li><strong>Bank Mode Device Isolation:</strong> Pad and fader assignments are device-specific</li>
+          </ul>
+
+          <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Velocity Scaling Curves</h4>
+          <p style="color: #444; line-height: 1.7; font-size: 14px;">
+            Apply non-linear curves to how velocity affects size and opacity:
+          </p>
+          <ul style="line-height: 1.8; color: #444; font-size: 14px;">
+            <li><strong>Linear:</strong> Direct 1:1 response</li>
+            <li><strong>Exponential:</strong> Soft hits very small, hard hits huge (dynamic range)</li>
+            <li><strong>Logarithmic:</strong> More gradual change, easier to control</li>
+            <li><strong>S-Curve:</strong> Smooth acceleration, best for musical expression</li>
+          </ul>
+
+          <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">MIDI CC Live Control</h4>
+          <p style="color: #444; line-height: 1.7; font-size: 14px;">
+            Map MIDI faders/knobs to control parameters in real-time:
+          </p>
+          <ul style="line-height: 1.8; color: #444; font-size: 14px;">
+            <li><strong>Per-Drum Mapping (Direct Mode):</strong> Each drum can have independent CC controls for size, opacity, hue, rotation, stroke</li>
+            <li><strong>Global Mapping (Bank Mode):</strong> Faders control the currently selected drum's parameters</li>
+            <li><strong>Auto-Calibration:</strong> Move controller through full range during 3-second learn period for accurate min/max detection</li>
+            <li><strong>Pitch Bend Support:</strong> Pitch wheel mapped as pseudo-CC (1001-1016 for channels 1-16)</li>
+          </ul>
+
+          <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Timeline Mode Advanced</h4>
+          <ul style="line-height: 1.8; color: #444; font-size: 14px;">
+            <li><strong>BPM Sync:</strong> Grid aligns to beats per minute (40-240 BPM)</li>
+            <li><strong>Time Signatures:</strong> Support for 2/4 through 12/4</li>
+            <li><strong>Subdivisions:</strong> Quarter notes, eighth notes, triplets, sixteenths</li>
+            <li><strong>MIDI Latency Compensation:</strong> Adjust 0-200ms to align visual to audio</li>
+            <li><strong>Metronome:</strong> Audio click track with measure emphasis</li>
+            <li><strong>Auto-Record Toggle:</strong> Start timeline without recording to practice</li>
+            <li><strong>Grid Toggle:</strong> Hide/show staff lines</li>
+            <li><strong>Row Spacing:</strong> Adjust vertical spacing between drum lanes (0-50px)</li>
+          </ul>
+
+          <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Spiral Mode Parameters</h4>
+          <ul style="line-height: 1.8; color: #444; font-size: 14px;">
+            <li><strong>Tightness (5-40):</strong> Space between spiral rotations in pixels</li>
+            <li><strong>Speed (1-12 RPM):</strong> How fast spiral rotates outward</li>
+            <li><strong>Angular Distribution:</strong> Drums distributed evenly around 360° (e.g., 4 drums = 90° apart)</li>
+            <li><strong>Organic Variation:</strong> ±10° angle, ±10% radius randomness</li>
+            <li><strong>Auto-Reset:</strong> Spiral restarts from center when reaching canvas edge</li>
+          </ul>
+
+          <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Keyboard Shortcuts Reference</h4>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 13px;">
+            <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">1-8</kbd> Switch paint modes</div>
+            <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">H</kbd> Hide/show UI</div>
+            <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">SPACE</kbd> Record video</div>
+            <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">BKSP</kbd> Clear canvas</div>
+            <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">S</kbd> Save image</div>
+            <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">D</kbd> Save settings</div>
+            <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">?</kbd> Keyboard shortcuts</div>
+            <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">U</kbd> User guide</div>
+          </div>
+
+          <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Data Persistence</h4>
+          <p style="color: #444; line-height: 1.7; font-size: 14px;">
+            All settings stored in browser localStorage:
+          </p>
+          <ul style="line-height: 1.8; color: #444; font-size: 14px;">
+            <li><strong>Default Settings:</strong> Auto-saved when you press D</li>
+            <li><strong>Named Projects:</strong> Save multiple configurations</li>
+            <li><strong>Bank Mode State:</strong> Pad/fader assignments persist</li>
+            <li><strong>Drum Kit Config:</strong> Custom drum additions persist</li>
+          </ul>
+
+          <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin-top: 24px; font-size: 13px;">
+            <strong>🔧 Pro Tip:</strong> Export your setup by saving settings as a project, then back up the localStorage data using browser DevTools (Application → Local Storage) for safekeeping.
+          </div>
+        </div>
+      </div>
+
+      <div style="text-align: center; padding: 16px; border-top: 1px solid #e0e0e0; color: #666; font-size: 12px;">
+        Press <kbd style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-family: monospace; font-size: 11px; border: 1px solid #ddd;">U</kbd> or <kbd style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-family: monospace; font-size: 11px; border: 1px solid #ddd;">ESC</kbd> to close
       </div>
     </div>
   </div>
@@ -1207,6 +1567,18 @@
       </div>
     </div>
   </div>
+
+  <!-- Version Info -->
+  <div style="
+    position: fixed;
+    bottom: 5px;
+    right: 5px;
+    font-size: 9px;
+    color: rgba(128, 128, 128, 0.4);
+    font-family: monospace;
+    pointer-events: none;
+    user-select: none;
+  ">v2.0.0</div>
 
   <script type="module" src="src/main.js"></script>
 </body>

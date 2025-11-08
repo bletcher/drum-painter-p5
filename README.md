@@ -1,251 +1,411 @@
-# Drum Painter - p5.js Version
+# Drum Painter v2.0
 
-Paint pointillistic art with your MIDI drum triggers in the browser!
+Create stunning generative art with your MIDI drums! A browser-based painting application where every drum hit becomes a visual element, powered by p5.js and the Web MIDI API.
 
-## Quick Start (VS Code + Claude Code)
+## Features
 
-### 1. Open in VS Code
-```bash
-# Open this folder in VS Code
-code .
-```
+- **8 Unique Paint Modes** - From classic pointillism to spiral chronicles
+- **Device-Specific MIDI Mapping** - Use multiple MIDI devices simultaneously
+- **Bank Mode** - Map global parameters to MIDI CC controls
+- **Timeline Mode** - Record and playback drum patterns with staff notation
+- **Video Recording** - Capture your creative sessions
+- **Velocity Curves** - Customize response to drum dynamics
+- **Project System** - Save and load complete setups
+- **Blend Modes** - Layer effects like multiply, screen, overlay
+- **Comprehensive Customization** - Color, size, shape, opacity per drum
 
-### 2. Install Live Server Extension
-1. In VS Code, click Extensions (⇧⌘X / Ctrl+Shift+X)
-2. Search for "Live Server" by Ritwick Dey
-3. Install it
+## Quick Start
 
-### 3. Launch the App
-1. Right-click on `index.html`
-2. Select "Open with Live Server"
-3. Browser opens automatically at http://localhost:5500
+### Development Mode
 
-### 4. Connect MIDI Drums
-1. Plug in your MIDI drum triggers
-2. Browser will ask for MIDI permission - click "Allow"
-3. Status in top-left should show "MIDI: Connected ✓"
-4. **Start drumming!**
+1. **Install dependencies:**
+   ```bash
+   npm install
+   ```
 
-## Testing Without MIDI
+2. **Run development server:**
+   ```bash
+   npm run dev
+   ```
+   Opens automatically at http://localhost:3000
 
-If you don't have drums connected:
-- Just click and drag in the browser to paint
-- This lets you test the visual styles before connecting MIDI
+3. **Connect MIDI drums:**
+   - Browser asks for MIDI permission - click "Allow"
+   - Status shows "MIDI: Connected ✓"
+   - Start drumming!
 
-## Controls
+### Testing Without MIDI
 
-| Key | Action |
-|-----|--------|
-| **SPACE** | Clear canvas and start fresh |
-| **S** | Save current painting as PNG |
-| **1-5** | Switch painting modes |
-| **H** | Hide/show UI overlay |
+Click and drag on the canvas to paint manually and explore visual styles before connecting drums.
 
-## The 5 Painting Modes
+### Production Build
 
-### 1. Classic Pointillism (Press 1)
-- Random placement across canvas
-- Different drums = different colors
-- Velocity controls size and opacity
+See [BUILD.md](BUILD.md) for complete production build and deployment instructions.
 
-### 2. Fibonacci Spiral (Press 2)
-- Dots arranged in golden ratio spiral
-- Builds outward from center
-- Creates natural-looking patterns
+## Paint Modes
 
-### 3. Radial Symmetry (Press 3)
-- 8-fold symmetrical patterns
-- Perfect for mandalas
-- Each hit creates 8 mirrored dots
+Access modes via dropdown or keyboard shortcuts (1-8):
 
-### 4. Gravity Field (Press 4)
-- Dots fall downward
-- Creates flowing, organic trails
-- Velocity controls trail length
+### 1. Classic Pointillism (Key: 1)
+Random placement across canvas. Each drum has unique color, size controlled by velocity.
 
-### 5. Organic Growth (Press 5)
-- Cluster-based growth around "seed" points
-- Seeds slowly migrate
-- Creates natural clustering
+### 2. Fibonacci Spiral (Key: 2)
+Dots arranged in golden ratio spiral, building outward from center.
 
-## Customization with Claude Code
+### 3. Radial Symmetry (Key: 3)
+8-fold symmetrical patterns - perfect for mandalas. Each hit creates 8 mirrored dots.
 
-This is where it gets fun! You can ask Claude Code to modify anything:
+### 4. Gravity Field (Key: 4)
+Dots fall downward creating flowing organic trails. Velocity controls trail length.
 
-### Example Requests:
+### 5. Organic Growth (Key: 5)
+Cluster-based growth around "seed" points. Seeds migrate slowly creating natural clustering.
 
-**"Make the kick drum create bigger dots"**
-```javascript
-// Claude will find and modify this line in paintClassic():
-let size = 10 + velocity * 30;  // ← Increase these numbers
-```
+### 6. Velocity Mandala (Key: 6)
+Symmetric patterns where velocity controls both size and radial position.
 
-**"Change snare color to blue"**
-```javascript
-// Claude will update getDrumColor():
-case MIDI_NOTES.SNARE:
-  return color(200, 40, 50);  // ← Change to color(40, 100, 200)
-```
+### 7. Spiral Chronicle (Key: 7)
+Time flows outward in a spiral from center. Each drum has a fixed angular position (like hours on a clock).
+- Adjustable tightness (5-40px)
+- Adjustable rotation speed (1-12 RPM)
+- Auto-resets when reaching canvas edge
 
-**"Add a new mode that creates triangles instead of circles"**
-```javascript
-// Claude will add a new paint function and update the mode list
-```
+### 8. Timeline Mode (Key: 8)
+Musical staff notation with real-time recording and playback.
+- Set BPM and subdivision (quarter, eighth, sixteenth notes)
+- Auto-record option
+- Start over or continue functionality
 
-**"Make dots fade over time instead of staying permanent"**
-```javascript
-// Claude will modify the Particle class or add time-based rendering
-```
+## MIDI Setup
 
-## File Structure
+### Direct Mode (Default)
+
+Map each drum to a MIDI note:
+
+1. Click "Customize Drums" panel
+2. Select a drum
+3. Click "Assign MIDI Note"
+4. Hit your drum pad
+5. Mapping confirmed!
+
+### Bank Mode (Advanced)
+
+Map pads to control global parameters and switch modes:
+
+1. Click "MIDI Mapping" panel
+2. Select "Bank Mode"
+3. Choose parameter (Size, Opacity, Blend Mode, etc.)
+4. Click "Assign" and hit pad
+
+**Pad Assignments:**
+- Trigger individual drums by assigned note
+- Change paint modes
+- Adjust global size
+
+**CC Assignments:**
+- Map MIDI CC knobs/sliders to parameters
+- Size, Opacity, Hue, Saturation, Lightness
+- Set min/max ranges for each control
+
+### Device-Specific Mapping
+
+Use multiple MIDI devices without conflicts:
+
+1. In "Customize Drums", mappings show device names
+2. Same MIDI note number can trigger different drums on different devices
+3. "Any Device" mappings work across all connected devices
+
+## Customization
+
+### Per-Drum Settings
+
+Click "Customize Drums" to adjust:
+
+- **Color** - HSL color picker or hex input
+- **Size Multiplier** - 0.1x to 5x
+- **Opacity** - 0% to 100%
+- **Shape** - Circle, Square, Triangle, Hexagon, Star, Cross, Ring
+- **Stroke** - None, Thin, Medium, Thick
+- **Rotation** - 0° to 360°
+
+### Velocity Curves
+
+Control how drum velocity affects visuals:
+
+- **Linear** - Direct 1:1 response
+- **Exponential** - Emphasizes harder hits
+- **Logarithmic** - Compresses dynamic range
+- **S-Curve** - Smooth acceleration
+- **Inverted** - Softer hits = larger/brighter
+
+Separate curves for:
+- Size scaling
+- Opacity scaling
+
+### Global Settings
+
+- **Global Size Multiplier** - Scale all dots (0.1x to 5x)
+- **Background Color** - Black, white, or custom
+- **Blend Mode** - 14 modes including Multiply, Screen, Overlay, Difference
+
+## Keyboard Shortcuts
+
+Press **?** to see all shortcuts, or **U** for the complete User Guide.
+
+### General
+- **SPACE** - Start/stop video recording
+- **BACKSPACE** - Clear canvas
+- **S** - Save image as PNG
+- **D** - Save settings to clipboard
+- **Z** - Undo last action
+- **Y** - Redo
+- **H** - Hide/show UI
+- **?** - Show keyboard shortcuts
+- **U** - Show user guide
+
+### Paint Modes
+- **1-8** - Switch between paint modes
+
+### Timeline Mode (when active)
+- **P** - Start/pause playback
+- **R** - Toggle recording
+- **C** - Clear timeline
+
+## Recording & Export
+
+### Video Recording
+
+1. Press **SPACE** to start recording
+2. Paint your session
+3. Press **SPACE** to stop
+4. Video downloads automatically as WebM
+
+### Save Image
+
+Press **S** to save current canvas as high-resolution PNG (1920x1080).
+
+### Undo/Redo
+
+- **Z** - Undo last paint action
+- **Y** - Redo
+- Up to 50 undo levels maintained
+
+## Projects
+
+### Save Project
+
+1. Enter project name
+2. Click "Save Project"
+3. Stores all settings, mappings, and mode configurations
+
+### Load Project
+
+1. Select from dropdown
+2. Click "Load Project"
+3. Everything restored exactly as saved
+
+### Delete Project
+
+Select project and click "Delete Project" to remove from storage.
+
+## Settings Import/Export
+
+### Export Settings
+
+1. Click "Export Settings"
+2. JSON copied to clipboard
+3. Share with others or back up
+
+### Import Settings
+
+1. Click "Import Settings"
+2. Select JSON file
+3. All customizations applied
+
+## Architecture
+
+### Modular ES6 Structure
 
 ```
 drum-painter-p5/
-├── index.html          # Main HTML page with UI
-├── sketch.js           # All the painting logic
-└── README.md          # This file
+├── index.html              # Main HTML + UI
+├── vite.config.js          # Build configuration
+├── package.json            # Dependencies
+├── src/
+│   ├── main.js            # Application entry point
+│   ├── config/
+│   │   ├── constants.js   # Global constants
+│   │   └── drumKit.js     # Default drum configurations
+│   ├── modes/
+│   │   ├── ModeBase.js    # Base class for paint modes
+│   │   ├── ClassicMode.js
+│   │   ├── FibonacciMode.js
+│   │   ├── RadialMode.js
+│   │   ├── GravityMode.js
+│   │   ├── OrganicMode.js
+│   │   ├── VelocityMandalaMode.js
+│   │   ├── SpiralMode.js
+│   │   └── TimelineMode.js
+│   ├── midi/
+│   │   └── MidiManager.js # MIDI input handling
+│   ├── state/
+│   │   ├── HistoryManager.js # Undo/redo system
+│   │   └── projects.js    # Project save/load
+│   ├── ui/
+│   │   ├── DrumCustomizationPanel.js
+│   │   ├── MidiMappingPanel.js
+│   │   ├── TimelineControls.js
+│   │   └── NotificationSystem.js
+│   ├── canvas/
+│   │   ├── DrawingUtils.js # Paint functions
+│   │   ├── Particle.js    # Particle effects
+│   │   └── VideoRecorder.js
+│   └── utils/
+│       ├── drumHelpers.js # MIDI note lookups
+│       ├── scaling.js     # Velocity curves
+│       └── colorHelpers.js # Color utilities
+└── dist/                  # Production build output
 ```
 
-Everything is in one JavaScript file for easy editing!
+### Key Technologies
 
-## How It Works
+- **p5.js** - Canvas rendering and creative coding framework
+- **Web MIDI API** - Real-time MIDI input from drum triggers
+- **MediaRecorder API** - Video capture of canvas
+- **localStorage** - Project and settings persistence
+- **Vite** - Modern build tooling with optimizations
 
-### The Flow:
-1. **MIDI Input** → WebMIDI API captures drum hits
-2. **Note + Velocity** → Mapped to visual parameters
-3. **Paint Function** → Draws to off-screen canvas (1920x1080)
-4. **Display** → Scaled to fit browser window
-5. **Save** → Export high-res PNG
+## Browser Compatibility
 
-### Key Concepts:
+**Recommended: Chrome, Edge, Opera**
 
-**Off-screen Canvas:**
-```javascript
-paintCanvas = createGraphics(1920, 1080);  // High-res painting surface
-// Everything you paint stays here
-```
-
-**MIDI Mapping:**
-```javascript
-const MIDI_NOTES = {
-  KICK: 36,      // Bass drum
-  SNARE: 38,     // Snare
-  CLOSED_HAT: 42 // Hi-hat
-  // etc...
-};
-```
-
-**Velocity Sensitivity:**
-```javascript
-let vel = map(velocity, 0, 127, 0.3, 1.0);  // Convert MIDI range
-let size = 10 + vel * 30;  // Harder hit = bigger dot
-```
+Web MIDI API support required:
+- ✅ Chrome/Chromium
+- ✅ Edge
+- ✅ Opera
+- ❌ Firefox (MIDI not supported)
+- ❌ Safari (MIDI not supported)
 
 ## Troubleshooting
 
-### "MIDI: No devices found"
-- Ensure drum triggers are plugged in
-- Refresh the page after connecting
-- Check your MIDI device is powered on
+### MIDI Issues
 
-### "MIDI: Not supported"
-- WebMIDI requires Chrome, Edge, or Opera
-- Safari/Firefox don't support WebMIDI yet
-- Use Chrome for best results
+**"No devices found"**
+- Ensure drums are plugged in and powered on
+- Refresh page after connecting
+- Check device appears in OS MIDI settings
 
-### "Browser doesn't ask for MIDI permission"
-- Must use HTTPS or localhost
-- Live Server automatically uses localhost ✓
+**"Can't assign drum in Customize panel"**
+- First map the drum in Direct Mode (MIDI Mapping panel)
+- Or use Bank Mode to assign pads
 
-### Colors/sizes not right
-- Check MIDI note numbers match your drums
-- Add `console.log(note, velocity)` in handleMIDIMessage() to debug
-- Different drum modules use different note mappings
+**"Unmapped MIDI note"**
+- Check console for note number
+- Verify device-specific mapping is correct
+- Try "Any Device" mapping for testing
 
-## Extending the Project
+### Performance
 
-### Add Your Own Mode:
-
-1. Create new paint function:
-```javascript
-function paintMyMode(note, velocity) {
-  // Your creative code here
-  let x = paintCanvas.width / 2;
-  let y = paintCanvas.height / 2;
-  // ...
-}
-```
-
-2. Add to router in `paintDrum()`:
-```javascript
-case 5:
-  paintMyMode(note, velocity);
-  break;
-```
-
-3. Add mode name:
-```javascript
-const MODE_NAMES = [
-  // ... existing modes
-  'My Custom Mode'
-];
-```
-
-### Use Different Colors:
-
-```javascript
-// RGB values
-color(255, 0, 0)        // Red
-color(0, 255, 0)        // Green
-color(0, 0, 255)        // Blue
-
-// With transparency
-color(255, 0, 0, 128)   // 50% transparent red
-
-// HSB mode for easier color control
-colorMode(HSB);
-color(180, 80, 100)     // Cyan
-```
-
-### Add Physics:
-
-```javascript
-// Make dots drift
-let vx = random(-2, 2);
-let vy = random(-2, 2);
-for (let i = 0; i < 50; i++) {
-  x += vx;
-  y += vy;
-  vy += 0.1;  // Gravity
-  paintCanvas.circle(x, y, 5);
-}
-```
-
-## Performance Tips
-
-- If laggy, reduce particle feedback count
-- High stroke counts may slow down (especially mode 2)
+**Lag or slow performance:**
+- Reduce particle count in modes
+- Use simpler shapes (circles are fastest)
+- Lower global size multiplier
 - Close other browser tabs
-- Canvas is 1920x1080 - reduce if needed
+- Reduce canvas size in constants.js if needed
 
-## Going Further
+### Build Issues
 
-Once comfortable:
-- Add blend modes (MULTIPLY, SCREEN, etc.)
-- Implement color palettes
-- Add tempo-synced effects
-- Create rule systems (only paint in certain areas)
-- Add post-processing (blur, grain)
-- Connect to other Web APIs (audio analysis, etc.)
+**"Could not resolve entry module"**
+- Run `npm install` first
+- Check vite.config.js has correct base path
+- See [BUILD.md](BUILD.md) for detailed troubleshooting
+
+## Advanced Customization
+
+### Velocity Curves
+
+Each drum can have independent curves for size and opacity:
+
+```javascript
+// In DrumCustomizationPanel.js
+settings.sizeScaling = 'exponential';    // Harder hits emphasized
+settings.opacityScaling = 'logarithmic'; // Compress dynamic range
+```
+
+### Custom Shapes
+
+Extend DrawingUtils.js to add new shapes:
+
+```javascript
+export function paintDot(canvas, x, y, size, col, alpha, shape, stroke, rotation) {
+  // Add your custom shape case
+  case 'myShape':
+    // Drawing code here
+    break;
+}
+```
+
+### New Paint Modes
+
+1. Create class extending ModeBase.js
+2. Implement `paint(note, velocity, context)` method
+3. Add to modes array in main.js
+4. Add to UI dropdown in index.html
+
+### MIDI CC Mapping
+
+Map any CC parameter in Bank Mode:
+
+1. Select parameter (Size, Opacity, Hue, etc.)
+2. Click "Assign CC"
+3. Move knob/slider on MIDI controller
+4. Set min/max range for scaling
+
+## Tips & Tricks
+
+### Creating Animations
+
+Use Timeline Mode to record rhythmic patterns, then export as video for looping animations.
+
+### Color Palettes
+
+Use HSL mode to create harmonious color schemes:
+- Fix Hue, vary Lightness for monochrome
+- Fix Saturation and Lightness, vary Hue for rainbow
+- Use complementary hues (opposite on color wheel)
+
+### Layering
+
+Use blend modes to create complex overlays:
+- **Multiply** - Darkens, like ink layers
+- **Screen** - Lightens, like projecting light
+- **Overlay** - Combines multiply and screen
+
+### Performance Recording
+
+1. Clear canvas
+2. Start video recording (SPACE)
+3. Play your pattern
+4. Stop recording (SPACE)
+5. Share your visual performance!
 
 ## Resources
 
 - [p5.js Reference](https://p5js.org/reference/)
-- [WebMIDI API Docs](https://developer.mozilla.org/en-US/docs/Web/API/Web_MIDI_API)
-- [Live Server Extension](https://marketplace.visualstudio.com/items?itemName=ritwickdey.LiveServer)
+- [Web MIDI API](https://developer.mozilla.org/en-US/docs/Web/API/Web_MIDI_API)
+- [Vite Documentation](https://vitejs.dev/)
+- [Project Repository](https://github.com/yourusername/drum-painter-p5)
+
+## License
+
+MIT License - Feel free to fork, modify, and share!
+
+## Credits
+
+Built with p5.js, powered by the Web MIDI API.
 
 ---
 
-Happy drumming! 🥁🎨
+**Happy drumming and painting!** 🥁🎨
 
-Use Claude Code to iterate and experiment - that's where the magic happens!
+Press **U** in the app for the comprehensive 3-level User Guide, or **?** for keyboard shortcuts.
