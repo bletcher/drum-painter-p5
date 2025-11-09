@@ -62,6 +62,7 @@ export function generateFactorySettings() {
     settings[drum.id] = {
       name: drum.name,
       midiNote: drum.defaultMidiNote,
+      midiDevice: null, // Device-specific mapping (null = any device)
       color: drum.defaultColor,
       shape: 'circle',
       opacity: 1.0,

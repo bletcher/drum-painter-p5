@@ -173,7 +173,7 @@ export class MidiManager {
         this.lastVelocity = velocity;
         this.handleNoteOn(note, velocity, deviceId);
         if (this.onMidiActivity) {
-          this.onMidiActivity(channel, note, velocity);
+          this.onMidiActivity(channel, note, velocity, deviceId);
         }
       }
 
@@ -182,7 +182,7 @@ export class MidiManager {
         this.lastChannel = channel;
         this.handleCC(note, velocity, deviceId); // note=CC number, velocity=CC value
         if (this.onMidiActivity) {
-          this.onMidiActivity(channel, null, null);
+          this.onMidiActivity(channel, null, null, deviceId);
         }
       }
 
@@ -191,7 +191,7 @@ export class MidiManager {
         this.lastChannel = channel;
         this.handlePitchBend(command, note, velocity, deviceId);
         if (this.onMidiActivity) {
-          this.onMidiActivity(channel, null, null);
+          this.onMidiActivity(channel, null, null, deviceId);
         }
       }
     } catch (error) {

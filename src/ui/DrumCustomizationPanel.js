@@ -137,10 +137,20 @@ export class DrumCustomizationPanel {
     label.contentEditable = false;
     label.style.cssText = 'display: block; margin-bottom: 3px;';
 
-    // MIDI note display
+    // MIDI note and device display
     const midiNote = document.createElement('small');
     midiNote.style.cssText = 'color: #999; font-size: 9px;';
-    midiNote.textContent = `Note ${settings.midiNote}`;
+
+    let noteText = `Note ${settings.midiNote}`;
+
+    // Add device name if device-specific mapping exists
+    if (settings.midiDevice) {
+      const device = this.midiManager.connectedDevices.find(d => d.id === settings.midiDevice);
+      const deviceName = device ? device.name : settings.midiDevice.substring(0, 20);
+      noteText += ` (${deviceName})`;
+    }
+
+    midiNote.textContent = noteText;
 
     tabButton.appendChild(label);
     tabButton.appendChild(midiNote);

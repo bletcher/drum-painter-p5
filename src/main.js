@@ -143,10 +143,11 @@ window.setup = function() {
   };
 
   // Set MIDI activity callback
-  midiManager.onMidiActivity = (channel, note, velocity) => {
+  midiManager.onMidiActivity = (channel, note, velocity, deviceId) => {
     const channelEl = document.getElementById('midi-channel');
     const noteEl = document.getElementById('midi-note');
     const velocityEl = document.getElementById('midi-velocity');
+    const deviceNameEl = document.getElementById('midi-device-name');
     const activityLight = document.getElementById('midi-activity-light');
 
     if (channelEl) {
@@ -159,6 +160,14 @@ window.setup = function() {
 
     if (velocity !== null && velocityEl) {
       velocityEl.textContent = velocity;
+    }
+
+    // Update device name to show which device sent this message
+    if (deviceId && deviceNameEl) {
+      const device = midiManager.connectedDevices.find(d => d.id === deviceId);
+      if (device) {
+        deviceNameEl.textContent = device.name;
+      }
     }
 
     // Flash activity light
@@ -269,20 +278,34 @@ function initializeUI() {
   const spiralTightnessSlider = document.getElementById('spiral-tightness');
   const spiralTightnessDisplay = document.getElementById('spiral-tightness-display');
   if (spiralTightnessSlider && spiralTightnessDisplay) {
+    // Update display while dragging
     spiralTightnessSlider.addEventListener('input', (e) => {
       const value = parseInt(e.target.value);
       spiralTightnessDisplay.textContent = value;
+    });
+
+    // Apply parameter only when slider is released (don't reset spiral)
+    spiralTightnessSlider.addEventListener('change', (e) => {
+      const value = parseInt(e.target.value);
       spiralMode.setParameters({ tightness: value });
+      notificationSystem.show(`Tightness: ${value}`);
     });
   }
 
   const spiralSpeedSlider = document.getElementById('spiral-speed');
   const spiralSpeedDisplay = document.getElementById('spiral-speed-display');
   if (spiralSpeedSlider && spiralSpeedDisplay) {
+    // Update display while dragging
     spiralSpeedSlider.addEventListener('input', (e) => {
       const value = parseFloat(e.target.value);
       spiralSpeedDisplay.textContent = value;
+    });
+
+    // Apply parameter only when slider is released
+    spiralSpeedSlider.addEventListener('change', (e) => {
+      const value = parseFloat(e.target.value);
       spiralMode.setParameters({ rotationsPerMinute: value });
+      notificationSystem.show(`Speed: ${value} RPM`);
     });
   }
 
@@ -290,6 +313,11 @@ function initializeUI() {
   if (spiralResetBtn) {
     spiralResetBtn.addEventListener('click', () => {
       spiralMode.reset();
+      // Temporarily reset blend mode to normal for clearing
+      paintCanvas.blendMode(BLEND);
+      paintCanvas.background(BG_COLORS[currentBgColor]);
+      // Restore the current blend mode
+      paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
       notificationSystem.show('Spiral Reset');
     });
   }
@@ -1057,7 +1085,7 @@ window.draw = function() {
   // Calculate scaling and offset
   let scaleFactor, displayWidth, displayHeight, offsetX, offsetY;
 
-  if (currentMode === 7) {
+  if (currentMode === 8) {
     // Timeline mode: scale based on width only, allow vertical scrolling
     scaleFactor = (width / paintCanvas.width) * 0.95;
     displayWidth = paintCanvas.width * scaleFactor;
@@ -1083,8 +1111,17 @@ window.draw = function() {
   // Draw the paint canvas
   image(paintCanvas, offsetX, offsetY, displayWidth, displayHeight);
 
-  // Draw timeline guides OVER the canvas if in timeline mode
+  // Draw spiral timeline guide over the canvas if in spiral mode (appears as background guide)
   if (currentMode === 7) {
+    push();
+    translate(offsetX, offsetY);
+    scale(scaleFactor);
+    spiralMode.draw(paintCanvas.width, paintCanvas.height);
+    pop();
+  }
+
+  // Draw timeline guides OVER the canvas if in timeline mode
+  if (currentMode === 8) {
     timelineMode.drawLaneGuides(window, offsetX, offsetY, scaleFactor, paintCanvas);
 
     // Auto-scroll to keep current playhead visible when recording
@@ -1128,8 +1165,8 @@ window.draw = function() {
     }
   }
 
-  // Update timeline mode if active (mode 7) - handles metronome
-  if (currentMode === 7) {
+  // Update timeline mode if active (mode 8) - handles metronome
+  if (currentMode === 8) {
     const context = {
       paintCanvas,
       drumSettings,
@@ -1314,10 +1351,12 @@ window.keyPressed = function() {
     return false;
   }
 
-  // 1-8 - switch modes
-  if (key >= '1' && key <= '8') {
+  // 1-9 - switch modes
+  if (key >= '1' && key <= '9') {
     let newMode = parseInt(key) - 1;
-    switchMode(newMode);
+    if (newMode < modes.length) {
+      switchMode(newMode);
+    }
     return false;
   }
 
@@ -1542,9 +1581,17 @@ function loadSavedSettings() {
       if (drumSettings[drumId]) {
         // Update existing drum
         Object.assign(drumSettings[drumId], savedState.drumSettings[drumId]);
+        // Ensure midiDevice exists (for backwards compatibility with old saves)
+        if (drumSettings[drumId].midiDevice === undefined) {
+          drumSettings[drumId].midiDevice = null;
+        }
       } else {
         // Add new custom drum that doesn't exist in factory settings
         drumSettings[drumId] = savedState.drumSettings[drumId];
+        // Ensure midiDevice exists
+        if (drumSettings[drumId].midiDevice === undefined) {
+          drumSettings[drumId].midiDevice = null;
+        }
         console.log(`➕ Added custom drum from saved settings: ${drumId} (${savedState.drumSettings[drumId].name})`);
       }
     }

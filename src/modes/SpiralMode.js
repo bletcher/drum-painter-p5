@@ -1,7 +1,7 @@
 /**
  * Spiral Chronicle Mode
- * Time flows outward in a logarithmic spiral from the center
- * Each drum has a fixed angular position (like hours on a clock)
+ * Time flows outward in a spiral from the center
+ * All notes appear sequentially on a visible spiral timeline
  */
 
 import { ModeBase } from './ModeBase.js';
@@ -10,7 +10,6 @@ import {
   VELOCITY_MULT_CLASSIC,
   ALPHA_CLASSIC
 } from '../config/constants.js';
-import { DRUM_KIT_CONFIG } from '../config/drumKit.js';
 import { applyScalingCurve } from '../utils/scaling.js';
 import {
   getDrumColor,
@@ -34,24 +33,6 @@ export class SpiralMode extends ModeBase {
     this.rotationsPerMinute = 4;      // How fast the spiral rotates (visual speed)
     this.startRadius = 50;            // Initial radius at center
     this.syncToBPM = false;           // Whether to sync rotation speed to BPM
-
-    // Drum angular positions (will be calculated based on number of drums)
-    this.drumAngles = {};
-    this.calculateDrumAngles();
-  }
-
-  /**
-   * Calculate fixed angular positions for each drum
-   * Distributes drums evenly around 360 degrees
-   */
-  calculateDrumAngles() {
-    const numDrums = DRUM_KIT_CONFIG.length;
-    const angleStep = (Math.PI * 2) / numDrums;
-
-    DRUM_KIT_CONFIG.forEach((drum, index) => {
-      // Offset by -90 degrees to start at top (12 o'clock)
-      this.drumAngles[drum.id] = (angleStep * index) - (Math.PI / 2);
-    });
   }
 
   /**
@@ -59,13 +40,12 @@ export class SpiralMode extends ModeBase {
    */
   onActivate(context) {
     this.startTime = Date.now();
-    this.calculateDrumAngles(); // Recalculate in case drums were added/removed
   }
 
   /**
-   * Calculate current radius based on elapsed time
+   * Calculate current position on spiral based on elapsed time
    */
-  getCurrentRadius() {
+  getCurrentPosition() {
     if (!this.startTime) {
       this.startTime = Date.now();
     }
@@ -84,28 +64,41 @@ export class SpiralMode extends ModeBase {
   }
 
   /**
-   * Get position on spiral for a specific drum
+   * Get x,y coordinates for a given radius and theta
    */
-  getSpiralPosition(drumId, paintCanvas) {
-    const centerX = paintCanvas.width / 2;
-    const centerY = paintCanvas.height / 2;
+  getSpiralCoordinates(radius, theta, centerX, centerY) {
+    const x = centerX + radius * Math.cos(theta);
+    const y = centerY + radius * Math.sin(theta);
+    return { x, y };
+  }
 
-    const { radius, theta } = this.getCurrentRadius();
+  /**
+   * Draw the spiral timeline guide on the window canvas (not paintCanvas)
+   * This draws a temporary guide that shows where notes will appear
+   */
+  draw(canvasWidth, canvasHeight) {
+    const centerX = canvasWidth / 2;
+    const centerY = canvasHeight / 2;
 
-    // Get this drum's fixed angular offset
-    const drumAngle = this.drumAngles[drumId] || 0;
+    const { theta: currentTheta } = this.getCurrentPosition();
 
-    // Add some randomness for organic feel (±10 degrees, ±10% radius)
-    const angleVariation = random(-0.17, 0.17); // ~10 degrees
-    const radiusVariation = radius * random(-0.1, 0.1);
+    // Draw the spiral from start to current position using global p5 functions
+    noFill();
+    stroke(200, 200, 200, 120); // Light grey
+    strokeWeight(2);
 
-    const finalAngle = theta + drumAngle + angleVariation;
-    const finalRadius = radius + radiusVariation;
+    beginShape();
 
-    const x = centerX + finalRadius * cos(finalAngle);
-    const y = centerY + finalRadius * sin(finalAngle);
+    // Draw spiral from theta=0 to current theta
+    const steps = Math.max(100, currentTheta * 20); // More steps for smoother curve
+    for (let i = 0; i <= steps; i++) {
+      const t = (i / steps) * currentTheta;
+      const r = this.startRadius + (this.spiralTightness * t / (Math.PI * 2));
+      const coords = this.getSpiralCoordinates(r, t, centerX, centerY);
+      vertex(coords.x, coords.y);
+    }
 
-    return { x, y, radius: finalRadius };
+    endShape();
   }
 
   paint(note, velocity, context) {
@@ -117,8 +110,11 @@ export class SpiralMode extends ModeBase {
 
     const settings = drumSettings[drumId];
 
-    // Get position on spiral
-    const { x, y, radius } = this.getSpiralPosition(drumId, paintCanvas);
+    // Get current position on spiral
+    const { radius, theta } = this.getCurrentPosition();
+    const centerX = paintCanvas.width / 2;
+    const centerY = paintCanvas.height / 2;
+    const { x, y } = this.getSpiralCoordinates(radius, theta, centerX, centerY);
 
     // Check if position is still on canvas (with some margin)
     const margin = 100;
@@ -145,7 +141,7 @@ export class SpiralMode extends ModeBase {
 
     if (!col) return;
 
-    // Paint the dot
+    // Paint the dot on the spiral timeline
     paintCanvas.push();
     paintDot(paintCanvas, x, y, size, col, ALPHA_CLASSIC * scaledVelOpacity * opacityMult, shape, stroke, rotation);
     paintCanvas.pop();
