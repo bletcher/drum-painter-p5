@@ -74,10 +74,10 @@ export class TimelineMode {
    * Paint method - draws notes on timeline lanes
    */
   paint(note, velocity, context) {
-    const { paintCanvas, drumSettings, midiDeviceId } = context;
+    const { paintCanvas, drumSettings, midiDeviceId, debugPanel, drumId: contextDrumId } = context;
 
-    // Find which drum this is
-    const drumId = this.findDrumIdByNote(note, midiDeviceId, drumSettings);
+    // Find which drum this is (use contextDrumId if available, otherwise find it)
+    const drumId = contextDrumId || this.findDrumIdByNote(note, midiDeviceId, drumSettings);
     if (!drumId || !(drumId in this.timelineLanes)) {
       console.warn(`Drum ${note} not mapped to timeline lane`);
       return;
@@ -160,6 +160,18 @@ export class TimelineMode {
           }
         },
         isDead: function() { return this.life <= 0; }
+      });
+    }
+
+    // Record actual calculated values for debug panel
+    if (debugPanel && drumId) {
+      debugPanel.recordPaint(drumId, note, velocity, {
+        size: size,
+        opacity: alpha / 255,
+        color: col.toString('#rrggbb'),
+        rotation: rotation,
+        strokeColor: stroke?.enabled ? stroke.color : null,
+        strokeWeight: stroke?.enabled ? stroke.weight : null
       });
     }
   }

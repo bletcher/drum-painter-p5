@@ -102,13 +102,13 @@ export class SpiralMode extends ModeBase {
   }
 
   paint(note, velocity, context) {
-    const { paintCanvas, drumSettings, globalSizeMultiplier, particles, midiDeviceId } = context;
+    const { paintCanvas, drumSettings, globalSizeMultiplier, particles, midiDeviceId, debugPanel, drumId } = context;
 
-    // Get drum settings
-    const drumId = findDrumByMidiNote(note, midiDeviceId, drumSettings);
-    if (!drumId) return;
+    // Get drum settings (use drumId from context if available, otherwise find it)
+    const actualDrumId = drumId || findDrumByMidiNote(note, midiDeviceId, drumSettings);
+    if (!actualDrumId) return;
 
-    const settings = drumSettings[drumId];
+    const settings = drumSettings[actualDrumId];
 
     // Get current position on spiral
     const { radius, theta } = this.getCurrentPosition();
@@ -148,6 +148,18 @@ export class SpiralMode extends ModeBase {
 
     // Add particle effect
     particles.push(new Particle(x, y, size, col));
+
+    // Record actual calculated values for debug panel
+    if (debugPanel && actualDrumId) {
+      debugPanel.recordPaint(actualDrumId, note, velocity, {
+        size: size,
+        opacity: (ALPHA_CLASSIC * scaledVelOpacity * opacityMult) / 255,
+        color: col.toString('#rrggbb'),
+        rotation: rotation,
+        strokeColor: stroke?.enabled ? stroke.color : null,
+        strokeWeight: stroke?.enabled ? stroke.weight : null
+      });
+    }
   }
 
   /**

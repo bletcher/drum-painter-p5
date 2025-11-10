@@ -21,6 +21,7 @@ import { DrumCustomizationPanel } from './ui/DrumCustomizationPanel.js';
 import { MidiMappingPanel } from './ui/MidiMappingPanel.js';
 import { TimelineControls } from './ui/TimelineControls.js';
 import { VideoRecorder } from './ui/VideoRecorder.js';
+import { DebugPanel } from './ui/DebugPanel.js';
 import { findDrumByMidiNote } from './utils/drumHelpers.js';
 
 // ===== GLOBAL STATE =====
@@ -51,6 +52,7 @@ let customizationPanel;
 let midiMappingPanel;
 let timelineControls;
 let videoRecorder;
+let debugPanel;
 
 // DOM elements
 let midiStatusEl;
@@ -123,6 +125,10 @@ window.setup = function() {
   // Initialize video recorder
   videoRecorder = new VideoRecorder(paintCanvas, notificationSystem);
   setupVideoRecorderUI();
+
+  // Initialize debug panel
+  debugPanel = new DebugPanel(drumSettings, midiManager);
+  window.debugPanel = debugPanel; // Expose globally for modes to use
 
   // Set MIDI status callback
   midiManager.onMidiStatusChange = (connected, message, deviceName = '', devices = []) => {
@@ -376,6 +382,14 @@ function initializeUI() {
       if (window.toggleUserGuide) {
         window.toggleUserGuide();
       }
+    });
+  }
+
+  // Debug button
+  const debugBtn = document.getElementById('debug-btn');
+  if (debugBtn) {
+    debugBtn.addEventListener('click', () => {
+      debugPanel.toggle();
     });
   }
 
@@ -1436,7 +1450,9 @@ function handlePaint(note, velocity, deviceId) {
     globalSizeMultiplier,
     particles,
     strokeCount,
-    midiDeviceId: deviceId  // Add device ID to context
+    midiDeviceId: deviceId,  // Add device ID to context
+    debugPanel,  // Add debug panel to context so modes can record actual values
+    drumId  // Add drumId to context so modes know which drum is being played
   };
 
   // Add currentBgColor to context

@@ -31,13 +31,13 @@ export class RadialMode extends ModeBase {
   }
 
   paint(note, velocity, context) {
-    const { paintCanvas, drumSettings, globalSizeMultiplier, particles, midiDeviceId } = context;
+    const { paintCanvas, drumSettings, globalSizeMultiplier, particles, midiDeviceId, debugPanel, drumId } = context;
 
-    // Get drum settings
-    const drumId = findDrumByMidiNote(note, midiDeviceId, drumSettings);
-    if (!drumId) return; // Safety check - should never happen due to handlePaint check
+    // Get drum settings (use drumId from context if available, otherwise find it)
+    const actualDrumId = drumId || findDrumByMidiNote(note, midiDeviceId, drumSettings);
+    if (!actualDrumId) return; // Safety check - should never happen due to handlePaint check
 
-    const settings = drumSettings[drumId];
+    const settings = drumSettings[actualDrumId];
 
     // Apply scaling curves
     let scaledVelSize = applyScalingCurve(velocity, settings?.sizeScaling || 'linear');
@@ -57,6 +57,9 @@ export class RadialMode extends ModeBase {
     let stroke = getDrumStroke(note, midiDeviceId, drumSettings);
     let rotation = getDrumRotation(note, midiDeviceId, drumSettings);
 
+    // Calculate final opacity (alpha is 0-255 scale, convert to 0-1)
+    const finalOpacity = (ALPHA_SYMMETRY * scaledVelOpacity * opacityMult) / 255;
+
     paintCanvas.push();
 
     // Paint symmetrical pattern
@@ -74,5 +77,17 @@ export class RadialMode extends ModeBase {
     }
 
     paintCanvas.pop();
+
+    // Record actual calculated values for debug panel
+    if (debugPanel && actualDrumId) {
+      debugPanel.recordPaint(actualDrumId, note, velocity, {
+        size: size,
+        opacity: finalOpacity,
+        color: col.toString('#rrggbb'),
+        rotation: rotation,
+        strokeColor: stroke?.enabled ? stroke.color : null,
+        strokeWeight: stroke?.enabled ? stroke.weight : null
+      });
+    }
   }
 }
