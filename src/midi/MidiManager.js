@@ -4,6 +4,7 @@
  */
 
 import { DRUM_KIT_CONFIG } from '../config/drumKit.js';
+import { DeviceRegistry } from './DeviceRegistry.js';
 
 export class MidiManager {
   constructor(onPaintCallback) {
@@ -14,6 +15,12 @@ export class MidiManager {
     this.lastChannel = null;
     this.lastNote = null;
     this.lastVelocity = null;
+
+    // Device Registry for stable device tracking
+    this.deviceRegistry = new DeviceRegistry();
+    this.deviceRegistry.onRegistryChange = (event, stableKey, deviceId) => {
+      this.handleDeviceRegistryChange(event, stableKey, deviceId);
+    };
 
     // MIDI Learn state
     this.midiLearnMode = false;
@@ -47,6 +54,7 @@ export class MidiManager {
     // Callbacks
     this.onMidiStatusChange = null;
     this.onBankModeChange = null;
+    this.onDeviceMappingsUpdated = null; // Called when device mappings are auto-updated
   }
 
   /**
@@ -96,13 +104,19 @@ export class MidiManager {
       return;
     }
 
-    // Store connected devices
-    this.connectedDevices = inputs.map(input => ({
-      id: input.id,
-      name: input.name,
-      manufacturer: input.manufacturer || 'Unknown',
-      state: input.state
-    }));
+    // Store connected devices and register in device registry
+    this.connectedDevices = inputs.map(input => {
+      // Register device in registry
+      const stableKey = this.deviceRegistry.registerDevice(input);
+
+      return {
+        id: input.id,
+        name: input.name,
+        manufacturer: input.manufacturer || 'Unknown',
+        state: input.state,
+        stableKey: stableKey  // Add stable key for reference
+      };
+    });
 
     console.log('📱 Connected devices:', this.connectedDevices);
 
@@ -115,14 +129,34 @@ export class MidiManager {
     // Listen for device state changes (connect/disconnect)
     midi.onstatechange = (e) => {
       console.log('🔄 MIDI device state changed:', e.port.name, e.port.state);
-      // Re-scan devices
+
+      if (e.port.type === 'input') {
+        if (e.port.state === 'connected') {
+          // Register new device in registry
+          const stableKey = this.deviceRegistry.registerDevice(e.port);
+
+          // Connect to new input
+          e.port.onmidimessage = (message) => this.handleMIDIMessage(message, e.port.id);
+          console.log(`🔌 Newly connected: ${e.port.name} (${stableKey})`);
+        } else if (e.port.state === 'disconnected') {
+          // Mark device as disconnected in registry
+          this.deviceRegistry.markDisconnected(e.port.id);
+          console.log(`📴 Disconnected: ${e.port.name}`);
+        }
+      }
+
+      // Re-scan devices to update connected devices list
       const newInputs = Array.from(midi.inputs.values());
-      this.connectedDevices = newInputs.map(input => ({
-        id: input.id,
-        name: input.name,
-        manufacturer: input.manufacturer || 'Unknown',
-        state: input.state
-      }));
+      this.connectedDevices = newInputs.map(input => {
+        const stableKey = this.deviceRegistry.getStableKey(input.id);
+        return {
+          id: input.id,
+          name: input.name,
+          manufacturer: input.manufacturer || 'Unknown',
+          state: input.state,
+          stableKey: stableKey
+        };
+      });
       console.log('📱 Updated connected devices:', this.connectedDevices);
 
       // Update status callback
@@ -130,12 +164,6 @@ export class MidiManager {
         const primaryDevice = newInputs.length > 0 ? newInputs[0].name : '';
         const connected = newInputs.length > 0;
         this.onMidiStatusChange(connected, connected ? 'Connected' : 'No devices', primaryDevice, this.connectedDevices);
-      }
-
-      // Connect to new inputs
-      if (e.port.type === 'input' && e.port.state === 'connected') {
-        e.port.onmidimessage = (message) => this.handleMIDIMessage(message, e.port.id);
-        console.log(`🔌 Newly connected: ${e.port.name}`);
       }
     };
 
@@ -442,14 +470,56 @@ export class MidiManager {
    * Assign drum note (called from external when MIDI learn completes)
    */
   assignDrumNote(drumId, note, deviceId) {
-    // Get device name for logging
+    // Get device info for logging and stable key
     const device = this.connectedDevices.find(d => d.id === deviceId);
     const deviceName = device ? device.name : deviceId;
+    const stableKey = device ? device.stableKey : null;
+
     console.log(`MIDI Learn: Assigned note ${note} from ${deviceName} to ${drumId}`);
-    // This will be handled by callback
+
+    // This will be handled by callback - pass both volatile ID and stable key
     if (this.onDrumNoteAssigned) {
-      this.onDrumNoteAssigned(drumId, note, deviceId);
+      this.onDrumNoteAssigned(drumId, note, deviceId, stableKey);
     }
+  }
+
+  /**
+   * Handle device registry changes (connect/disconnect)
+   * Auto-updates drum mappings when devices reconnect
+   */
+  handleDeviceRegistryChange(event, stableKey, newDeviceId) {
+    if (event === 'register') {
+      console.log(`🔄 Device registered: ${stableKey}, checking for drums to update...`);
+
+      // This will be called from main.js to update drum settings
+      if (this.onDeviceMappingsUpdated) {
+        this.onDeviceMappingsUpdated(stableKey, newDeviceId);
+      }
+    } else if (event === 'disconnect') {
+      console.log(`⚠️ Device disconnected: ${stableKey}`);
+      // Note: We keep the stable key in drum settings so it can reconnect later
+    }
+  }
+
+  /**
+   * Get stable device key from volatile device ID
+   */
+  getStableDeviceKey(volatileDeviceId) {
+    return this.deviceRegistry.getStableKey(volatileDeviceId);
+  }
+
+  /**
+   * Get current volatile device ID from stable key
+   */
+  getCurrentDeviceId(stableKey) {
+    return this.deviceRegistry.getCurrentId(stableKey);
+  }
+
+  /**
+   * Check if a device is currently connected by stable key
+   */
+  isDeviceConnected(stableKey) {
+    return this.deviceRegistry.isConnected(stableKey);
   }
 
   /**
@@ -460,7 +530,8 @@ export class MidiManager {
       bankModeEnabled: this.bankModeEnabled,
       activeDrumBank: this.activeDrumBank,
       padAssignments: this.bankPadAssignments,
-      globalVariables: this.globalVariableAssignments
+      globalVariables: this.globalVariableAssignments,
+      deviceRegistry: this.deviceRegistry.getState()
     };
   }
 
@@ -479,6 +550,9 @@ export class MidiManager {
     }
     if (state.globalVariables) {
       this.globalVariableAssignments = state.globalVariables;
+    }
+    if (state.deviceRegistry) {
+      this.deviceRegistry.loadState(state.deviceRegistry);
     }
   }
 }

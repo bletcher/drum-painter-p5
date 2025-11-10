@@ -61,7 +61,7 @@ export const BG_COLOR_NAMES = ['White', 'Black', 'Dark Gray', 'Light Gray', 'Bei
 export const MAX_HISTORY = 2;
 
 // ===== MIDI NOTE MAPPINGS =====
-export const MIDI_NOTES = {
+/*export const MIDI_NOTES = {
   KICK: 36,
   SNARE: 38,
   CLOSED_HAT: 42,
@@ -72,7 +72,7 @@ export const MIDI_NOTES = {
   CRASH: 49,
   RIDE: 51
 };
-
+*/
 // ===== SCALING CURVES =====
 export const SCALING_CURVES = {
   LINEAR: 'linear',
@@ -111,3 +111,7 @@ export const DEFAULT_STAFF_HEIGHT = 80;
 export const DEFAULT_DRUM_LINE_SPACING = 15;
 export const DEFAULT_STAFF_WIDTH = 1800;
 export const DEFAULT_MIDI_LATENCY_MS = 70;
+
+// ===== DEBUGGING =====
+// Set to true to make all drums respond to any MIDI device (ignore device ID)
+export const IGNORE_MIDI_DEVICE_ID = false;

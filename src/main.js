@@ -188,16 +188,38 @@ window.setup = function() {
     handleBankModeCC(drumId, paramKey, normalizedValue, ccValue, ccNumber);
   };
 
-  midiManager.onDrumNoteAssigned = (drumId, note, deviceId) => {
+  midiManager.onDrumNoteAssigned = (drumId, note, deviceId, stableKey) => {
     drumSettings[drumId].midiNote = note;
     drumSettings[drumId].midiDevice = deviceId;
+    drumSettings[drumId].midiDeviceStable = stableKey; // Store stable key for reconnection
 
     // Get device name for notification
     const device = midiManager.connectedDevices.find(d => d.id === deviceId);
     const deviceName = device ? device.name : 'Unknown';
 
     notificationSystem.show(`${drumId}: Note ${note} (${deviceName})`);
-    console.log(`✓ Mapped ${drumId} to Note ${note} from ${deviceName} (${deviceId})`);
+    console.log(`✓ Mapped ${drumId} to Note ${note} from ${deviceName} (stable: ${stableKey})`);
+  };
+
+  // Set device mappings updated callback (auto-updates when devices reconnect)
+  midiManager.onDeviceMappingsUpdated = (stableKey, newDeviceId) => {
+    console.log(`🔄 Updating drum mappings for reconnected device: ${stableKey} -> ${newDeviceId}`);
+
+    // Find all drums mapped to this stable key and update their volatile device IDs
+    let updatedCount = 0;
+    for (const drumId in drumSettings) {
+      const drum = drumSettings[drumId];
+      if (drum.midiDeviceStable === stableKey) {
+        const oldId = drum.midiDevice;
+        drum.midiDevice = newDeviceId;
+        updatedCount++;
+        console.log(`  ✓ Updated ${drumId}: device ID ${oldId} -> ${newDeviceId}`);
+      }
+    }
+
+    if (updatedCount > 0) {
+      notificationSystem.show(`Updated ${updatedCount} drum mapping${updatedCount > 1 ? 's' : ''} for reconnected device`);
+    }
   };
 
   // Set Bank Mode change callback (updates active drum indicator)
@@ -207,7 +229,16 @@ window.setup = function() {
   };
 
   // Setup MIDI
-  midiManager.setup();
+  midiManager.setup().then(() => {
+    // Migrate drum ID changes (rack_tom -> snare_rim)
+    migrateDrumIdChanges();
+
+    // After MIDI is set up, migrate old drum mappings to use stable device keys
+    migrateDrumMappingsToStableKeys();
+
+    // Check for duplicate note mappings and warn user
+    checkForDuplicateNoteMappings();
+  });
 
   // Setup MIDI devices modal
   setupMidiDevicesModal();
@@ -1375,7 +1406,8 @@ window.windowResized = function() {
  */
 function handlePaint(note, velocity, deviceId) {
   // Check if this device+note combination is mapped to a drum
-  const drumId = findDrumByMidiNote(note, deviceId, drumSettings);
+  // Pass midiManager for smart device key matching
+  const drumId = findDrumByMidiNote(note, deviceId, drumSettings, midiManager);
 
   if (!drumId) {
     // No mapping found - don't paint
@@ -1385,7 +1417,8 @@ function handlePaint(note, velocity, deviceId) {
     return;
   }
 
-  console.log(`🎵 Paint: Note ${note} (${drumId}), Vel ${velocity.toFixed(2)}`);
+  const drumName = drumSettings[drumId]?.name || drumId;
+  console.log(`🎵 Paint: Note ${note} (${drumName}), Vel ${velocity.toFixed(2)}`);
 
   // Flash MIDI activity indicator
   const activityLight = document.getElementById('midi-activity-light');
@@ -1601,13 +1634,43 @@ function loadSavedSettings() {
     console.log('Current drum settings after load:', JSON.stringify(drumSettings, null, 2));
   }
 
-  // Clean up any orphaned drums in DRUM_KIT_CONFIG (drums without settings)
+  // Clean up orphaned drums (two-way cleanup)
+
+  // 1. Remove drums from DRUM_KIT_CONFIG that don't have settings
   for (let i = DRUM_KIT_CONFIG.length - 1; i >= 0; i--) {
     const drumId = DRUM_KIT_CONFIG[i].id;
     if (!drumSettings[drumId]) {
       console.warn(`⚠️ Removing orphaned drum from config: ${drumId}`);
       DRUM_KIT_CONFIG.splice(i, 1);
     }
+  }
+
+  // 2. Remove settings for drums that aren't in DRUM_KIT_CONFIG (more important!)
+  const validDrumIds = new Set(DRUM_KIT_CONFIG.map(d => d.id));
+  const orphanedSettings = [];
+  for (const drumId in drumSettings) {
+    if (!validDrumIds.has(drumId)) {
+      orphanedSettings.push(drumId);
+    }
+  }
+
+  if (orphanedSettings.length > 0) {
+    console.warn(`🗑️ Removing ${orphanedSettings.length} orphaned drum settings not in current config:`);
+    orphanedSettings.forEach(drumId => {
+      console.warn(`  - ${drumId} (${drumSettings[drumId]?.name || 'unknown'})`);
+      delete drumSettings[drumId];
+    });
+
+    // Auto-save after cleanup
+    const appState = {
+      drumSettings,
+      globalSizeMultiplier,
+      currentBlendMode,
+      currentBgColor,
+      bankModeSettings: midiManager.getState()
+    };
+    stateManager.saveAsDefault(appState);
+    console.log(`✓ Cleaned up and saved settings`);
   }
 
   // Apply global settings
@@ -1648,6 +1711,182 @@ function loadSavedSettings() {
   }
 
   console.log(`📁 Loaded settings from ${savedState.timestamp}`);
+}
+
+/**
+ * Migrate drum ID changes (e.g., rack_tom -> snare_rim)
+ * Preserves all settings when drum IDs are renamed
+ */
+function migrateDrumIdChanges() {
+  const migrations = {
+    'rack_tom': 'snare_rim'  // Old ID -> New ID
+  };
+
+  let migrated = false;
+
+  for (const [oldId, newId] of Object.entries(migrations)) {
+    if (drumSettings[oldId] && !drumSettings[newId]) {
+      console.log(`🔄 Migrating drum ID: ${oldId} -> ${newId}`);
+
+      // Copy all settings from old ID to new ID
+      drumSettings[newId] = { ...drumSettings[oldId] };
+
+      // Delete old ID
+      delete drumSettings[oldId];
+
+      // Update bank mode assignments if present
+      if (midiManager.bankPadAssignments && midiManager.bankPadAssignments[oldId]) {
+        midiManager.bankPadAssignments[newId] = midiManager.bankPadAssignments[oldId];
+        delete midiManager.bankPadAssignments[oldId];
+      }
+
+      migrated = true;
+    }
+  }
+
+  if (migrated) {
+    console.log('✅ Drum ID migration complete');
+
+    // Save updated settings
+    const appState = {
+      drumSettings,
+      globalSizeMultiplier,
+      currentBlendMode,
+      currentBgColor,
+      bankModeSettings: midiManager.getState()
+    };
+    stateManager.saveAsDefault(appState);
+  }
+}
+
+/**
+ * Migrate old drum mappings to use stable device keys
+ * This upgrades legacy mappings that only have volatile device IDs
+ */
+function migrateDrumMappingsToStableKeys() {
+  if (!midiManager || !midiManager.deviceRegistry) {
+    console.log('⚠️ Cannot migrate: MIDI manager not ready');
+    return;
+  }
+
+  let migratedCount = 0;
+  let ambiguousCount = 0;
+
+  for (const drumId in drumSettings) {
+    const drum = drumSettings[drumId];
+
+    // Check if drum has a volatile device ID but no stable key (needs migration)
+    if (drum.midiDevice && !drum.midiDeviceStable) {
+      // Try to find stable key for this volatile device ID
+      const stableKey = midiManager.deviceRegistry.getStableKey(drum.midiDevice);
+
+      if (stableKey) {
+        // Found it! Upgrade the mapping
+        drum.midiDeviceStable = stableKey;
+        migratedCount++;
+        console.log(`🔄 Migrated ${drumId} to use stable key: ${stableKey}`);
+      } else {
+        // Device ID not in current registry - might be disconnected or from old session
+        // Try to match by device name from connectedDevices (less reliable)
+        const connectedDevice = midiManager.connectedDevices.find(d => d.id === drum.midiDevice);
+        if (connectedDevice && connectedDevice.stableKey) {
+          drum.midiDeviceStable = connectedDevice.stableKey;
+          migratedCount++;
+          console.log(`🔄 Migrated ${drumId} to use stable key (via connected devices): ${connectedDevice.stableKey}`);
+        } else {
+          ambiguousCount++;
+          console.log(`⚠️ Cannot migrate ${drumId}: device ID ${drum.midiDevice} not found in registry`);
+          // Clear the obsolete device ID to allow note-only matching
+          drum.midiDevice = null;
+        }
+      }
+    }
+  }
+
+  if (migratedCount > 0) {
+    console.log(`✅ Migrated ${migratedCount} drum mapping(s) to stable device keys`);
+    notificationSystem.show(`Upgraded ${migratedCount} drum mapping(s) to new device tracking`, 'success');
+
+    // Save updated settings to persist the migration
+    const appState = {
+      drumSettings,
+      globalSizeMultiplier,
+      currentBlendMode,
+      currentBgColor,
+      bankModeSettings: midiManager.getState()
+    };
+    stateManager.saveAsDefault(appState);
+  }
+
+  if (ambiguousCount > 0) {
+    console.log(`⚠️ ${ambiguousCount} drum(s) with unknown devices - set to "any device" mode`);
+  }
+}
+
+/**
+ * Check for duplicate MIDI note mappings and warn user
+ * Helps debug conflicts where multiple drums use the same note
+ */
+function checkForDuplicateNoteMappings() {
+  const noteMap = new Map(); // note -> [drumIds]
+
+  // Build map of notes to drums
+  for (const drumId in drumSettings) {
+    const drum = drumSettings[drumId];
+    if (drum.midiNote !== null && drum.midiNote !== undefined) {
+      if (!noteMap.has(drum.midiNote)) {
+        noteMap.set(drum.midiNote, []);
+      }
+      noteMap.get(drum.midiNote).push({
+        id: drumId,
+        name: drum.name,
+        device: drum.midiDevice,
+        deviceStable: drum.midiDeviceStable
+      });
+    }
+  }
+
+  // Find duplicates
+  const duplicates = [];
+  for (const [note, drums] of noteMap.entries()) {
+    if (drums.length > 1) {
+      duplicates.push({ note, drums });
+    }
+  }
+
+  if (duplicates.length > 0) {
+    console.warn(`⚠️ Found ${duplicates.length} MIDI note conflict(s):`);
+    duplicates.forEach(({ note, drums }) => {
+      console.warn(`  Note ${note} mapped to ${drums.length} drums:`);
+      drums.forEach(drum => {
+        const deviceInfo = drum.deviceStable
+          ? `device: ${drum.deviceStable}`
+          : drum.device
+            ? `device: ${drum.device} (no stable key!)`
+            : 'ANY device';
+        console.warn(`    - ${drum.id} (${drum.name}) [${deviceInfo}]`);
+      });
+      console.warn(`  → Only ONE will respond unless they have different device assignments!`);
+    });
+
+    // Show notification
+    const notesList = duplicates.map(d => d.note).join(', ');
+    notificationSystem.show(`⚠️ MIDI Note Conflicts: Notes ${notesList} mapped to multiple drums. Check console!`, 'warning');
+  } else {
+    console.log(`✅ No MIDI note conflicts detected`);
+  }
+
+  // Also log all current mappings for debugging
+  console.log('📋 Current Drum Mappings:');
+  for (const drumId in drumSettings) {
+    const drum = drumSettings[drumId];
+    const deviceInfo = drum.midiDeviceStable
+      ? `${drum.midiDeviceStable}`
+      : drum.midiDevice
+        ? `volatile:${drum.midiDevice}`
+        : 'ANY';
+    console.log(`  ${drumId} (${drum.name}): Note ${drum.midiNote} @ ${deviceInfo}`);
+  }
 }
 
 // ===== MOUSE TESTING (for development without MIDI) =====

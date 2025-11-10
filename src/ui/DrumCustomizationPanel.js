@@ -277,9 +277,22 @@ export class DrumCustomizationPanel {
 
     const input = group.querySelector(`#name-${drumId}`);
     input.onchange = () => {
-      this.drumSettings[drumId].name = input.value;
+      const newName = input.value.trim() || 'Untitled Drum';
+
+      // Update drum settings
+      this.drumSettings[drumId].name = newName;
+
+      // Update DRUM_KIT_CONFIG (this is what gets saved!)
+      const drumConfig = DRUM_KIT_CONFIG.find(d => d.id === drumId);
+      if (drumConfig) {
+        drumConfig.name = newName;
+      }
+
+      // Update tab label
       const label = document.getElementById(`tab-label-${drumId}`);
-      if (label) label.textContent = input.value;
+      if (label) label.textContent = newName;
+
+      console.log(`✏️ Renamed drum ${drumId} to: ${newName}`);
     };
 
     return group;
@@ -372,12 +385,23 @@ export class DrumCustomizationPanel {
 
     const input = group.querySelector(`#color-${drumId}`);
     input.oninput = () => {
-      this.drumSettings[drumId].color = input.value;
+      const newColor = input.value;
+
+      // Update drum settings
+      this.drumSettings[drumId].color = newColor;
+
+      // Update DRUM_KIT_CONFIG (this is what gets saved!)
+      const drumConfig = DRUM_KIT_CONFIG.find(d => d.id === drumId);
+      if (drumConfig) {
+        drumConfig.defaultColor = newColor;
+      }
+
       this.updatePreview(drumId);
+
       // Update tab color
       const tabBtn = document.getElementById(`tab-btn-${drumId}`);
       if (tabBtn && drumId === this.currentTab) {
-        tabBtn.style.borderTopColor = input.value;
+        tabBtn.style.borderTopColor = newColor;
       }
     };
 

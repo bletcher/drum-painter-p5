@@ -38,7 +38,7 @@ import { SCALING_CURVES } from './constants.js';
 export const DRUM_KIT_CONFIG = [
   { id: 'kick', name: 'Kick', defaultMidiNote: 51, defaultColor: '#141E50' },
   { id: 'snare', name: 'Snare', defaultMidiNote: 49, defaultColor: '#C82832' },
-  { id: 'rack_tom', name: 'Rack Tom', defaultMidiNote: 50, defaultColor: '#64A0DC' },
+  { id: 'snare_rim', name: 'Snare Rim', defaultMidiNote: 50, defaultColor: '#DC8C64' },
   { id: 'floor_tom', name: 'Floor Tom', defaultMidiNote: 39, defaultColor: '#DC6428' }
   // 💡 ADD MORE DRUMS HERE! Examples:
   // { id: 'hi_hat', name: 'Hi-Hat', defaultMidiNote: 42, defaultColor: '#FFC300' },
@@ -62,7 +62,8 @@ export function generateFactorySettings() {
     settings[drum.id] = {
       name: drum.name,
       midiNote: drum.defaultMidiNote,
-      midiDevice: null, // Device-specific mapping (null = any device)
+      midiDevice: null, // Volatile device ID (auto-updated on reconnect)
+      midiDeviceStable: null, // Stable device key (name::manufacturer) - persists across reconnects
       color: drum.defaultColor,
       shape: 'circle',
       opacity: 1.0,
