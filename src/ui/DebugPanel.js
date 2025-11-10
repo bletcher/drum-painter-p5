@@ -3,6 +3,8 @@
  * Shows original settings vs calculated paint values in real-time
  */
 
+import { DEBUG_PANEL, COLORS, SPACING, RADIUS, SHADOWS } from '../config/theme.js';
+
 export class DebugPanel {
   constructor(drumSettings, midiManager) {
     this.drumSettings = drumSettings;
@@ -59,9 +61,9 @@ export class DebugPanel {
     const header = document.createElement('div');
     header.id = 'debug-header';
     header.style.cssText = `
-      padding: 15px 20px;
-      background: #667eea;
-      color: white;
+      padding: ${SPACING.lg} ${SPACING.xl};
+      background: ${COLORS.primary.main};
+      color: ${COLORS.text.light};
       display: flex;
       justify-content: space-between;
       align-items: center;
@@ -73,9 +75,9 @@ export class DebugPanel {
       <button id="close-debug-btn" style="
         background: rgba(255,255,255,0.2);
         border: none;
-        color: white;
+        color: ${COLORS.text.light};
         padding: 5px 10px;
-        border-radius: 4px;
+        border-radius: ${RADIUS.md};
         cursor: pointer;
         font-size: 18px;
       ">×</button>
@@ -103,8 +105,8 @@ export class DebugPanel {
       width: 20px;
       height: 20px;
       cursor: nwse-resize;
-      background: linear-gradient(135deg, transparent 50%, #667eea 50%);
-      border-bottom-right-radius: 8px;
+      background: linear-gradient(135deg, transparent 50%, ${COLORS.primary.main} 50%);
+      border-bottom-right-radius: ${RADIUS.xl};
     `;
     resizeHandle.onmousedown = (e) => this.startResize(e);
 
@@ -252,12 +254,12 @@ export class DebugPanel {
 
     tableContainer.innerHTML = `
       <!-- Fixed Settings Section -->
-      <h5 id="fixed-settings-header-${drumId}" style="margin: 0 0 8px 0; font-size: 13px; color: #667eea; font-weight: 600; border-bottom: 2px solid #667eea; padding-bottom: 4px; cursor: pointer; user-select: none; display: flex; align-items: center; gap: 8px;">
+      <h5 id="fixed-settings-header-${drumId}" style="margin: 0 0 ${SPACING.sm} 0; font-size: 13px; color: ${DEBUG_PANEL.header.collapsed.textColor}; font-weight: 600; border-bottom: 2px solid ${DEBUG_PANEL.header.collapsed.borderColor}; padding-bottom: ${SPACING.xs}; cursor: pointer; user-select: none; display: flex; align-items: center; gap: ${SPACING.sm};">
         <span id="fixed-settings-chevron-${drumId}" style="transition: transform 0.2s;">▼</span>
         <span>Fixed Settings</span>
       </h5>
       <div id="fixed-settings-content-${drumId}" style="overflow: hidden; transition: max-height 0.3s ease-out;">
-        <table style="width: 100%; font-size: 11px; border-collapse: collapse; table-layout: fixed; margin-bottom: 20px;">
+        <table style="width: 100%; font-size: 11px; border-collapse: collapse; table-layout: fixed; margin-bottom: ${SPACING.xl};">
           <colgroup>
             <col style="width: 35%;">
             <col style="width: 65%;">
@@ -273,26 +275,26 @@ export class DebugPanel {
           ${this.createFixedRow('Stroke Enabled', settings.strokeEnabled ? 'Yes' : 'No')}
           ${this.createFixedRow('Stroke Weight', `${settings.strokeWeight}px`)}
           ${this.createFixedRow('Stroke Color', settings.strokeColor, true, settings.strokeColor)}
-          ${this.createFixedRow('Size Scaling', settings.sizeScaling || 'linear')}
-          ${this.createFixedRow('Opacity Scaling', settings.opacityScaling || 'linear')}
-          ${this.createFixedRow('Hue Scaling', settings.hueScaling || 'linear')}
+          ${this.createFixedRow('Size Scaling', settings.sizeScaling || '1:1')}
+          ${this.createFixedRow('Opacity Scaling', settings.opacityScaling || '1:1')}
+          ${this.createFixedRow('Hue Scaling', settings.hueScaling || '1:1')}
         </table>
       </div>
 
       <!-- Velocity Input Display -->
-      <div style="background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%); border-radius: 6px; padding: 12px 16px; margin-bottom: 12px; border-left: 4px solid #f59e0b; display: flex; justify-content: space-between; align-items: center;">
-        <div style="display: flex; align-items: baseline; gap: 8px;">
-          <span style="font-size: 10px; font-weight: 600; color: #92400e; text-transform: uppercase; letter-spacing: 0.5px;">Input</span>
-          <span style="font-size: 12px; font-weight: 600; color: #78350f;">Velocity</span>
+      <div style="background: ${DEBUG_PANEL.velocity.background}; border-radius: ${RADIUS.lg}; padding: ${SPACING.md} 16px; margin-bottom: ${SPACING.md}; border-left: 4px solid ${DEBUG_PANEL.velocity.borderColor}; display: flex; justify-content: space-between; align-items: center;">
+        <div style="display: flex; align-items: baseline; gap: ${SPACING.sm};">
+          <span style="font-size: 10px; font-weight: 600; color: ${DEBUG_PANEL.velocity.badgeColor}; text-transform: uppercase; letter-spacing: 0.5px;">Input</span>
+          <span style="font-size: 12px; font-weight: 600; color: ${DEBUG_PANEL.velocity.labelColor};">Velocity</span>
         </div>
-        <div style="font-size: 18px; font-weight: 700; color: #92400e; font-family: 'Courier New', monospace;">
+        <div style="font-size: 18px; font-weight: 700; color: ${DEBUG_PANEL.velocity.valueColor}; font-family: 'Courier New', monospace;">
           ${paintData.velocity.toFixed(3)}
         </div>
       </div>
 
       <!-- Calculated Values Table -->
-      <div style="background: linear-gradient(135deg, #f0fff4 0%, #dcfce7 100%); border-radius: 6px; padding: 12px; border-left: 4px solid #22c55e;">
-        <div style="font-size: 10px; font-weight: 600; color: #166534; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Calculated Values</div>
+      <div style="background: ${DEBUG_PANEL.calculated.background}; border-radius: ${RADIUS.lg}; padding: ${SPACING.md}; border-left: 4px solid ${DEBUG_PANEL.calculated.borderColor};">
+        <div style="font-size: 10px; font-weight: 600; color: ${DEBUG_PANEL.calculated.labelColor}; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: ${SPACING.sm};">Calculated Values</div>
         <table style="width: 100%; font-size: 11px; border-collapse: collapse; table-layout: fixed;">
           <colgroup>
             <col style="width: 40%;">
@@ -342,13 +344,13 @@ export class DebugPanel {
    */
   createFixedRow(label, value, isColor = false, colorValue = null) {
     const colorSwatch = isColor && colorValue
-      ? `<span style="display: inline-block; width: 12px; height: 12px; background: ${colorValue}; border: 1px solid #ccc; border-radius: 2px; margin-left: 5px; vertical-align: middle;"></span>`
+      ? `<span style="display: inline-block; width: 12px; height: 12px; background: ${colorValue}; border: 1px solid ${COLORS.border.dark}; border-radius: 2px; margin-left: 5px; vertical-align: middle;"></span>`
       : '';
 
     return `
-      <tr style="border-bottom: 1px solid #f0f0f0;">
-        <td style="padding: 6px 8px 6px 0; font-weight: 600; color: #666; vertical-align: top;">${label}</td>
-        <td style="padding: 6px 8px; color: #333; vertical-align: top; word-break: break-word; overflow-wrap: break-word;">${value}${colorSwatch}</td>
+      <tr style="border-bottom: 1px solid ${DEBUG_PANEL.fixedSettings.borderColor};">
+        <td style="padding: 6px 8px 6px 0; font-weight: 600; color: ${DEBUG_PANEL.fixedSettings.labelColor}; vertical-align: top;">${label}</td>
+        <td style="padding: 6px 8px; color: ${DEBUG_PANEL.fixedSettings.valueColor}; vertical-align: top; word-break: break-word; overflow-wrap: break-word;">${value}${colorSwatch}</td>
       </tr>
     `;
   }
@@ -358,13 +360,13 @@ export class DebugPanel {
    */
   createCalculatedRow(label, value, isColor = false, colorValue = null) {
     const colorSwatch = isColor && colorValue
-      ? `<span style="display: inline-block; width: 12px; height: 12px; background: ${colorValue}; border: 1px solid #ccc; border-radius: 2px; margin-left: 5px; vertical-align: middle;"></span>`
+      ? `<span style="display: inline-block; width: 12px; height: 12px; background: ${colorValue}; border: 1px solid ${COLORS.border.dark}; border-radius: 2px; margin-left: 5px; vertical-align: middle;"></span>`
       : '';
 
     return `
-      <tr style="border-bottom: 1px solid rgba(22, 101, 52, 0.1);">
-        <td style="padding: 6px 8px 6px 0; font-weight: 600; color: #166534; vertical-align: top;">${label}</td>
-        <td style="padding: 6px 8px; color: #166534; vertical-align: top; word-break: break-word; overflow-wrap: break-word;">${value}${colorSwatch}</td>
+      <tr style="border-bottom: 1px solid ${DEBUG_PANEL.calculated.tableRowBorder};">
+        <td style="padding: 6px 8px 6px 0; font-weight: 600; color: ${DEBUG_PANEL.calculated.labelColor}; vertical-align: top;">${label}</td>
+        <td style="padding: 6px 8px; color: ${DEBUG_PANEL.calculated.valueColor}; vertical-align: top; word-break: break-word; overflow-wrap: break-word;">${value}${colorSwatch}</td>
       </tr>
     `;
   }

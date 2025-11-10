@@ -75,17 +75,17 @@ export const MAX_HISTORY = 2;
 */
 // ===== SCALING CURVES =====
 export const SCALING_CURVES = {
-  LINEAR: 'linear',
-  LOGARITHMIC: 'log',
-  EXPONENTIAL: 'exp',
-  QUADRATIC: 'quad'
+  ONE_TO_ONE: '1:1',
+  BOOST_SOFT: 'boost-soft',
+  GATE_SOFT: 'gate-soft',
+  GATE_LOUD: 'gate-loud'
 };
 
 export const SCALING_CURVE_NAMES = {
-  [SCALING_CURVES.LINEAR]: 'Linear',
-  [SCALING_CURVES.LOGARITHMIC]: 'Logarithmic',
-  [SCALING_CURVES.EXPONENTIAL]: 'Exponential',
-  [SCALING_CURVES.QUADRATIC]: 'Quadratic'
+  [SCALING_CURVES.ONE_TO_ONE]: '1:1',
+  [SCALING_CURVES.BOOST_SOFT]: 'Boost Soft',
+  [SCALING_CURVES.GATE_SOFT]: 'Gate Soft',
+  [SCALING_CURVES.GATE_LOUD]: 'Gate Loud'
 };
 
 // ===== UI SETTINGS =====

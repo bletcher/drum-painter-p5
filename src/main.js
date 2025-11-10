@@ -23,6 +23,7 @@ import { TimelineControls } from './ui/TimelineControls.js';
 import { VideoRecorder } from './ui/VideoRecorder.js';
 import { DebugPanel } from './ui/DebugPanel.js';
 import { findDrumByMidiNote } from './utils/drumHelpers.js';
+import { applyAllThemes } from './utils/applyTheme.js';
 
 // ===== GLOBAL STATE =====
 let paintCanvas;
@@ -104,6 +105,9 @@ window.setup = function() {
   // Cache DOM elements
   midiStatusEl = document.getElementById('midi-status');
   controlsEl = document.getElementById('controls');
+
+  // Apply centralized theme to HTML elements
+  applyAllThemes();
 
   // Initialize system managers
   stateManager = new StateManager();

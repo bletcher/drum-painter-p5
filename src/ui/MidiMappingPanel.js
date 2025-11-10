@@ -4,6 +4,7 @@
  */
 
 import { DRUM_KIT_CONFIG } from '../config/drumKit.js';
+import { MIDI_MAPPING_PANEL, COLORS, SPACING, RADIUS, TYPOGRAPHY } from '../config/theme.js';
 
 export class MidiMappingPanel {
   constructor(drumSettings, midiManager, notificationSystem, updateIndicatorCallback) {
@@ -66,11 +67,11 @@ export class MidiMappingPanel {
    */
   createModeSelector() {
     const section = document.createElement('div');
-    section.style.cssText = 'margin-bottom: 25px; padding: 15px; background: #f8f9fa; border-radius: 8px;';
+    section.style.cssText = `margin-bottom: 25px; padding: 15px; background: ${COLORS.background.secondary}; border-radius: ${RADIUS.xl};`;
 
     const title = document.createElement('h3');
     title.textContent = 'Control Mode';
-    title.style.cssText = 'margin: 0 0 15px 0; font-size: 14px; color: #333;';
+    title.style.cssText = `margin: 0 0 15px 0; font-size: ${TYPOGRAPHY.fontSize.lg}; color: ${COLORS.text.primary};`;
     section.appendChild(title);
 
     // Direct Mode option
@@ -80,9 +81,9 @@ export class MidiMappingPanel {
       cursor: pointer;
       margin-bottom: 10px;
       padding: 10px;
-      background: white;
-      border-radius: 5px;
-      border: 2px solid ${this.midiManager.bankModeEnabled ? '#ddd' : '#667eea'};
+      background: ${COLORS.background.primary};
+      border-radius: ${RADIUS.md};
+      border: 2px solid ${this.midiManager.bankModeEnabled ? COLORS.border.medium : COLORS.primary.main};
     `;
 
     const directRadio = document.createElement('input');
@@ -97,7 +98,7 @@ export class MidiMappingPanel {
     };
 
     const directText = document.createElement('span');
-    directText.innerHTML = '<strong>Direct Mode</strong><br><span style="font-size: 11px; color: #666;">Each fader/dial controls a specific drum + variable (use 🎛 buttons in Drum Customization)</span>';
+    directText.innerHTML = `<strong>Direct Mode</strong><br><span style="font-size: ${TYPOGRAPHY.fontSize.base}; color: ${COLORS.text.secondary};">Each fader/dial controls a specific drum + variable (use 🎛 buttons in Drum Customization)</span>`;
     directText.style.marginLeft = '8px';
 
     directLabel.appendChild(directRadio);
@@ -110,9 +111,9 @@ export class MidiMappingPanel {
       display: block;
       cursor: pointer;
       padding: 10px;
-      background: white;
-      border-radius: 5px;
-      border: 2px solid ${this.midiManager.bankModeEnabled ? '#667eea' : '#ddd'};
+      background: ${COLORS.background.primary};
+      border-radius: ${RADIUS.md};
+      border: 2px solid ${this.midiManager.bankModeEnabled ? COLORS.primary.main : COLORS.border.medium};
     `;
 
     const bankRadio = document.createElement('input');
@@ -127,7 +128,7 @@ export class MidiMappingPanel {
     };
 
     const bankText = document.createElement('span');
-    bankText.innerHTML = '<strong>Bank Mode</strong><br><span style="font-size: 11px; color: #666;">Hit pad to select drum, faders control selected drum\'s variables (Alesis workflow)</span>';
+    bankText.innerHTML = `<strong>Bank Mode</strong><br><span style="font-size: ${TYPOGRAPHY.fontSize.base}; color: ${COLORS.text.secondary};">Hit pad to select drum, faders control selected drum's variables (Alesis workflow)</span>`;
     bankText.style.marginLeft = '8px';
 
     bankLabel.appendChild(bankRadio);
@@ -146,7 +147,7 @@ export class MidiMappingPanel {
 
     const title = document.createElement('h3');
     title.textContent = 'Pad Assignments (Select Drum)';
-    title.style.cssText = 'margin: 0 0 15px 0; font-size: 14px; color: #333;';
+    title.style.cssText = `margin: 0 0 15px 0; font-size: ${TYPOGRAPHY.fontSize.lg}; color: ${COLORS.text.primary};`;
     section.appendChild(title);
 
     const grid = document.createElement('div');
@@ -171,13 +172,13 @@ export class MidiMappingPanel {
         align-items: center;
         justify-content: space-between;
         padding: 10px;
-        background: #f8f9fa;
-        border-radius: 5px;
+        background: ${MIDI_MAPPING_PANEL.drumRow.background};
+        border-radius: ${RADIUS.md};
       `;
 
       const label = document.createElement('span');
       label.textContent = this.drumSettings[drumId]?.name || drum.name;
-      label.style.cssText = 'font-weight: bold; font-size: 12px; flex: 1;';
+      label.style.cssText = `font-weight: bold; font-size: ${TYPOGRAPHY.fontSize.md}; flex: 1;`;
 
       const assignmentDisplay = document.createElement('div');
       assignmentDisplay.style.cssText = 'display: flex; flex-direction: column; gap: 2px; font-size: 10px; margin-right: 5px;';
@@ -185,7 +186,7 @@ export class MidiMappingPanel {
       if (assignment.note !== null) {
         const noteSpan = document.createElement('span');
         noteSpan.textContent = `Note ${assignment.note}`;
-        noteSpan.style.cssText = 'color: #667eea; font-weight: bold; padding: 3px 8px; background: #e8eaff; border-radius: 3px;';
+        noteSpan.style.cssText = `color: ${COLORS.primary.main}; font-weight: bold; padding: 3px 8px; background: ${COLORS.primary.bg}; border-radius: ${RADIUS.sm};`;
         assignmentDisplay.appendChild(noteSpan);
 
         if (assignment.deviceId) {
@@ -194,25 +195,25 @@ export class MidiMappingPanel {
           const deviceName = device ? device.name : assignment.deviceId.substring(0, 20);
           const deviceSpan = document.createElement('span');
           deviceSpan.textContent = `${deviceName}`;
-          deviceSpan.style.cssText = 'color: #10b981; font-size: 9px; padding: 2px 6px;';
+          deviceSpan.style.cssText = `color: ${COLORS.success.light}; font-size: ${TYPOGRAPHY.fontSize.xs}; padding: 2px 6px;`;
           assignmentDisplay.appendChild(deviceSpan);
         } else {
           const anyDeviceSpan = document.createElement('span');
           anyDeviceSpan.textContent = 'Any Device';
-          anyDeviceSpan.style.cssText = 'color: #f59e0b; font-size: 9px; padding: 2px 6px;';
+          anyDeviceSpan.style.cssText = `color: ${COLORS.warning.main}; font-size: ${TYPOGRAPHY.fontSize.xs}; padding: 2px 6px;`;
           assignmentDisplay.appendChild(anyDeviceSpan);
         }
       } else {
         const notSetSpan = document.createElement('span');
         notSetSpan.textContent = 'Not Set';
-        notSetSpan.style.cssText = 'color: #999;';
+        notSetSpan.style.cssText = `color: ${COLORS.text.muted};`;
         assignmentDisplay.appendChild(notSetSpan);
       }
 
       const learnBtn = document.createElement('button');
       learnBtn.textContent = '🎛';
       learnBtn.title = 'Learn Pad';
-      learnBtn.style.cssText = 'padding: 4px 8px; font-size: 11px; background: #667eea; color: white; border: none; border-radius: 3px; cursor: pointer; margin-right: 5px;';
+      learnBtn.style.cssText = `padding: 4px 8px; font-size: ${TYPOGRAPHY.fontSize.base}; background: ${MIDI_MAPPING_PANEL.learnButton.idle}; color: white; border: none; border-radius: ${RADIUS.sm}; cursor: pointer; margin-right: 5px;`;
       learnBtn.onclick = () => {
         this.startBankLearn('pad', drumId, learnBtn);
       };
@@ -220,7 +221,7 @@ export class MidiMappingPanel {
       const removeBtn = document.createElement('button');
       removeBtn.textContent = '×';
       removeBtn.title = 'Remove';
-      removeBtn.style.cssText = 'padding: 2px 6px; font-size: 10px; background: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer;';
+      removeBtn.style.cssText = `padding: 2px 6px; font-size: ${TYPOGRAPHY.fontSize.sm}; background: ${COLORS.error.main}; color: white; border: none; border-radius: ${RADIUS.sm}; cursor: pointer;`;
       removeBtn.style.display = assignment.note !== null ? 'inline-block' : 'none';
       removeBtn.onclick = () => {
         this.midiManager.bankPadAssignments[drumId].note = null;
@@ -248,12 +249,12 @@ export class MidiMappingPanel {
 
     const title = document.createElement('h3');
     title.textContent = 'Global Variable Assignments';
-    title.style.cssText = 'margin: 0 0 10px 0; font-size: 14px; color: #333;';
+    title.style.cssText = `margin: 0 0 10px 0; font-size: ${TYPOGRAPHY.fontSize.lg}; color: ${COLORS.text.primary};`;
     section.appendChild(title);
 
     const note = document.createElement('div');
     note.textContent = 'These faders/dials will control the selected drum\'s parameters';
-    note.style.cssText = 'font-size: 11px; color: #666; margin-bottom: 15px; font-style: italic;';
+    note.style.cssText = `font-size: ${TYPOGRAPHY.fontSize.base}; color: ${COLORS.text.secondary}; margin-bottom: 15px; font-style: italic;`;
     section.appendChild(note);
 
     const grid = document.createElement('div');
@@ -276,13 +277,13 @@ export class MidiMappingPanel {
         align-items: center;
         justify-content: space-between;
         padding: 10px;
-        background: #f8f9fa;
-        border-radius: 5px;
+        background: ${MIDI_MAPPING_PANEL.drumRow.background};
+        border-radius: ${RADIUS.md};
       `;
 
       const label = document.createElement('span');
       label.textContent = variable.label;
-      label.style.cssText = 'font-weight: bold; font-size: 12px; flex: 1;';
+      label.style.cssText = `font-weight: bold; font-size: ${TYPOGRAPHY.fontSize.md}; flex: 1;`;
 
       const assignmentDisplay = document.createElement('div');
       assignmentDisplay.style.cssText = 'display: flex; flex-direction: column; gap: 2px; font-size: 10px; margin-right: 5px;';
@@ -291,7 +292,7 @@ export class MidiMappingPanel {
         const rangeInfo = (assignment.ccMin === 0 && assignment.ccMax === 127) ? '' : ` (${assignment.ccMin}-${assignment.ccMax})`;
         const ccSpan = document.createElement('span');
         ccSpan.textContent = `CC${assignment.cc}${rangeInfo}`;
-        ccSpan.style.cssText = 'color: #667eea; font-weight: bold; padding: 3px 8px; background: #e8eaff; border-radius: 3px;';
+        ccSpan.style.cssText = `color: ${COLORS.primary.main}; font-weight: bold; padding: 3px 8px; background: ${COLORS.primary.bg}; border-radius: ${RADIUS.sm};`;
         assignmentDisplay.appendChild(ccSpan);
 
         if (assignment.deviceId) {
@@ -300,25 +301,25 @@ export class MidiMappingPanel {
           const deviceName = device ? device.name : assignment.deviceId.substring(0, 20);
           const deviceSpan = document.createElement('span');
           deviceSpan.textContent = `${deviceName}`;
-          deviceSpan.style.cssText = 'color: #10b981; font-size: 9px; padding: 2px 6px;';
+          deviceSpan.style.cssText = `color: ${COLORS.success.light}; font-size: ${TYPOGRAPHY.fontSize.xs}; padding: 2px 6px;`;
           assignmentDisplay.appendChild(deviceSpan);
         } else {
           const anyDeviceSpan = document.createElement('span');
           anyDeviceSpan.textContent = 'Any Device';
-          anyDeviceSpan.style.cssText = 'color: #f59e0b; font-size: 9px; padding: 2px 6px;';
+          anyDeviceSpan.style.cssText = `color: ${COLORS.warning.main}; font-size: ${TYPOGRAPHY.fontSize.xs}; padding: 2px 6px;`;
           assignmentDisplay.appendChild(anyDeviceSpan);
         }
       } else {
         const notSetSpan = document.createElement('span');
         notSetSpan.textContent = 'Not Set';
-        notSetSpan.style.cssText = 'color: #999;';
+        notSetSpan.style.cssText = `color: ${COLORS.text.muted};`;
         assignmentDisplay.appendChild(notSetSpan);
       }
 
       const learnBtn = document.createElement('button');
       learnBtn.textContent = '🎛';
       learnBtn.title = 'Learn Fader/Dial';
-      learnBtn.style.cssText = 'padding: 4px 8px; font-size: 11px; background: #667eea; color: white; border: none; border-radius: 3px; cursor: pointer; margin-right: 5px;';
+      learnBtn.style.cssText = `padding: 4px 8px; font-size: ${TYPOGRAPHY.fontSize.base}; background: ${MIDI_MAPPING_PANEL.learnButton.idle}; color: white; border: none; border-radius: ${RADIUS.sm}; cursor: pointer; margin-right: 5px;`;
       learnBtn.onclick = () => {
         this.startBankLearn('variable', variable.key, learnBtn);
       };
@@ -326,7 +327,7 @@ export class MidiMappingPanel {
       const removeBtn = document.createElement('button');
       removeBtn.textContent = '×';
       removeBtn.title = 'Remove';
-      removeBtn.style.cssText = 'padding: 2px 6px; font-size: 10px; background: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer;';
+      removeBtn.style.cssText = `padding: 2px 6px; font-size: ${TYPOGRAPHY.fontSize.sm}; background: ${COLORS.error.main}; color: white; border: none; border-radius: ${RADIUS.sm}; cursor: pointer;`;
       removeBtn.style.display = assignment.cc !== null ? 'inline-block' : 'none';
       removeBtn.onclick = () => {
         this.midiManager.globalVariableAssignments[variable.key].cc = null;
@@ -352,15 +353,15 @@ export class MidiMappingPanel {
    */
   createDirectModeMessage() {
     const section = document.createElement('div');
-    section.style.cssText = 'padding: 15px; background: #f8f9fa; border-radius: 8px;';
+    section.style.cssText = `padding: 15px; background: ${COLORS.background.secondary}; border-radius: ${RADIUS.xl};`;
 
     const title = document.createElement('h3');
     title.textContent = 'Direct Mode - Drum Mappings';
-    title.style.cssText = 'margin: 0 0 15px 0; font-size: 14px; color: #333;';
+    title.style.cssText = `margin: 0 0 15px 0; font-size: ${TYPOGRAPHY.fontSize.lg}; color: ${COLORS.text.primary};`;
     section.appendChild(title);
 
     const info = document.createElement('p');
-    info.style.cssText = 'margin: 0 0 15px 0; font-size: 11px; color: #666;';
+    info.style.cssText = `margin: 0 0 15px 0; font-size: ${TYPOGRAPHY.fontSize.base}; color: ${COLORS.text.secondary};`;
     info.textContent = 'Each drum can be mapped to a specific MIDI device + note. Use 🎹 buttons in Drum Customization to learn mappings.';
     section.appendChild(info);
 
@@ -380,14 +381,14 @@ export class MidiMappingPanel {
         align-items: center;
         gap: 10px;
         padding: 10px;
-        background: white;
-        border-radius: 5px;
-        border-left: 4px solid ${settings?.color || '#666'};
+        background: ${COLORS.background.primary};
+        border-radius: ${RADIUS.md};
+        border-left: 4px solid ${settings?.color || COLORS.text.secondary};
       `;
 
       const drumName = document.createElement('span');
       drumName.textContent = settings?.name || drumId;
-      drumName.style.cssText = 'font-weight: bold; font-size: 12px; flex: 1;';
+      drumName.style.cssText = `font-weight: bold; font-size: ${TYPOGRAPHY.fontSize.md}; flex: 1;`;
 
       const mappingInfo = document.createElement('div');
       mappingInfo.style.cssText = 'display: flex; flex-direction: column; gap: 2px; font-size: 10px;';
@@ -395,7 +396,7 @@ export class MidiMappingPanel {
       if (midiNote !== undefined && midiNote !== null) {
         const noteSpan = document.createElement('span');
         noteSpan.textContent = `Note: ${midiNote}`;
-        noteSpan.style.cssText = 'color: #667eea; font-weight: bold;';
+        noteSpan.style.cssText = `color: ${COLORS.primary.main}; font-weight: bold;`;
         mappingInfo.appendChild(noteSpan);
 
         if (midiDevice) {
@@ -404,25 +405,25 @@ export class MidiMappingPanel {
           const deviceName = device ? device.name : midiDevice.substring(0, 20);
           const deviceSpan = document.createElement('span');
           deviceSpan.textContent = `Device: ${deviceName}`;
-          deviceSpan.style.cssText = 'color: #10b981;';
+          deviceSpan.style.cssText = `color: ${COLORS.success.light};`;
           mappingInfo.appendChild(deviceSpan);
         } else {
           const anyDeviceSpan = document.createElement('span');
           anyDeviceSpan.textContent = 'Device: Any';
-          anyDeviceSpan.style.cssText = 'color: #f59e0b;';
+          anyDeviceSpan.style.cssText = `color: ${COLORS.warning.main};`;
           mappingInfo.appendChild(anyDeviceSpan);
         }
       } else {
         const notMappedSpan = document.createElement('span');
         notMappedSpan.textContent = 'Not mapped';
-        notMappedSpan.style.cssText = 'color: #999;';
+        notMappedSpan.style.cssText = `color: ${COLORS.text.muted};`;
         mappingInfo.appendChild(notMappedSpan);
       }
 
       const clearBtn = document.createElement('button');
       clearBtn.textContent = '×';
       clearBtn.title = 'Clear mapping';
-      clearBtn.style.cssText = 'padding: 4px 8px; font-size: 12px; background: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer;';
+      clearBtn.style.cssText = `padding: 4px 8px; font-size: ${TYPOGRAPHY.fontSize.md}; background: ${COLORS.error.main}; color: white; border: none; border-radius: ${RADIUS.sm}; cursor: pointer;`;
       clearBtn.style.display = midiNote !== undefined && midiNote !== null ? 'block' : 'none';
       clearBtn.onclick = () => {
         settings.midiNote = null;
@@ -452,7 +453,7 @@ export class MidiMappingPanel {
     }
 
     buttonEl.textContent = '⏳';
-    buttonEl.style.background = '#ff6b35';
+    buttonEl.style.background = MIDI_MAPPING_PANEL.learnButton.active;
 
     console.log(`Bank Learn: Waiting for ${type === 'pad' ? 'pad hit' : 'fader/dial movement'} for ${target}...`);
 

@@ -67,14 +67,14 @@ export function generateFactorySettings() {
       color: drum.defaultColor,
       shape: 'circle',
       opacity: 1.0,
-      opacityScaling: SCALING_CURVES.LINEAR,
+      opacityScaling: SCALING_CURVES.ONE_TO_ONE,
       size: 1.0,
-      sizeScaling: SCALING_CURVES.LINEAR,
+      sizeScaling: SCALING_CURVES.ONE_TO_ONE,
       strokeEnabled: false,
       strokeWeight: 2,
       strokeColor: '#000000',
       hueVariation: 0,
-      hueScaling: SCALING_CURVES.LINEAR,
+      hueScaling: SCALING_CURVES.ONE_TO_ONE,
       rotation: 0,
       // MIDI CC live control mappings (min/max match slider display ranges)
       midiCC: {
