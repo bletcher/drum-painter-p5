@@ -84,6 +84,22 @@ export class StateManager {
           blendMode: appState.currentBlendMode,
           bgColor: appState.currentBgColor
         },
+        currentMode: appState.currentMode,
+        spiralSettings: appState.spiralSettings || {
+          tightness: 15,
+          rotationsPerMinute: 4,
+          startRadius: 50,
+          syncToBPM: false
+        },
+        timelineSettings: appState.timelineSettings || {
+          bpm: 120,
+          subdivision: 16,
+          beatsPerMeasure: 4,
+          metronomeEnabled: false,
+          midiLatencyMs: 0,
+          showGrid: true,
+          rowSpacing: 30
+        },
         bankModeSettings: appState.bankModeSettings || {
           enabled: false,
           activeDrum: 'kick',
@@ -155,6 +171,22 @@ export class StateManager {
           sizeMultiplier: appState.globalSizeMultiplier,
           blendMode: appState.currentBlendMode,
           bgColor: appState.currentBgColor
+        },
+        currentMode: appState.currentMode,
+        spiralSettings: appState.spiralSettings || {
+          tightness: 15,
+          rotationsPerMinute: 4,
+          startRadius: 50,
+          syncToBPM: false
+        },
+        timelineSettings: appState.timelineSettings || {
+          bpm: 120,
+          subdivision: 16,
+          beatsPerMeasure: 4,
+          metronomeEnabled: false,
+          midiLatencyMs: 0,
+          showGrid: true,
+          rowSpacing: 30
         },
         bankModeSettings: appState.bankModeSettings || {
           enabled: false,
@@ -234,5 +266,33 @@ export class StateManager {
    */
   hasSavedSettings() {
     return localStorage.getItem(STORAGE_KEY) !== null;
+  }
+
+  /**
+   * Load default settings from bundled JSON file (for production builds)
+   * @returns {Promise<Object|null>} - Loaded state or null if not found
+   */
+  async loadFromFile() {
+    try {
+      // Use Vite's BASE_URL to construct correct path
+      const basePath = import.meta.env.BASE_URL || '/';
+      const settingsPath = `${basePath}default-settings.json`;
+
+      console.log('📦 Attempting to load default-settings.json from:', settingsPath);
+      const response = await fetch(settingsPath);
+
+      if (!response.ok) {
+        console.log('⚠️ No default-settings.json file found at:', settingsPath);
+        return null;
+      }
+
+      const state = await response.json();
+      console.log('✓ Loaded settings from default-settings.json');
+      console.log('📦 Loaded state keys:', Object.keys(state));
+      return state;
+    } catch (error) {
+      console.log('⚠️ Could not load default-settings.json:', error.message);
+      return null;
+    }
   }
 }

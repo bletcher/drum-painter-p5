@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Drum Painter - Modular</title>
+  <title>Drum Painter</title>
   <script src="https://cdn.jsdelivr.net/npm/p5@1.7.0/lib/p5.js"></script>
   <style>
     body {
@@ -614,7 +614,7 @@
           style="
             flex: 1;
             padding: 6px;
-            background: #3b82f6;
+            background: #3d73ca;
             color: white;
             border: none;
             border-radius: 4px;
@@ -628,7 +628,7 @@
           style="
             flex: 1;
             padding: 6px;
-            background: #ef4444;
+            background: #c43f3f;
             color: white;
             border: none;
             border-radius: 4px;
@@ -1435,10 +1435,18 @@
             <li><strong>Timeline Recording:</strong> Use Timeline mode with Start button. Syncs to BPM with optional auto-record</li>
           </ul>
 
-          <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Projects</h4>
+          <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Projects & Settings Export</h4>
           <p style="color: #444; line-height: 1.7;">
-            Save complete configurations including drum settings, mappings, and visual preferences. Name your project, click Save, then load it anytime from the dropdown.
+            <strong>Save Projects:</strong> Save complete configurations including drum settings, mappings, and visual preferences. Name your project, click Save, then load it anytime from the dropdown.
           </p>
+          <p style="color: #444; line-height: 1.7;">
+            <strong>Export Settings:</strong> Click "Export Settings" to download a JSON file containing all your customizations. This file can be:
+          </p>
+          <ul style="line-height: 1.8; color: #444;">
+            <li>Shared with others</li>
+            <li>Used as a backup</li>
+            <li>Bundled with production builds (see Power User section)</li>
+          </ul>
         </div>
 
         <!-- Power User Level -->
@@ -1515,14 +1523,29 @@
             All settings stored in browser localStorage:
           </p>
           <ul style="line-height: 1.8; color: #444; font-size: 14px;">
-            <li><strong>Default Settings:</strong> Auto-saved when you press D</li>
+            <li><strong>Default Settings:</strong> Auto-saved when you press D or Save button</li>
             <li><strong>Named Projects:</strong> Save multiple configurations</li>
             <li><strong>Bank Mode State:</strong> Pad/fader assignments persist</li>
             <li><strong>Drum Kit Config:</strong> Custom drum additions persist</li>
           </ul>
 
+          <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Bundling Default Settings for Deployment</h4>
+          <p style="color: #444; line-height: 1.7; font-size: 14px;">
+            <strong>NEW FEATURE:</strong> Include your customized settings in production builds so they load automatically for all users:
+          </p>
+          <ol style="line-height: 1.8; color: #444; font-size: 14px;">
+            <li>Configure all your settings (drum mappings, colors, sizes, etc.)</li>
+            <li>Click <strong>"Export Settings"</strong> - a JSON file downloads</li>
+            <li>Rename the file to <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">default-settings.json</code></li>
+            <li>Place it in the <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">/public</code> directory</li>
+            <li>Run <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">npm run build</code> to include it in the build</li>
+          </ol>
+          <p style="color: #444; line-height: 1.7; font-size: 14px;">
+            <strong>How it works:</strong> App checks localStorage first, then falls back to <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">default-settings.json</code> if no saved settings exist. Perfect for deploying with pre-configured setups!
+          </p>
+
           <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin-top: 24px; font-size: 13px;">
-            <strong>🔧 Pro Tip:</strong> Export your setup by saving settings as a project, then back up the localStorage data using browser DevTools (Application → Local Storage) for safekeeping.
+            <strong>🔧 Pro Tip:</strong> Export your setup to a JSON file and store it as a backup. For deployment, follow the steps above to bundle your customized defaults with the production build.
           </div>
         </div>
       </div>

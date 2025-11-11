@@ -38,6 +38,51 @@ npm run dev
 
 Opens at `http://localhost:3000` with hot module replacement.
 
+## Including Your Customized Settings in the Build
+
+**NEW FEATURE:** You can now bundle your customized drum settings with the production build so they load automatically for all users.
+
+### Steps to Include Default Settings:
+
+1. **Configure your settings** in the app (colors, sizes, MIDI mappings, etc.)
+
+2. **Save your settings** using the "Save" button in the customization panel
+
+3. **Export settings to file:**
+   - Click "Export Settings" button
+   - A JSON file will download: `drum-painter-settings-[timestamp].json`
+
+4. **Add to build:**
+   - Rename the file to: `default-settings.json`
+   - Place it in the `/public` directory (create if it doesn't exist)
+
+5. **Build normally:**
+   ```bash
+   npm run build
+   ```
+   The `default-settings.json` will be included in the dist folder
+
+6. **Test before deploying:**
+   ```bash
+   npm run preview
+   ```
+   Open http://localhost:4173/drum-painter/ in an incognito window (to bypass localStorage) and verify your settings load correctly. Check browser console for: `✓ Loaded settings from default-settings.json`
+
+7. **Deploy:**
+   Upload the entire `dist/` folder contents to your server. The file structure will be:
+   ```
+   /drum-painter/
+   ├── default-settings.json  (at root of subdirectory)
+   ├── index.html
+   └── assets/
+   ```
+
+8. **How it works:**
+   - Users with existing localStorage settings will use those
+   - New users will automatically load from `default-settings.json`
+   - File is fetched from the correct path using Vite's base URL
+   - Perfect for deploying with pre-configured settings!
+
 ## Production Build
 
 ### Build for production:
@@ -51,6 +96,7 @@ This creates an optimized build in the `dist/` directory with:
 - ✅ All console.log statements removed
 - ✅ Source maps disabled (smaller size)
 - ✅ Chunked bundles for better caching
+- ✅ Default settings included (if you added default-settings.json)
 
 ### Preview the build locally:
 ```bash

@@ -213,7 +213,7 @@ Select project and click "Delete Project" to remove from storage.
 ### Export Settings
 
 1. Click "Export Settings"
-2. JSON copied to clipboard
+2. JSON file downloads automatically
 3. Share with others or back up
 
 ### Import Settings
@@ -221,6 +221,24 @@ Select project and click "Delete Project" to remove from storage.
 1. Click "Import Settings"
 2. Select JSON file
 3. All customizations applied
+
+### Bundle Default Settings in Production Builds
+
+**NEW:** Include your customized settings in the production build so they load automatically for all users:
+
+1. **Configure and save** your desired settings in the app
+2. **Export settings** - click "Export Settings" to download the JSON file
+3. **Rename file** to `default-settings.json`
+4. **Place in `/public` directory** (create if it doesn't exist)
+5. **Build normally** with `npm run build`
+6. **Deploy** - the settings file is included in the `dist` folder
+
+**How it works:**
+- Users with existing localStorage settings will keep using those
+- New users automatically load from `default-settings.json`
+- Perfect for deploying with pre-configured drum mappings and visual settings
+
+See [BUILD.md](BUILD.md) for complete instructions.
 
 ## Architecture
 

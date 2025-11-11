@@ -77,7 +77,7 @@ const modes = [
 // ===== P5.JS SKETCH =====
 
 // Using global mode for now (easier for testing)
-window.setup = function() {
+window.setup = async function() {
   // Create display canvas
   let canvas = createCanvas(windowWidth, windowHeight);
   canvas.parent(document.body);
@@ -258,7 +258,7 @@ window.setup = function() {
 
   // Try to load saved settings
   console.log('🔄 Attempting to load saved settings...');
-  loadSavedSettings();
+  await loadSavedSettings();
   console.log('Current drumSettings after initialization:', drumSettings);
 
   // Initialize UI controls
@@ -437,6 +437,22 @@ function initializeUI() {
         globalSizeMultiplier,
         currentBlendMode,
         currentBgColor,
+        currentMode,
+        spiralSettings: {
+          tightness: spiralMode.spiralTightness,
+          rotationsPerMinute: spiralMode.rotationsPerMinute,
+          startRadius: spiralMode.startRadius,
+          syncToBPM: spiralMode.syncToBPM
+        },
+        timelineSettings: {
+          bpm: timelineMode.bpm,
+          subdivision: timelineMode.subdivision,
+          beatsPerMeasure: timelineMode.beatsPerMeasure,
+          metronomeEnabled: timelineMode.metronomeEnabled,
+          midiLatencyMs: timelineMode.midiLatencyMs,
+          showGrid: timelineMode.showGrid,
+          rowSpacing: timelineMode.rowSpacing
+        },
         bankModeSettings: midiManager.getState()
       };
 
@@ -450,8 +466,8 @@ function initializeUI() {
 
   const loadBtn = document.getElementById('load-default-btn');
   if (loadBtn) {
-    loadBtn.addEventListener('click', () => {
-      loadSavedSettings();
+    loadBtn.addEventListener('click', async () => {
+      await loadSavedSettings();
       customizationPanel.build(); // Rebuild UI with loaded settings
       updateActiveDrumIndicator(); // Update bank mode indicator
       notificationSystem.show('Settings loaded!');
@@ -489,6 +505,22 @@ function initializeUI() {
         globalSizeMultiplier,
         currentBlendMode,
         currentBgColor,
+        currentMode,
+        spiralSettings: {
+          tightness: spiralMode.spiralTightness,
+          rotationsPerMinute: spiralMode.rotationsPerMinute,
+          startRadius: spiralMode.startRadius,
+          syncToBPM: spiralMode.syncToBPM
+        },
+        timelineSettings: {
+          bpm: timelineMode.bpm,
+          subdivision: timelineMode.subdivision,
+          beatsPerMeasure: timelineMode.beatsPerMeasure,
+          metronomeEnabled: timelineMode.metronomeEnabled,
+          midiLatencyMs: timelineMode.midiLatencyMs,
+          showGrid: timelineMode.showGrid,
+          rowSpacing: timelineMode.rowSpacing
+        },
         bankModeSettings: midiManager.getState()
       };
       if (stateManager.exportToFile(appState)) {
@@ -1375,6 +1407,22 @@ window.keyPressed = function() {
       globalSizeMultiplier,
       currentBlendMode,
       currentBgColor,
+      currentMode,
+      spiralSettings: {
+        tightness: spiralMode.spiralTightness,
+        rotationsPerMinute: spiralMode.rotationsPerMinute,
+        startRadius: spiralMode.startRadius,
+        syncToBPM: spiralMode.syncToBPM
+      },
+      timelineSettings: {
+        bpm: timelineMode.bpm,
+        subdivision: timelineMode.subdivision,
+        beatsPerMeasure: timelineMode.beatsPerMeasure,
+        metronomeEnabled: timelineMode.metronomeEnabled,
+        midiLatencyMs: timelineMode.midiLatencyMs,
+        showGrid: timelineMode.showGrid,
+        rowSpacing: timelineMode.rowSpacing
+      },
       bankModeSettings: midiManager.getState()
     };
     if (stateManager.saveAsDefault(appState)) {
@@ -1609,10 +1657,16 @@ function switchMode(newMode) {
 }
 
 /**
- * Load saved settings from localStorage
+ * Load saved settings from localStorage or default-settings.json
  */
-function loadSavedSettings() {
-  const savedState = stateManager.loadDefault();
+async function loadSavedSettings() {
+  // First try localStorage
+  let savedState = stateManager.loadDefault();
+
+  // If localStorage is empty, try loading from bundled default-settings.json
+  if (!savedState) {
+    savedState = await stateManager.loadFromFile();
+  }
 
   if (!savedState) {
     console.log('No saved settings found, using factory defaults');
@@ -1687,6 +1741,22 @@ function loadSavedSettings() {
       globalSizeMultiplier,
       currentBlendMode,
       currentBgColor,
+      currentMode,
+      spiralSettings: {
+        tightness: spiralMode.spiralTightness,
+        rotationsPerMinute: spiralMode.rotationsPerMinute,
+        startRadius: spiralMode.startRadius,
+        syncToBPM: spiralMode.syncToBPM
+      },
+      timelineSettings: {
+        bpm: timelineMode.bpm,
+        subdivision: timelineMode.subdivision,
+        beatsPerMeasure: timelineMode.beatsPerMeasure,
+        metronomeEnabled: timelineMode.metronomeEnabled,
+        midiLatencyMs: timelineMode.midiLatencyMs,
+        showGrid: timelineMode.showGrid,
+        rowSpacing: timelineMode.rowSpacing
+      },
       bankModeSettings: midiManager.getState()
     };
     stateManager.saveAsDefault(appState);
@@ -1728,6 +1798,67 @@ function loadSavedSettings() {
     midiManager.loadState(savedState.bankModeSettings);
     console.log('✓ Loaded bank mode settings');
     updateActiveDrumIndicator(); // Update indicator if bank mode was saved as enabled
+  }
+
+  // Load paint mode
+  if (savedState.currentMode !== undefined) {
+    switchMode(savedState.currentMode);
+    console.log('✓ Loaded paint mode:', savedState.currentMode);
+  }
+
+  // Load spiral settings
+  if (savedState.spiralSettings && spiralMode) {
+    if (savedState.spiralSettings.tightness !== undefined) {
+      spiralMode.spiralTightness = savedState.spiralSettings.tightness;
+      const spiralTightnessSlider = document.getElementById('spiral-tightness');
+      const spiralTightnessVal = document.getElementById('spiral-tightness-val');
+      if (spiralTightnessSlider) spiralTightnessSlider.value = savedState.spiralSettings.tightness;
+      if (spiralTightnessVal) spiralTightnessVal.textContent = savedState.spiralSettings.tightness;
+    }
+    if (savedState.spiralSettings.rotationsPerMinute !== undefined) {
+      spiralMode.rotationsPerMinute = savedState.spiralSettings.rotationsPerMinute;
+      const spiralSpeedSlider = document.getElementById('spiral-speed');
+      const spiralSpeedVal = document.getElementById('spiral-speed-val');
+      if (spiralSpeedSlider) spiralSpeedSlider.value = savedState.spiralSettings.rotationsPerMinute;
+      if (spiralSpeedVal) spiralSpeedVal.textContent = savedState.spiralSettings.rotationsPerMinute;
+    }
+    if (savedState.spiralSettings.startRadius !== undefined) {
+      spiralMode.startRadius = savedState.spiralSettings.startRadius;
+    }
+    if (savedState.spiralSettings.syncToBPM !== undefined) {
+      spiralMode.syncToBPM = savedState.spiralSettings.syncToBPM;
+    }
+    console.log('✓ Loaded spiral settings');
+  }
+
+  // Load timeline settings
+  if (savedState.timelineSettings && timelineMode) {
+    if (savedState.timelineSettings.bpm !== undefined) {
+      timelineMode.bpm = savedState.timelineSettings.bpm;
+    }
+    if (savedState.timelineSettings.subdivision !== undefined) {
+      timelineMode.subdivision = savedState.timelineSettings.subdivision;
+    }
+    if (savedState.timelineSettings.beatsPerMeasure !== undefined) {
+      timelineMode.beatsPerMeasure = savedState.timelineSettings.beatsPerMeasure;
+    }
+    if (savedState.timelineSettings.metronomeEnabled !== undefined) {
+      timelineMode.metronomeEnabled = savedState.timelineSettings.metronomeEnabled;
+    }
+    if (savedState.timelineSettings.midiLatencyMs !== undefined) {
+      timelineMode.midiLatencyMs = savedState.timelineSettings.midiLatencyMs;
+    }
+    if (savedState.timelineSettings.showGrid !== undefined) {
+      timelineMode.showGrid = savedState.timelineSettings.showGrid;
+    }
+    if (savedState.timelineSettings.rowSpacing !== undefined) {
+      timelineMode.rowSpacing = savedState.timelineSettings.rowSpacing;
+    }
+    // Sync UI with loaded settings
+    if (timelineControls) {
+      timelineControls.syncUIWithState();
+    }
+    console.log('✓ Loaded timeline settings');
   }
 
   console.log(`📁 Loaded settings from ${savedState.timestamp}`);
@@ -1773,6 +1904,22 @@ function migrateDrumIdChanges() {
       globalSizeMultiplier,
       currentBlendMode,
       currentBgColor,
+      currentMode,
+      spiralSettings: {
+        tightness: spiralMode.spiralTightness,
+        rotationsPerMinute: spiralMode.rotationsPerMinute,
+        startRadius: spiralMode.startRadius,
+        syncToBPM: spiralMode.syncToBPM
+      },
+      timelineSettings: {
+        bpm: timelineMode.bpm,
+        subdivision: timelineMode.subdivision,
+        beatsPerMeasure: timelineMode.beatsPerMeasure,
+        metronomeEnabled: timelineMode.metronomeEnabled,
+        midiLatencyMs: timelineMode.midiLatencyMs,
+        showGrid: timelineMode.showGrid,
+        rowSpacing: timelineMode.rowSpacing
+      },
       bankModeSettings: midiManager.getState()
     };
     stateManager.saveAsDefault(appState);
@@ -1833,6 +1980,22 @@ function migrateDrumMappingsToStableKeys() {
       globalSizeMultiplier,
       currentBlendMode,
       currentBgColor,
+      currentMode,
+      spiralSettings: {
+        tightness: spiralMode.spiralTightness,
+        rotationsPerMinute: spiralMode.rotationsPerMinute,
+        startRadius: spiralMode.startRadius,
+        syncToBPM: spiralMode.syncToBPM
+      },
+      timelineSettings: {
+        bpm: timelineMode.bpm,
+        subdivision: timelineMode.subdivision,
+        beatsPerMeasure: timelineMode.beatsPerMeasure,
+        metronomeEnabled: timelineMode.metronomeEnabled,
+        midiLatencyMs: timelineMode.midiLatencyMs,
+        showGrid: timelineMode.showGrid,
+        rowSpacing: timelineMode.rowSpacing
+      },
       bankModeSettings: midiManager.getState()
     };
     stateManager.saveAsDefault(appState);

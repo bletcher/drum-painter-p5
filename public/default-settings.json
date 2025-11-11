@@ -1,0 +1,404 @@
+{
+  "version": "2.0",
+  "drumKitConfig": [
+    {
+      "id": "snare",
+      "name": "Snare",
+      "defaultMidiNote": 49,
+      "defaultColor": "#C82832"
+    },
+    {
+      "id": "drum_1762791844722",
+      "name": "Drum 5",
+      "defaultMidiNote": 64,
+      "defaultColor": "#bf2222"
+    },
+    {
+      "id": "floor_tom",
+      "name": "Floor Tom",
+      "defaultMidiNote": 39,
+      "defaultColor": "#DC6428"
+    },
+    {
+      "id": "drum_1762125826961",
+      "name": "Drum 8",
+      "defaultMidiNote": 60,
+      "defaultColor": "#E67E22"
+    },
+    {
+      "id": "kick",
+      "name": "Kick",
+      "defaultMidiNote": 51,
+      "defaultColor": "#141E50"
+    }
+  ],
+  "drumSettings": {
+    "kick": {
+      "name": "Kick",
+      "midiNote": 51,
+      "midiDevice": "input-1",
+      "midiDeviceStable": "Alesis Strike MultiPad::Alesis",
+      "color": "#141E50",
+      "shape": "circle",
+      "opacity": 0.1,
+      "opacityScaling": "linear",
+      "size": 1.6181102362204727,
+      "sizeScaling": "gate-soft",
+      "strokeEnabled": true,
+      "strokeWeight": 5.251968503937007,
+      "strokeColor": "#57557c",
+      "hueVariation": 30,
+      "hueScaling": "linear",
+      "rotation": 0,
+      "midiCC": {
+        "size": {
+          "cc": null,
+          "min": 30,
+          "max": 300,
+          "ccMin": 0,
+          "ccMax": 127
+        },
+        "opacity": {
+          "cc": null,
+          "min": 10,
+          "max": 100,
+          "ccMin": 0,
+          "ccMax": 127
+        },
+        "hueVariation": {
+          "cc": null,
+          "min": 0,
+          "max": 30,
+          "ccMin": 0,
+          "ccMax": 127
+        },
+        "rotation": {
+          "cc": null,
+          "min": 0,
+          "max": 360,
+          "ccMin": 0,
+          "ccMax": 127
+        },
+        "strokeWeight": {
+          "cc": null,
+          "min": 1,
+          "max": 10,
+          "ccMin": 0,
+          "ccMax": 127
+        }
+      }
+    },
+    "snare": {
+      "name": "Snare",
+      "midiNote": 49,
+      "midiDevice": "input-1",
+      "midiDeviceStable": "Alesis Strike MultiPad::Alesis",
+      "color": "#C82832",
+      "shape": "circle",
+      "opacity": 1,
+      "opacityScaling": "linear",
+      "size": 1,
+      "sizeScaling": "1:1",
+      "strokeEnabled": true,
+      "strokeWeight": 2,
+      "strokeColor": "#c21414",
+      "hueVariation": 6,
+      "hueScaling": "linear",
+      "rotation": 0,
+      "midiCC": {
+        "size": {
+          "cc": null,
+          "min": 30,
+          "max": 300,
+          "ccMin": 0,
+          "ccMax": 127
+        },
+        "opacity": {
+          "cc": null,
+          "min": 10,
+          "max": 100,
+          "ccMin": 0,
+          "ccMax": 127
+        },
+        "hueVariation": {
+          "cc": null,
+          "min": 0,
+          "max": 30,
+          "ccMin": 0,
+          "ccMax": 127
+        },
+        "rotation": {
+          "cc": null,
+          "min": 0,
+          "max": 360,
+          "ccMin": 0,
+          "ccMax": 127
+        },
+        "strokeWeight": {
+          "cc": null,
+          "min": 1,
+          "max": 10,
+          "ccMin": 0,
+          "ccMax": 127
+        }
+      },
+      "hueVariationScaling": "boost-soft"
+    },
+    "floor_tom": {
+      "name": "Floor Tom",
+      "midiNote": 39,
+      "midiDevice": "input-1",
+      "midiDeviceStable": "Alesis Strike MultiPad::Alesis",
+      "color": "#DC6428",
+      "shape": "circle",
+      "opacity": 1,
+      "opacityScaling": "linear",
+      "size": 1,
+      "sizeScaling": "linear",
+      "strokeEnabled": false,
+      "strokeWeight": 2,
+      "strokeColor": "#000000",
+      "hueVariation": 0,
+      "hueScaling": "linear",
+      "rotation": 0,
+      "midiCC": {
+        "size": {
+          "cc": null,
+          "min": 30,
+          "max": 300,
+          "ccMin": 0,
+          "ccMax": 127
+        },
+        "opacity": {
+          "cc": null,
+          "min": 10,
+          "max": 100,
+          "ccMin": 0,
+          "ccMax": 127
+        },
+        "hueVariation": {
+          "cc": null,
+          "min": 0,
+          "max": 30,
+          "ccMin": 0,
+          "ccMax": 127
+        },
+        "rotation": {
+          "cc": null,
+          "min": 0,
+          "max": 360,
+          "ccMin": 0,
+          "ccMax": 127
+        },
+        "strokeWeight": {
+          "cc": null,
+          "min": 1,
+          "max": 10,
+          "ccMin": 0,
+          "ccMax": 127
+        }
+      }
+    },
+    "drum_1762125826961": {
+      "name": "Floor-rim",
+      "midiNote": 48,
+      "color": "#98602f",
+      "shape": "circle",
+      "opacity": 1,
+      "opacityScaling": "linear",
+      "size": 1,
+      "sizeScaling": "linear",
+      "strokeEnabled": true,
+      "strokeWeight": 3,
+      "strokeColor": "#000000",
+      "hueVariation": 0,
+      "hueScaling": "linear",
+      "rotation": 0,
+      "midiCC": {
+        "size": {
+          "cc": null,
+          "min": 30,
+          "max": 300,
+          "ccMin": 0,
+          "ccMax": 127
+        },
+        "opacity": {
+          "cc": null,
+          "min": 10,
+          "max": 100,
+          "ccMin": 0,
+          "ccMax": 127
+        },
+        "hueVariation": {
+          "cc": null,
+          "min": 0,
+          "max": 30,
+          "ccMin": 0,
+          "ccMax": 127
+        },
+        "rotation": {
+          "cc": null,
+          "min": 0,
+          "max": 360,
+          "ccMin": 0,
+          "ccMax": 127
+        },
+        "strokeWeight": {
+          "cc": null,
+          "min": 1,
+          "max": 10,
+          "ccMin": 0,
+          "ccMax": 127
+        }
+      },
+      "midiDevice": "input-1",
+      "midiDeviceStable": "Alesis Strike MultiPad::Alesis"
+    },
+    "drum_1762791844722": {
+      "name": "Snare-rim",
+      "midiNote": 50,
+      "color": "#bf2222",
+      "shape": "circle",
+      "opacity": 1,
+      "opacityScaling": "linear",
+      "size": 1,
+      "sizeScaling": "linear",
+      "strokeEnabled": true,
+      "strokeWeight": 3,
+      "strokeColor": "#602a2a",
+      "hueVariation": 0,
+      "hueScaling": "linear",
+      "rotation": 0,
+      "midiCC": {
+        "size": {
+          "cc": null,
+          "min": 30,
+          "max": 300,
+          "ccMin": 0,
+          "ccMax": 127
+        },
+        "opacity": {
+          "cc": null,
+          "min": 10,
+          "max": 100,
+          "ccMin": 0,
+          "ccMax": 127
+        },
+        "hueVariation": {
+          "cc": null,
+          "min": 0,
+          "max": 30,
+          "ccMin": 0,
+          "ccMax": 127
+        },
+        "rotation": {
+          "cc": null,
+          "min": 0,
+          "max": 360,
+          "ccMin": 0,
+          "ccMax": 127
+        },
+        "strokeWeight": {
+          "cc": null,
+          "min": 1,
+          "max": 10,
+          "ccMin": 0,
+          "ccMax": 127
+        }
+      },
+      "midiDevice": "input-1",
+      "midiDeviceStable": "Alesis Strike MultiPad::Alesis"
+    }
+  },
+  "globalSettings": {
+    "sizeMultiplier": 1,
+    "blendMode": 0,
+    "bgColor": 0
+  },
+  "bankModeSettings": {
+    "bankModeEnabled": false,
+    "activeDrumBank": "kick",
+    "padAssignments": {
+      "kick": {
+        "note": null,
+        "deviceId": null
+      },
+      "snare": {
+        "note": null,
+        "deviceId": null
+      },
+      "floor_tom": {
+        "note": null,
+        "deviceId": null
+      }
+    },
+    "globalVariables": {
+      "size": {
+        "cc": null,
+        "ccMin": 0,
+        "ccMax": 127,
+        "deviceId": null
+      },
+      "opacity": {
+        "cc": null,
+        "ccMin": 0,
+        "ccMax": 127,
+        "deviceId": null
+      },
+      "hueVariation": {
+        "cc": null,
+        "ccMin": 0,
+        "ccMax": 127,
+        "deviceId": null
+      },
+      "rotation": {
+        "cc": null,
+        "ccMin": 0,
+        "ccMax": 127,
+        "deviceId": null
+      },
+      "strokeWeight": {
+        "cc": null,
+        "ccMin": 0,
+        "ccMax": 127,
+        "deviceId": null
+      }
+    },
+    "deviceRegistry": {
+      "devices": [
+        {
+          "stableKey": "Focusrite USB MIDI::unknown",
+          "name": "Focusrite USB MIDI",
+          "manufacturer": "Unknown",
+          "lastSeen": 1762809117911
+        },
+        {
+          "stableKey": "Alesis Strike MultiPad::Alesis",
+          "name": "Alesis Strike MultiPad",
+          "manufacturer": "Alesis",
+          "lastSeen": 1762809117911
+        },
+        {
+          "stableKey": "Looptimus Mini::Atmel Corp.",
+          "name": "Looptimus Mini",
+          "manufacturer": "Atmel Corp.",
+          "lastSeen": 1762809117912
+        },
+        {
+          "stableKey": "Arturia KeyLab Essential 49::unknown",
+          "name": "Arturia KeyLab Essential 49",
+          "manufacturer": "Unknown",
+          "lastSeen": 1762809117912
+        },
+        {
+          "stableKey": "MIDIIN2 (Arturia KeyLab Essenti::unknown",
+          "name": "MIDIIN2 (Arturia KeyLab Essenti",
+          "manufacturer": "Unknown",
+          "lastSeen": 1762809117912
+        }
+      ],
+      "timestamp": 1762809158128
+    }
+  },
+  "timestamp": "2025-11-10T21:12:38.128Z"
+}
