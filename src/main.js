@@ -350,6 +350,15 @@ function initializeUI() {
     });
   }
 
+  const spiralPatternSelect = document.getElementById('spiral-pattern');
+  if (spiralPatternSelect) {
+    spiralPatternSelect.addEventListener('change', (e) => {
+      const pattern = e.target.value;
+      spiralMode.setParameters({ pattern: pattern });
+      notificationSystem.show(`Pattern: ${pattern.charAt(0).toUpperCase() + pattern.slice(1)}`);
+    });
+  }
+
   const spiralResetBtn = document.getElementById('spiral-reset-btn');
   if (spiralResetBtn) {
     spiralResetBtn.addEventListener('click', () => {
@@ -442,7 +451,8 @@ function initializeUI() {
           tightness: spiralMode.spiralTightness,
           rotationsPerMinute: spiralMode.rotationsPerMinute,
           startRadius: spiralMode.startRadius,
-          syncToBPM: spiralMode.syncToBPM
+          syncToBPM: spiralMode.syncToBPM,
+          pattern: spiralMode.pattern
         },
         timelineSettings: {
           bpm: timelineMode.bpm,
@@ -451,7 +461,10 @@ function initializeUI() {
           metronomeEnabled: timelineMode.metronomeEnabled,
           midiLatencyMs: timelineMode.midiLatencyMs,
           showGrid: timelineMode.showGrid,
-          rowSpacing: timelineMode.rowSpacing
+          rowSpacing: timelineMode.rowSpacing,
+          layout: timelineMode.layout,
+          warmupMeasures: timelineMode.warmupMeasures,
+          measuresPerStaffPreference: timelineMode.measuresPerStaffPreference
         },
         bankModeSettings: midiManager.getState()
       };
@@ -510,7 +523,8 @@ function initializeUI() {
           tightness: spiralMode.spiralTightness,
           rotationsPerMinute: spiralMode.rotationsPerMinute,
           startRadius: spiralMode.startRadius,
-          syncToBPM: spiralMode.syncToBPM
+          syncToBPM: spiralMode.syncToBPM,
+          pattern: spiralMode.pattern
         },
         timelineSettings: {
           bpm: timelineMode.bpm,
@@ -519,7 +533,10 @@ function initializeUI() {
           metronomeEnabled: timelineMode.metronomeEnabled,
           midiLatencyMs: timelineMode.midiLatencyMs,
           showGrid: timelineMode.showGrid,
-          rowSpacing: timelineMode.rowSpacing
+          rowSpacing: timelineMode.rowSpacing,
+          layout: timelineMode.layout,
+          warmupMeasures: timelineMode.warmupMeasures,
+          measuresPerStaffPreference: timelineMode.measuresPerStaffPreference
         },
         bankModeSettings: midiManager.getState()
       };
@@ -878,6 +895,12 @@ function initializeUI() {
           if (projectData.timelineSettings.rowSpacing !== undefined) {
             timelineMode.rowSpacing = projectData.timelineSettings.rowSpacing;
           }
+          if (projectData.timelineSettings.warmupMeasures !== undefined) {
+            timelineMode.warmupMeasures = projectData.timelineSettings.warmupMeasures;
+          }
+          if (projectData.timelineSettings.measuresPerStaffPreference !== undefined) {
+            timelineMode.measuresPerStaffPreference = projectData.timelineSettings.measuresPerStaffPreference;
+          }
           // Sync UI with loaded settings
           if (timelineControls) {
             timelineControls.syncUI();
@@ -1205,6 +1228,9 @@ window.draw = function() {
   if (currentMode === 8) {
     timelineMode.drawLaneGuides(window, offsetX, offsetY, scaleFactor, paintCanvas);
 
+    // Draw circular visual metronome
+    timelineMode.drawCircularMetronome(window, width, height);
+
     // Auto-scroll to keep current playhead visible when recording
     if (timelineMode.recording && timelineMode.startTime !== null) {
       const timeElapsed = timelineMode.getElapsedTime();
@@ -1421,7 +1447,9 @@ window.keyPressed = function() {
         metronomeEnabled: timelineMode.metronomeEnabled,
         midiLatencyMs: timelineMode.midiLatencyMs,
         showGrid: timelineMode.showGrid,
-        rowSpacing: timelineMode.rowSpacing
+        rowSpacing: timelineMode.rowSpacing,
+        warmupMeasures: timelineMode.warmupMeasures,
+        measuresPerStaffPreference: timelineMode.measuresPerStaffPreference
       },
       bankModeSettings: midiManager.getState()
     };
@@ -1504,7 +1532,8 @@ function handlePaint(note, velocity, deviceId) {
     strokeCount,
     midiDeviceId: deviceId,  // Add device ID to context
     debugPanel,  // Add debug panel to context so modes can record actual values
-    drumId  // Add drumId to context so modes know which drum is being played
+    drumId,  // Add drumId to context so modes know which drum is being played
+    DRUM_KIT_CONFIG  // Add drum kit config for pattern calculations
   };
 
   // Add currentBgColor to context
@@ -1755,7 +1784,9 @@ async function loadSavedSettings() {
         metronomeEnabled: timelineMode.metronomeEnabled,
         midiLatencyMs: timelineMode.midiLatencyMs,
         showGrid: timelineMode.showGrid,
-        rowSpacing: timelineMode.rowSpacing
+        rowSpacing: timelineMode.rowSpacing,
+        warmupMeasures: timelineMode.warmupMeasures,
+        measuresPerStaffPreference: timelineMode.measuresPerStaffPreference
       },
       bankModeSettings: midiManager.getState()
     };
@@ -1828,6 +1859,11 @@ async function loadSavedSettings() {
     if (savedState.spiralSettings.syncToBPM !== undefined) {
       spiralMode.syncToBPM = savedState.spiralSettings.syncToBPM;
     }
+    if (savedState.spiralSettings.pattern !== undefined) {
+      spiralMode.pattern = savedState.spiralSettings.pattern;
+      const spiralPatternSelect = document.getElementById('spiral-pattern');
+      if (spiralPatternSelect) spiralPatternSelect.value = savedState.spiralSettings.pattern;
+    }
     console.log('✓ Loaded spiral settings');
   }
 
@@ -1854,9 +1890,16 @@ async function loadSavedSettings() {
     if (savedState.timelineSettings.rowSpacing !== undefined) {
       timelineMode.rowSpacing = savedState.timelineSettings.rowSpacing;
     }
-    // Sync UI with loaded settings
-    if (timelineControls) {
-      timelineControls.syncUIWithState();
+    if (savedState.timelineSettings.warmupMeasures !== undefined) {
+      timelineMode.warmupMeasures = savedState.timelineSettings.warmupMeasures;
+    }
+    if (savedState.timelineSettings.measuresPerStaffPreference !== undefined) {
+      timelineMode.measuresPerStaffPreference = savedState.timelineSettings.measuresPerStaffPreference;
+    }
+    if (savedState.timelineSettings.layout !== undefined) {
+      timelineMode.layout = savedState.timelineSettings.layout;
+      const timelineLayoutSelect = document.getElementById('timeline-layout');
+      if (timelineLayoutSelect) timelineLayoutSelect.value = savedState.timelineSettings.layout;
     }
     console.log('✓ Loaded timeline settings');
   }
@@ -1918,7 +1961,9 @@ function migrateDrumIdChanges() {
         metronomeEnabled: timelineMode.metronomeEnabled,
         midiLatencyMs: timelineMode.midiLatencyMs,
         showGrid: timelineMode.showGrid,
-        rowSpacing: timelineMode.rowSpacing
+        rowSpacing: timelineMode.rowSpacing,
+        warmupMeasures: timelineMode.warmupMeasures,
+        measuresPerStaffPreference: timelineMode.measuresPerStaffPreference
       },
       bankModeSettings: midiManager.getState()
     };
@@ -1994,7 +2039,9 @@ function migrateDrumMappingsToStableKeys() {
         metronomeEnabled: timelineMode.metronomeEnabled,
         midiLatencyMs: timelineMode.midiLatencyMs,
         showGrid: timelineMode.showGrid,
-        rowSpacing: timelineMode.rowSpacing
+        rowSpacing: timelineMode.rowSpacing,
+        warmupMeasures: timelineMode.warmupMeasures,
+        measuresPerStaffPreference: timelineMode.measuresPerStaffPreference
       },
       bankModeSettings: midiManager.getState()
     };
@@ -2111,6 +2158,11 @@ window.mousePressed = function() {
     return;
   }
 
+  // Handle metronome dragging in timeline mode
+  if (currentMode === 8 && timelineMode.handleMetronomeMousePressed(mouseX, mouseY)) {
+    return; // Metronome was clicked, don't do anything else
+  }
+
   // Check if clicking on scrollbar (any mode with tall canvas)
   if (window.scrollbarBounds) {
     const sb = window.scrollbarBounds;
@@ -2147,6 +2199,11 @@ window.mousePressed = function() {
 };
 
 window.mouseDragged = function() {
+  // Handle metronome dragging in timeline mode
+  if (currentMode === 8) {
+    timelineMode.handleMetronomeMouseDragged(mouseX, mouseY);
+  }
+
   // Handle scrollbar dragging (any mode with tall canvas)
   if (isDraggingScrollbar && window.scrollbarBounds) {
     const sb = window.scrollbarBounds;
@@ -2217,6 +2274,11 @@ window.mouseClicked = function() {
 };
 
 window.mouseReleased = function() {
+  // Handle metronome release in timeline mode
+  if (currentMode === 8) {
+    timelineMode.handleMetronomeMouseReleased();
+  }
+
   // Stop dragging scrollbar
   isDraggingScrollbar = false;
 };

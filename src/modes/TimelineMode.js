@@ -20,15 +20,32 @@ export class TimelineMode {
     this.subdivision = 4; // Beat subdivision (4 = quarter notes, 8 = eighth notes, 16 = sixteenth notes)
     this.beatsPerMeasure = 4; // Time signature numerator (2/4, 3/4, 4/4, etc.)
     this.midiLatencyMs = 70; // MIDI latency compensation in milliseconds
+    this.warmupMeasures = 0; // Number of measures to wait before painting (0-4)
+
+    // Layout selection: 'staff', 'rings', 'radial', 'flower', 'polygon'
+    this.layout = 'staff';
+
+    // Metronome position (draggable)
+    this.metronomeX = null; // null = use default position
+    this.metronomeY = null;
+    this.metronomeDragging = false;
+    this.metronomeDragOffsetX = 0;
+    this.metronomeDragOffsetY = 0;
 
     // Grid/Staff layout
     this.pixelsPerSecond = 200; // How many pixels = 1 second
     this.staffWidth = 1800; // Width before wrapping to next staff (calculated dynamically)
     this.staffHeight = 80; // Total height of one staff (all drums)
     this.drumLineSpacing = 15; // Vertical spacing between drum lines
-    this.measuresPerStaff = 4; // Number of complete measures per staff row
+    this.measuresPerStaff = 4; // Number of complete measures per staff row (calculated dynamically)
+    this.measuresPerStaffPreference = 4; // User preference: 0 = auto, or specific number
     this.showGrid = true; // Show/hide grid lines
     this.rowSpacing = 10; // Vertical spacing between staff rows (pixels)
+
+    // Layout-specific parameters
+    this.ringSpacing = 40; // Spacing between concentric rings
+    this.petalCount = 0; // Auto-calculated from drum count
+    this.polygonSides = 6; // Number of sides for polygon layout
 
     // Metronome state
     this.metronomeEnabled = false;
@@ -71,6 +88,131 @@ export class TimelineMode {
   }
 
   /**
+   * Calculate effective pixels per second based on user preference
+   * @param {number} canvasWidth - The canvas width
+   * @returns {number} - Effective pixels per second for positioning
+   */
+  getEffectivePixelsPerSecond(canvasWidth) {
+    if (this.measuresPerStaffPreference === 0) {
+      // Auto mode: use default spacing
+      return this.pixelsPerSecond;
+    } else {
+      // User-specified number of measures: calculate adjusted spacing
+      const maxStaffWidth = canvasWidth - 100;
+      const secondsPerBeat = 60 / this.bpm;
+      const pixelsPerMeasure = maxStaffWidth / this.measuresPerStaffPreference;
+      const pixelsPerBeat = pixelsPerMeasure / this.beatsPerMeasure;
+      return pixelsPerBeat / secondsPerBeat;
+    }
+  }
+
+  /**
+   * Calculate position based on selected layout
+   * @param {string} drumId - The drum ID
+   * @param {number} beatCount - Current beat count from start
+   * @param {number} timeElapsed - Time elapsed in seconds
+   * @param {number} centerX - Canvas center X
+   * @param {number} centerY - Canvas center Y
+   * @param {number} canvasWidth - Canvas width for spacing calculations
+   * @returns {Object} - { x, y } coordinates for painting
+   */
+  getLayoutPosition(drumId, beatCount, timeElapsed, centerX, centerY, canvasWidth) {
+    const laneIndex = this.timelineLanes[drumId];
+    const secondsPerBeat = 60 / this.bpm;
+
+    switch (this.layout) {
+      case 'rings':
+        // Concentric circles - each drum gets a ring, angle represents time
+        const ringRadius = 100 + (laneIndex * this.ringSpacing);
+        const angle = (beatCount / this.beatsPerMeasure) * Math.PI * 2;
+        return {
+          x: centerX + ringRadius * Math.cos(angle),
+          y: centerY + ringRadius * Math.sin(angle)
+        };
+
+      case 'radial':
+        // Spokes/rays - each drum gets a spoke, distance from center represents time
+        const spokeAngle = (laneIndex / this.timelineLaneCount) * Math.PI * 2;
+        const distance = 50 + (beatCount * 30); // Distance increases with beats
+        return {
+          x: centerX + distance * Math.cos(spokeAngle),
+          y: centerY + distance * Math.sin(spokeAngle)
+        };
+
+      case 'flower':
+        // Flower petals - each drum traces a petal curve
+        const petalAngle = (laneIndex / this.timelineLaneCount) * Math.PI * 2;
+        const petalRadius = 100 + (beatCount * 20);
+        const petalOscillation = Math.sin(beatCount * 0.5) * 40;
+        const petalX = centerX + (petalRadius + petalOscillation) * Math.cos(petalAngle);
+        const petalY = centerY + (petalRadius + petalOscillation) * Math.sin(petalAngle);
+        return { x: petalX, y: petalY };
+
+      case 'polygon':
+        // Expanding polygons - drums at vertices, polygon expands with time
+        const vertexAngle = (laneIndex / this.timelineLaneCount) * Math.PI * 2;
+        const polygonRadius = 80 + (beatCount * 25);
+        return {
+          x: centerX + polygonRadius * Math.cos(vertexAngle),
+          y: centerY + polygonRadius * Math.sin(vertexAngle)
+        };
+
+      case 'staff':
+      default:
+        // Original horizontal staff layout
+        const effectivePixelsPerSecond = this.getEffectivePixelsPerSecond(canvasWidth);
+        const totalX = timeElapsed * effectivePixelsPerSecond;
+        const staffIndex = Math.floor(totalX / this.staffWidth);
+        const xInStaff = totalX % this.staffWidth;
+        const staffY = staffIndex * (this.staffHeight + this.rowSpacing);
+        const laneY = staffY + (laneIndex * this.drumLineSpacing) + this.drumLineSpacing;
+        return { x: xInStaff, y: laneY };
+    }
+  }
+
+  /**
+   * Check if we're still in the warm-up period
+   * @returns {boolean} - True if in warm-up, false if ready to paint
+   */
+  isInWarmup() {
+    if (!this.recording || !this.startTime || this.warmupMeasures === 0) {
+      return false;
+    }
+
+    const currentTime = Date.now();
+    const timeElapsed = (currentTime - this.startTime - this.pausedTime) / 1000.0;
+    const secondsPerBeat = 60 / this.bpm;
+    const secondsPerMeasure = secondsPerBeat * this.beatsPerMeasure;
+    const warmupDuration = secondsPerMeasure * this.warmupMeasures;
+
+    return timeElapsed < warmupDuration;
+  }
+
+  /**
+   * Get the effective time elapsed for visual/painting purposes
+   * During warm-up, returns 0. After warm-up, returns actual time minus warm-up duration.
+   * @returns {number} - Time in seconds for visual timeline position
+   */
+  getEffectiveTimeElapsed() {
+    if (!this.startTime) return 0;
+
+    // Use stopTime if stopped, otherwise use current time
+    const currentTime = this.recording ? Date.now() : (this.stopTime || Date.now());
+    const actualTimeElapsed = (currentTime - this.startTime - this.pausedTime) / 1000.0;
+
+    if (this.warmupMeasures === 0) {
+      return actualTimeElapsed;
+    }
+
+    const secondsPerBeat = 60 / this.bpm;
+    const secondsPerMeasure = secondsPerBeat * this.beatsPerMeasure;
+    const warmupDuration = secondsPerMeasure * this.warmupMeasures;
+
+    // During warm-up, return 0. After warm-up, return time minus warm-up duration
+    return Math.max(0, actualTimeElapsed - warmupDuration);
+  }
+
+  /**
    * Paint method - draws notes on timeline lanes
    */
   paint(note, velocity, context) {
@@ -89,28 +231,33 @@ export class TimelineMode {
       return;
     }
 
-    const currentTime = Date.now();
+    // Don't paint if we're still in warm-up period
+    if (this.isInWarmup()) {
+      return;
+    }
 
-    // Calculate time elapsed in seconds (excluding paused time)
-    // Subtract MIDI latency compensation to align notes with grid
-    const timeElapsed = (currentTime - this.startTime - this.pausedTime - this.midiLatencyMs) / 1000.0;
+    // Calculate effective time elapsed (accounts for warm-up period)
+    // Also subtract MIDI latency compensation to align notes with grid
+    const timeElapsed = this.getEffectiveTimeElapsed() - (this.midiLatencyMs / 1000.0);
 
-    // Calculate x position based on time
-    const totalX = timeElapsed * this.pixelsPerSecond;
+    // Calculate beat count for layout positioning
+    const secondsPerBeat = 60 / this.bpm;
+    const beatCount = timeElapsed / secondsPerBeat;
 
-    // Calculate which staff (row) this belongs to based on wrapping
-    const staffIndex = Math.floor(totalX / this.staffWidth);
-    const xInStaff = totalX % this.staffWidth;
+    // Get position based on selected layout
+    const centerX = paintCanvas.width / 2;
+    const centerY = paintCanvas.height / 2;
+    const { x, y } = this.getLayoutPosition(drumId, beatCount, timeElapsed, centerX, centerY, paintCanvas.width);
 
-    // Calculate y position within the staff
-    const laneIndex = this.timelineLanes[drumId];
-    const staffY = staffIndex * (this.staffHeight + this.rowSpacing);
-    const laneY = staffY + (laneIndex * this.drumLineSpacing) + this.drumLineSpacing;
-
-    // Ensure paintCanvas is tall enough for this staff
-    const requiredHeight = (staffIndex + 1) * (this.staffHeight + this.rowSpacing) + 100;
-    if (paintCanvas.height < requiredHeight) {
-      this.expandCanvasHeight(paintCanvas, requiredHeight, context);
+    // For staff layout, ensure canvas is tall enough (other layouts don't need this)
+    if (this.layout === 'staff') {
+      const effectivePixelsPerSecond = this.getEffectivePixelsPerSecond(paintCanvas.width);
+      const totalX = timeElapsed * effectivePixelsPerSecond;
+      const staffIndex = Math.floor(totalX / this.staffWidth);
+      const requiredHeight = (staffIndex + 1) * (this.staffHeight + this.rowSpacing) + 100;
+      if (paintCanvas.height < requiredHeight) {
+        this.expandCanvasHeight(paintCanvas, requiredHeight, context);
+      }
     }
 
     // Get drum settings
@@ -136,14 +283,14 @@ export class TimelineMode {
 
     // Paint the dot
     paintCanvas.push();
-    this.paintDot(paintCanvas, xInStaff, laneY, size, col, alpha, shape, stroke, rotation);
+    this.paintDot(paintCanvas, x, y, size, col, alpha, shape, stroke, rotation);
     paintCanvas.pop();
 
     // Add particle for visual feedback
     if (context.particles) {
       context.particles.push({
-        x: xInStaff,
-        y: laneY,
+        x: x,
+        y: y,
         size: size,
         color: col,
         life: 30,
@@ -185,6 +332,168 @@ export class TimelineMode {
     if (this.metronomeEnabled && this.recording) {
       this.updateMetronome();
     }
+  }
+
+  /**
+   * Draw circular visual metronome on window canvas
+   * Called from main draw loop when metronome is enabled
+   */
+  drawCircularMetronome(p5Instance, canvasWidth, canvasHeight) {
+    if (!this.metronomeEnabled) return;
+    if (!this.startTime) return;
+    if (!this.recording) return; // Stop when recording stops
+
+    const currentTime = Date.now();
+    const timeElapsed = (currentTime - this.startTime - this.pausedTime) / 1000.0;
+
+    // Calculate timing
+    const secondsPerBeat = 60 / this.bpm;
+    const secondsPerSubdivision = secondsPerBeat / (this.subdivision / 4);
+    const subdivisionsPerMeasure = this.subdivision * (this.beatsPerMeasure / 4);
+
+    // Position (use custom position if set, otherwise default to bottom right)
+    const defaultX = canvasWidth - 100;
+    const defaultY = canvasHeight - 100;
+    const centerX = this.metronomeX !== null ? this.metronomeX : defaultX;
+    const centerY = this.metronomeY !== null ? this.metronomeY : defaultY;
+    const radius = 60;
+
+    // Check if mouse is over metronome (for drag detection)
+    const mouseX = p5Instance.mouseX;
+    const mouseY = p5Instance.mouseY;
+    const distFromCenter = Math.sqrt(Math.pow(mouseX - centerX, 2) + Math.pow(mouseY - centerY, 2));
+    const isMouseOver = distFromCenter < radius;
+
+    p5Instance.push();
+    p5Instance.colorMode(p5Instance.RGB, 255);
+
+    // Draw outer circle with hover effect
+    p5Instance.noFill();
+    if (isMouseOver || this.metronomeDragging) {
+      p5Instance.stroke(150, 200, 255, 220);
+      p5Instance.strokeWeight(3);
+      // Change cursor
+      p5Instance.cursor(p5Instance.MOVE);
+    } else {
+      p5Instance.stroke(200, 200, 200, 180);
+      p5Instance.strokeWeight(2);
+    }
+    p5Instance.circle(centerX, centerY, radius * 2);
+
+    // Calculate current subdivision in measure
+    const currentSubdivision = timeElapsed / secondsPerSubdivision;
+    const subdivisionInMeasure = currentSubdivision % subdivisionsPerMeasure;
+
+    // Draw subdivision markers
+    const subdivisionsPerQuarter = this.subdivision / 4;
+    for (let i = 0; i < subdivisionsPerMeasure; i++) {
+      const angle = (i / subdivisionsPerMeasure) * Math.PI * 2 - Math.PI / 2; // Start at top
+      const x = centerX + Math.cos(angle) * radius;
+      const y = centerY + Math.sin(angle) * radius;
+
+      // Determine if this is a beat or first beat
+      const isBeat = (i % subdivisionsPerQuarter) === 0;
+      const isFirstBeat = i === 0;
+
+      // Check if marker should pulse (within 0.15 subdivisions of current position)
+      const distance = Math.abs(subdivisionInMeasure - i);
+      const wrappedDistance = Math.min(distance, subdivisionsPerMeasure - distance);
+      const isPulsing = wrappedDistance < 0.15;
+
+      // Size and color based on type and pulse
+      let markerSize = 4;
+      let markerAlpha = 150;
+
+      if (isFirstBeat) {
+        markerSize = 10;
+        p5Instance.fill(255, 100, 100, isPulsing ? 255 : markerAlpha);
+      } else if (isBeat) {
+        markerSize = 7;
+        p5Instance.fill(100, 150, 255, isPulsing ? 255 : markerAlpha);
+      } else {
+        markerSize = 4;
+        p5Instance.fill(150, 150, 150, isPulsing ? 220 : markerAlpha);
+      }
+
+      // Add pulse glow effect
+      if (isPulsing) {
+        p5Instance.noStroke();
+        p5Instance.fill(255, 255, 255, 80);
+        p5Instance.circle(x, y, markerSize * 2.5);
+      }
+
+      p5Instance.noStroke();
+      p5Instance.circle(x, y, markerSize);
+    }
+
+    // Draw sweeping hand
+    const handAngle = (subdivisionInMeasure / subdivisionsPerMeasure) * Math.PI * 2 - Math.PI / 2;
+    const handLength = radius - 10;
+    const handX = centerX + Math.cos(handAngle) * handLength;
+    const handY = centerY + Math.sin(handAngle) * handLength;
+
+    p5Instance.stroke(255, 150, 50, 200);
+    p5Instance.strokeWeight(3);
+    p5Instance.line(centerX, centerY, handX, handY);
+
+    // Draw center dot
+    p5Instance.fill(255, 150, 50, 255);
+    p5Instance.noStroke();
+    p5Instance.circle(centerX, centerY, 8);
+
+    // Draw BPM text below circle
+    p5Instance.fill(200, 200, 200, 200);
+    p5Instance.noStroke();
+    p5Instance.textAlign(p5Instance.CENTER, p5Instance.CENTER);
+    p5Instance.textSize(12);
+    p5Instance.text(`${this.bpm} BPM`, centerX, centerY + radius + 15);
+
+    // Draw current beat text
+    const currentBeat = Math.floor(currentSubdivision / subdivisionsPerQuarter) % this.beatsPerMeasure + 1;
+    const currentMeasure = Math.floor(currentSubdivision / subdivisionsPerMeasure) + 1;
+    p5Instance.textSize(10);
+    p5Instance.text(`M${currentMeasure} B${currentBeat}`, centerX, centerY + radius + 28);
+
+    p5Instance.pop();
+  }
+
+  /**
+   * Handle mouse press on metronome
+   * Returns true if metronome was clicked (to prevent other interactions)
+   */
+  handleMetronomeMousePressed(mouseX, mouseY) {
+    if (!this.metronomeEnabled || !this.recording) return false;
+
+    // Use default position if not set
+    const centerX = this.metronomeX !== null ? this.metronomeX : (window.width - 100);
+    const centerY = this.metronomeY !== null ? this.metronomeY : (window.height - 100);
+    const radius = 60;
+
+    const distFromCenter = Math.sqrt(Math.pow(mouseX - centerX, 2) + Math.pow(mouseY - centerY, 2));
+    if (distFromCenter < radius) {
+      this.metronomeDragging = true;
+      this.metronomeDragOffsetX = mouseX - centerX;
+      this.metronomeDragOffsetY = mouseY - centerY;
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Handle mouse drag on metronome
+   */
+  handleMetronomeMouseDragged(mouseX, mouseY) {
+    if (this.metronomeDragging) {
+      this.metronomeX = mouseX - this.metronomeDragOffsetX;
+      this.metronomeY = mouseY - this.metronomeDragOffsetY;
+    }
+  }
+
+  /**
+   * Handle mouse release on metronome
+   */
+  handleMetronomeMouseReleased() {
+    this.metronomeDragging = false;
   }
 
   /**
@@ -393,21 +702,35 @@ export class TimelineMode {
 
     // Calculate beat/measure metrics
     const secondsPerBeat = 60 / this.bpm;
-    const pixelsPerBeat = secondsPerBeat * this.pixelsPerSecond;
-    const pixelsPerMeasure = pixelsPerBeat * this.beatsPerMeasure;
     const secondsPerSubdivision = secondsPerBeat / (this.subdivision / 4);
-    const pixelsPerSubdivision = secondsPerSubdivision * this.pixelsPerSecond;
-
-    // Calculate staff width to fit measures
     const maxStaffWidth = paintCanvas.width - 100;
-    this.measuresPerStaff = Math.max(1, Math.floor(maxStaffWidth / pixelsPerMeasure));
-    this.staffWidth = this.measuresPerStaff * pixelsPerMeasure;
+
+    // Calculate staff width and spacing based on user preference
+    const effectivePixelsPerSecond = this.getEffectivePixelsPerSecond(paintCanvas.width);
+    let pixelsPerBeat, pixelsPerMeasure, pixelsPerSubdivision;
+
+    if (this.measuresPerStaffPreference === 0) {
+      // Auto mode: use default spacing and fit as many measures as possible
+      pixelsPerBeat = secondsPerBeat * this.pixelsPerSecond;
+      pixelsPerMeasure = pixelsPerBeat * this.beatsPerMeasure;
+      pixelsPerSubdivision = secondsPerSubdivision * this.pixelsPerSecond;
+      this.measuresPerStaff = Math.max(1, Math.floor(maxStaffWidth / pixelsPerMeasure));
+      this.staffWidth = this.measuresPerStaff * pixelsPerMeasure;
+    } else {
+      // User-specified number of measures: adjust spacing to fill canvas width
+      this.measuresPerStaff = this.measuresPerStaffPreference;
+      this.staffWidth = maxStaffWidth;
+      pixelsPerMeasure = this.staffWidth / this.measuresPerStaff;
+      pixelsPerBeat = pixelsPerMeasure / this.beatsPerMeasure;
+      pixelsPerSubdivision = pixelsPerBeat / (this.subdivision / 4);
+    }
 
     // Calculate how many staffs to show
-    const timeElapsed = this.getElapsedTime();
-    const totalX = timeElapsed * this.pixelsPerSecond;
+    // Use effective time (excludes warm-up) for visual timeline
+    const timeElapsed = this.getEffectiveTimeElapsed();
+    const totalX = timeElapsed * effectivePixelsPerSecond;
     const maxStaffs = Math.max(1, Math.ceil(totalX / this.staffWidth) + 1);
-    const maxStaffsToShow = Math.min(maxStaffs, Math.floor(paintCanvas.height / this.staffHeight) + 1);
+    const maxStaffsToShow = Math.min(maxStaffs, Math.floor(paintCanvas.height / (this.staffHeight + this.rowSpacing)) + 1);
 
     // Draw staffs
     for (let staffIdx = 0; staffIdx < maxStaffsToShow; staffIdx++) {
@@ -497,46 +820,11 @@ export class TimelineMode {
         p5Instance.line(offsetX, topLineY, offsetX + this.staffWidth * scale, topLineY);
       }
 
-      // Draw drum labels on left side with matching colors
-      p5Instance.noStroke();
-      p5Instance.textAlign(p5Instance.LEFT, p5Instance.CENTER);
-      p5Instance.textSize(11 * scale);
-      p5Instance.textStyle(p5Instance.BOLD);
-
-      // Generate drum info from config
-      const drumInfo = this.drumKitConfig.map(drum => {
-        const drumSettings = window.drumSettings || {};
-        const settings = drumSettings[drum.id];
-        return {
-          name: (settings?.name || drum.name).toUpperCase().substring(0, 6),
-          drumId: drum.id
-        };
-      });
-
-      drumInfo.forEach((info, i) => {
-        const y = (staffY + (i * this.drumLineSpacing) + this.drumLineSpacing) * scale + offsetY;
-
-        // Get drum color
-        const drumSettings = window.drumSettings || {};
-        const settings = drumSettings[info.drumId];
-        if (settings) {
-          const colorHex = settings.color;
-          const r = parseInt(colorHex.slice(1, 3), 16);
-          const g = parseInt(colorHex.slice(3, 5), 16);
-          const b = parseInt(colorHex.slice(5, 7), 16);
-          p5Instance.fill(r, g, b, 200);
-        } else {
-          p5Instance.fill(0, 0, 0, 100);
-        }
-
-        p5Instance.text(info.name, offsetX + 5 * scale, y);
-      });
-
       // Draw staff index/measure marker
       p5Instance.textAlign(p5Instance.LEFT, p5Instance.TOP);
       p5Instance.textSize(10 * scale);
       p5Instance.fill(0, 0, 0, 80);
-      const startTime = staffIdx * (this.staffWidth / this.pixelsPerSecond);
+      const startTime = staffIdx * (this.staffWidth / effectivePixelsPerSecond);
       const startBeat = Math.floor(startTime / secondsPerBeat);
       const startMeasure = Math.floor(startBeat / this.beatsPerMeasure);
       p5Instance.text(`M${startMeasure + 1}`, offsetX + 5 * scale, offsetY + staffY * scale + 5 * scale);
@@ -551,7 +839,8 @@ export class TimelineMode {
     }
 
     // Draw playhead line (current time position)
-    if (this.startTime !== null && totalX > 0) {
+    // Don't draw during warm-up period
+    if (this.startTime !== null && totalX > 0 && !this.isInWarmup()) {
       const staffIndex = Math.floor(totalX / this.staffWidth);
       const xInStaff = totalX % this.staffWidth;
       const staffY = staffIndex * (this.staffHeight + this.rowSpacing);

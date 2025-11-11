@@ -43,6 +43,28 @@ export class TimelineControls {
       });
     }
 
+    // Layout selector
+    const layoutSelect = document.getElementById('timeline-layout');
+    if (layoutSelect) {
+      layoutSelect.addEventListener('change', (e) => {
+        this.timelineMode.layout = e.target.value;
+        this.notificationSystem.show(`Layout: ${e.target.value.charAt(0).toUpperCase() + e.target.value.slice(1)}`);
+      });
+    }
+
+    // Measures per staff selector
+    const measuresPerStaffSelect = document.getElementById('timeline-measures-per-staff');
+    if (measuresPerStaffSelect) {
+      measuresPerStaffSelect.addEventListener('change', (e) => {
+        this.timelineMode.measuresPerStaffPreference = parseInt(e.target.value);
+        if (e.target.value === '0') {
+          this.notificationSystem.show('Measures per row: Auto');
+        } else {
+          this.notificationSystem.show(`${e.target.value} measure${e.target.value === '1' ? '' : 's'} per row`);
+        }
+      });
+    }
+
     // Metronome checkbox
     const metronomeCheckbox = document.getElementById('metronome-enabled');
     if (metronomeCheckbox) {
@@ -87,6 +109,14 @@ export class TimelineControls {
     if (autoRecordCheckbox) {
       autoRecordCheckbox.addEventListener('change', () => {
         this.updateStatusText();
+      });
+    }
+
+    // Warm-up measures selector
+    const warmupSelect = document.getElementById('timeline-warmup-measures');
+    if (warmupSelect) {
+      warmupSelect.addEventListener('change', (e) => {
+        this.timelineMode.warmupMeasures = parseInt(e.target.value);
       });
     }
 
@@ -219,7 +249,12 @@ export class TimelineControls {
     if (state === 'initial') {
       statusDiv.textContent = shouldAutoRecord ? 'Press Start to begin recording' : 'Press Start (auto-record OFF)';
     } else if (state === 'recording') {
-      statusDiv.textContent = `🔴 Recording... ${elapsed.toFixed(1)}s`;
+      // Check if we're in warm-up period
+      if (this.timelineMode.isInWarmup()) {
+        statusDiv.textContent = `⏱ Warming up... ${elapsed.toFixed(1)}s`;
+      } else {
+        statusDiv.textContent = `🔴 Recording... ${elapsed.toFixed(1)}s`;
+      }
     } else if (state === 'stopped') {
       // Check if timeline is running but not recording
       if (this.timelineMode.startTime && !this.timelineMode.recording && !shouldAutoRecord) {
@@ -268,6 +303,8 @@ export class TimelineControls {
     const showGridCheckbox = document.getElementById('timeline-show-grid');
     const rowSpacingSlider = document.getElementById('timeline-row-spacing');
     const rowSpacingDisplay = document.getElementById('row-spacing-display');
+    const warmupSelect = document.getElementById('timeline-warmup-measures');
+    const measuresPerStaffSelect = document.getElementById('timeline-measures-per-staff');
 
     if (bpmInput) bpmInput.value = this.timelineMode.bpm;
     if (bpmDisplay) bpmDisplay.textContent = this.timelineMode.bpm;
@@ -278,6 +315,8 @@ export class TimelineControls {
     if (showGridCheckbox) showGridCheckbox.checked = this.timelineMode.showGrid;
     if (rowSpacingSlider) rowSpacingSlider.value = this.timelineMode.rowSpacing;
     if (rowSpacingDisplay) rowSpacingDisplay.textContent = `${this.timelineMode.rowSpacing}px`;
+    if (warmupSelect) warmupSelect.value = this.timelineMode.warmupMeasures;
+    if (measuresPerStaffSelect) measuresPerStaffSelect.value = this.timelineMode.measuresPerStaffPreference;
 
     this.updateButtonsUI();
     this.updateStatusText();

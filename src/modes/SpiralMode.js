@@ -25,14 +25,24 @@ import { Particle } from '../canvas/Particle.js';
 
 export class SpiralMode extends ModeBase {
   constructor() {
-    super('Spiral Chronicle', BASE_SIZE_CLASSIC, VELOCITY_MULT_CLASSIC);
+    super('Chronicle', BASE_SIZE_CLASSIC, VELOCITY_MULT_CLASSIC);
 
-    // Spiral parameters
+    // Chronicle parameters
     this.startTime = null;
     this.spiralTightness = 15;        // Space between rotations (pixels per rotation)
     this.rotationsPerMinute = 4;      // How fast the spiral rotates (visual speed)
     this.startRadius = 50;            // Initial radius at center
     this.syncToBPM = false;           // Whether to sync rotation speed to BPM
+
+    // Pattern selection: 'spiral', 'rays', 'helix', 'orbit'
+    this.pattern = 'spiral';
+
+    // Helix-specific parameters
+    this.helixCount = 2;              // Number of intertwined helices
+    this.helixPhaseOffset = 0;        // Phase offset for helix patterns
+
+    // Orbit-specific parameters
+    this.orbitSpacing = 80;           // Spacing between orbit radii
   }
 
   /**
@@ -73,6 +83,57 @@ export class SpiralMode extends ModeBase {
   }
 
   /**
+   * Calculate position based on selected pattern
+   * Returns { x, y } coordinates for painting
+   */
+  getPatternPosition(drumIndex, totalDrums, centerX, centerY) {
+    const { radius, theta } = this.getCurrentPosition();
+
+    switch (this.pattern) {
+      case 'spiral':
+        // Original spiral pattern
+        return this.getSpiralCoordinates(radius, theta, centerX, centerY);
+
+      case 'rays':
+        // Straight rays radiating from center
+        // Each drum gets a fixed angle, distance = elapsed time
+        const rayAngle = (drumIndex / totalDrums) * Math.PI * 2;
+        const distance = radius; // Reuse radius calculation from spiral
+        return {
+          x: centerX + distance * Math.cos(rayAngle),
+          y: centerY + distance * Math.sin(rayAngle)
+        };
+
+      case 'helix':
+        // DNA-like double helix
+        // Drums alternate between two helical paths
+        const helixIndex = drumIndex % this.helixCount;
+        const helixAngle = theta + (helixIndex * Math.PI * 2 / this.helixCount);
+        const helixRadius = this.startRadius + 100; // Fixed radius for helix
+        const helixX = centerX + helixRadius * Math.cos(helixAngle);
+        const helixY = centerY + (radius - this.startRadius) * 0.5; // Vertical progress
+        const helixOffset = Math.sin(helixAngle) * 50; // Oscillation
+        return {
+          x: helixX + helixOffset,
+          y: helixY
+        };
+
+      case 'orbit':
+        // Circular orbits at different radii
+        // Each drum gets its own orbital radius, theta controls rotation
+        const orbitRadius = this.startRadius + (drumIndex * this.orbitSpacing);
+        return {
+          x: centerX + orbitRadius * Math.cos(theta),
+          y: centerY + orbitRadius * Math.sin(theta)
+        };
+
+      default:
+        // Fallback to spiral
+        return this.getSpiralCoordinates(radius, theta, centerX, centerY);
+    }
+  }
+
+  /**
    * Draw the spiral timeline guide on the window canvas (not paintCanvas)
    * This draws a temporary guide that shows where notes will appear
    */
@@ -102,7 +163,7 @@ export class SpiralMode extends ModeBase {
   }
 
   paint(note, velocity, context) {
-    const { paintCanvas, drumSettings, globalSizeMultiplier, particles, midiDeviceId, debugPanel, drumId } = context;
+    const { paintCanvas, drumSettings, globalSizeMultiplier, particles, midiDeviceId, debugPanel, drumId, DRUM_KIT_CONFIG } = context;
 
     // Get drum settings (use drumId from context if available, otherwise find it)
     const actualDrumId = drumId || findDrumByMidiNote(note, midiDeviceId, drumSettings);
@@ -110,11 +171,15 @@ export class SpiralMode extends ModeBase {
 
     const settings = drumSettings[actualDrumId];
 
-    // Get current position on spiral
-    const { radius, theta } = this.getCurrentPosition();
+    // Get drum index for pattern calculation
+    const drumIndex = DRUM_KIT_CONFIG.findIndex(d => d.id === actualDrumId);
+    if (drumIndex === -1) return;
+    const totalDrums = DRUM_KIT_CONFIG.length;
+
+    // Get position based on selected pattern
     const centerX = paintCanvas.width / 2;
     const centerY = paintCanvas.height / 2;
-    const { x, y } = this.getSpiralCoordinates(radius, theta, centerX, centerY);
+    const { x, y } = this.getPatternPosition(drumIndex, totalDrums, centerX, centerY);
 
     // Check if position is still on canvas (with some margin)
     const margin = 100;
@@ -163,7 +228,7 @@ export class SpiralMode extends ModeBase {
   }
 
   /**
-   * Set spiral parameters
+   * Set chronicle parameters
    */
   setParameters(params) {
     if (params.tightness !== undefined) {
@@ -177,6 +242,15 @@ export class SpiralMode extends ModeBase {
     }
     if (params.syncToBPM !== undefined) {
       this.syncToBPM = params.syncToBPM;
+    }
+    if (params.pattern !== undefined) {
+      this.pattern = params.pattern;
+    }
+    if (params.helixCount !== undefined) {
+      this.helixCount = params.helixCount;
+    }
+    if (params.orbitSpacing !== undefined) {
+      this.orbitSpacing = params.orbitSpacing;
     }
   }
 

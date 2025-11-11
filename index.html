@@ -288,6 +288,30 @@
             <option value="12">12/4</option>
           </select>
         </div>
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
+          <label style="min-width: 45px;">Layout:</label>
+          <select id="timeline-layout"
+            style="flex: 1; padding: 4px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px; cursor: pointer;">
+            <option value="staff" selected>Staff</option>
+            <option value="rings">Rings</option>
+            <option value="radial">Radial</option>
+            <option value="flower">Flower</option>
+            <option value="polygon">Polygon</option>
+          </select>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
+          <label style="min-width: 45px;">Per Row:</label>
+          <select id="timeline-measures-per-staff"
+            style="flex: 1; padding: 4px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px; cursor: pointer;">
+            <option value="0">Auto</option>
+            <option value="1">1 measure</option>
+            <option value="2">2 measures</option>
+            <option value="3">3 measures</option>
+            <option value="4" selected>4 measures</option>
+            <option value="6">6 measures</option>
+            <option value="8">8 measures</option>
+          </select>
+        </div>
         <div style="display: flex; align-items: center; gap: 8px; margin-top: 5px;">
           <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
             <input type="checkbox" id="metronome-enabled" style="cursor: pointer;">
@@ -373,12 +397,33 @@
             <span>Auto-record on start</span>
           </label>
         </div>
+        <div style="display: flex; align-items: center; gap: 8px; margin-top: 5px;">
+          <label style="min-width: 70px; font-size: 11px;">Warm-up:</label>
+          <select id="timeline-warmup-measures"
+            style="flex: 1; padding: 4px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px; cursor: pointer;">
+            <option value="0" selected>0 measures</option>
+            <option value="1">1 measure</option>
+            <option value="2">2 measures</option>
+            <option value="3">3 measures</option>
+            <option value="4">4 measures</option>
+          </select>
+        </div>
     </div>
 
     <!-- Spiral Settings (shown only in spiral mode) -->
     <div id="spiral-controls" style="display: none; margin-top: 10px; border-top: 1px solid #ddd; padding-top: 10px;">
-      <strong>Spiral Settings:</strong><br>
+      <strong>Chronicle Settings:</strong><br>
       <div style="margin-top: 8px; font-size: 11px;">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
+          <label style="min-width: 70px;">Pattern:</label>
+          <select id="spiral-pattern"
+            style="flex: 1; padding: 4px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px; cursor: pointer;">
+            <option value="spiral" selected>Spiral</option>
+            <option value="rays">Rays</option>
+            <option value="helix">Helix</option>
+            <option value="orbit">Orbit</option>
+          </select>
+        </div>
         <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
           <label style="min-width: 70px;">Tightness:</label>
           <input type="range" id="spiral-tightness" value="15" min="5" max="40" step="1"

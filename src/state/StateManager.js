@@ -89,7 +89,8 @@ export class StateManager {
           tightness: 15,
           rotationsPerMinute: 4,
           startRadius: 50,
-          syncToBPM: false
+          syncToBPM: false,
+          pattern: 'spiral'
         },
         timelineSettings: appState.timelineSettings || {
           bpm: 120,
@@ -98,7 +99,10 @@ export class StateManager {
           metronomeEnabled: false,
           midiLatencyMs: 0,
           showGrid: true,
-          rowSpacing: 30
+          rowSpacing: 30,
+          layout: 'staff',
+          warmupMeasures: 0,
+          measuresPerStaffPreference: 4
         },
         bankModeSettings: appState.bankModeSettings || {
           enabled: false,
@@ -177,7 +181,8 @@ export class StateManager {
           tightness: 15,
           rotationsPerMinute: 4,
           startRadius: 50,
-          syncToBPM: false
+          syncToBPM: false,
+          pattern: 'spiral'
         },
         timelineSettings: appState.timelineSettings || {
           bpm: 120,
@@ -186,7 +191,10 @@ export class StateManager {
           metronomeEnabled: false,
           midiLatencyMs: 0,
           showGrid: true,
-          rowSpacing: 30
+          rowSpacing: 30,
+          layout: 'staff',
+          warmupMeasures: 0,
+          measuresPerStaffPreference: 4
         },
         bankModeSettings: appState.bankModeSettings || {
           enabled: false,
