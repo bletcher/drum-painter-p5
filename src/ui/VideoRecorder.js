@@ -22,7 +22,15 @@ export class VideoRecorder {
       ultra: 10000000    // 10 Mbps
     };
 
+    // Format presets
+    this.formatPresets = {
+      'webm-vp9': 'video/webm;codecs=vp9',
+      'webm-vp8': 'video/webm;codecs=vp8',
+      'webm': 'video/webm'
+    };
+
     this.currentQuality = 'medium';
+    this.currentFormat = 'webm-vp9'; // Default to VP9
   }
 
   /**
@@ -31,6 +39,15 @@ export class VideoRecorder {
   setQuality(quality) {
     if (this.qualityPresets[quality]) {
       this.currentQuality = quality;
+    }
+  }
+
+  /**
+   * Set video format
+   */
+  setFormat(format) {
+    if (this.formatPresets[format]) {
+      this.currentFormat = format;
     }
   }
 
@@ -66,20 +83,29 @@ export class VideoRecorder {
       console.log('Stream created:', this.stream);
       console.log('Stream tracks:', this.stream.getTracks().length);
 
-      // Configure MediaRecorder with quality settings
+      // Configure MediaRecorder with quality and format settings
       const options = {
-        mimeType: 'video/webm;codecs=vp9',
+        mimeType: this.formatPresets[this.currentFormat],
         videoBitsPerSecond: this.qualityPresets[this.currentQuality]
       };
 
-      // Fallback to vp8 if vp9 not supported
+      // Fallback if selected format not supported
       if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-        options.mimeType = 'video/webm;codecs=vp8';
-      }
+        console.warn(`Format ${this.currentFormat} not supported, trying fallbacks...`);
 
-      // Fallback to default if webm not supported
-      if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-        options.mimeType = 'video/webm';
+        // Try VP8 if VP9 was selected
+        if (this.currentFormat === 'webm-vp9' && MediaRecorder.isTypeSupported(this.formatPresets['webm-vp8'])) {
+          options.mimeType = this.formatPresets['webm-vp8'];
+          console.log('Falling back to VP8');
+        }
+        // Try plain webm
+        else if (MediaRecorder.isTypeSupported(this.formatPresets['webm'])) {
+          options.mimeType = this.formatPresets['webm'];
+          console.log('Falling back to plain WebM');
+        }
+        else {
+          throw new Error('No supported video format found');
+        }
       }
 
       this.mediaRecorder = new MediaRecorder(this.stream, options);

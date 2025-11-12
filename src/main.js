@@ -109,13 +109,13 @@ window.setup = async function() {
   // Initialize MIDI mapping panel
   midiMappingPanel = new MidiMappingPanel(drumSettings, midiManager, notificationSystem, updateActiveDrumIndicator);
 
-  // Initialize timeline controls
-  timelineControls = new TimelineControls(chronicleMode, notificationSystem);
-  timelineControls.initialize();
-
-  // Initialize video recorder
+  // Initialize video recorder first (needed by timeline controls)
   videoRecorder = new VideoRecorder(paintCanvas, notificationSystem);
   setupVideoRecorderUI();
+
+  // Initialize timeline controls (pass videoRecorder for integration)
+  timelineControls = new TimelineControls(chronicleMode, notificationSystem, videoRecorder);
+  timelineControls.initialize();
 
   // Initialize debug panel
   debugPanel = new DebugPanel(drumSettings, midiManager);
@@ -186,6 +186,13 @@ window.setup = async function() {
   };
 
   midiManager.onDrumNoteAssigned = (drumId, note, deviceId, stableKey) => {
+    // Safety check - ensure drum exists in drumSettings
+    if (!drumSettings[drumId]) {
+      console.error(`Cannot assign MIDI note: Drum "${drumId}" not found in drumSettings`);
+      notificationSystem.show(`Error: Drum "${drumId}" not found`, 'error');
+      return;
+    }
+
     drumSettings[drumId].midiNote = note;
     drumSettings[drumId].midiDevice = deviceId;
     drumSettings[drumId].midiDeviceStable = stableKey; // Store stable key for reconnection
@@ -304,6 +311,12 @@ function initializeUI() {
     const timelineControlsEl = document.getElementById('timeline-controls');
     if (timelineControlsEl) {
       timelineControlsEl.style.display = isFreeform ? 'none' : 'block';
+    }
+
+    // Show/hide Quick Settings video section (hide in Chronicle mode, show in Freeform)
+    const quickSettingsVideoSection = document.getElementById('quick-settings-video-section');
+    if (quickSettingsVideoSection) {
+      quickSettingsVideoSection.style.display = isFreeform ? 'block' : 'none';
     }
   }
 
@@ -1776,6 +1789,12 @@ function switchMode(oldModeIndex) {
   const timelineControlsEl = document.getElementById('timeline-controls');
   if (timelineControlsEl) {
     timelineControlsEl.style.display = mapping.type === 'chronicle' ? 'block' : 'none';
+  }
+
+  // Show/hide Quick Settings video section (hide in Chronicle mode, show in Freeform)
+  const quickSettingsVideoSection = document.getElementById('quick-settings-video-section');
+  if (quickSettingsVideoSection) {
+    quickSettingsVideoSection.style.display = mapping.type === 'freeform' ? 'block' : 'none';
   }
 
   console.log(`Mode: ${getCurrentMode().name}`);

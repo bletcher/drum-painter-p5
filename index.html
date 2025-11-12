@@ -287,19 +287,15 @@
       <strong>Timeline Settings:</strong><br>
       <div style="margin-top: 8px; font-size: 11px;">
         <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
-          <label style="min-width: 45px;">BPM:</label>
-          <input type="number" id="timeline-bpm" value="90" min="40" max="240" step="1"
-            style="flex: 1; padding: 4px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px;">
-          <span id="bpm-display" style="min-width: 40px; text-align: right; font-weight: bold;">120</span>
-        </div>
-        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
-          <label style="min-width: 45px;">Grid:</label>
-          <select id="timeline-subdivision"
+          <label style="min-width: 45px;">Layout:</label>
+          <select id="timeline-layout"
             style="flex: 1; padding: 4px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px; cursor: pointer;">
-            <option value="4" selected>Quarter Notes</option>
-            <option value="8">Eighth Notes</option>
-            <option value="12">Eighth Triplets</option>
-            <option value="16">Sixteenth Notes</option>
+            <option value="staff" selected>Staff</option>
+            <option value="rings">Rings</option>
+            <option value="spiral">Spiral</option>
+            <option value="radial">Radial</option>
+            <option value="flower">Flower</option>
+            <option value="polygon">Polygon</option>
           </select>
         </div>
         <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
@@ -320,15 +316,19 @@
           </select>
         </div>
         <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
-          <label style="min-width: 45px;">Layout:</label>
-          <select id="timeline-layout"
+          <label style="min-width: 45px;">BPM:</label>
+          <input type="number" id="timeline-bpm" value="80" min="30" max="240" step="1"
+            style="flex: 1; padding: 4px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px;">
+          <span id="bpm-display" style="min-width: 40px; text-align: right; font-weight: bold;">120</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
+          <label style="min-width: 45px;">Grid:</label>
+          <select id="timeline-subdivision"
             style="flex: 1; padding: 4px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px; cursor: pointer;">
-            <option value="staff" selected>Staff</option>
-            <option value="rings">Rings</option>
-            <option value="spiral">Spiral</option>
-            <option value="radial">Radial</option>
-            <option value="flower">Flower</option>
-            <option value="polygon">Polygon</option>
+            <option value="4" selected>Quarter Notes</option>
+            <option value="8">Eighth Notes</option>
+            <option value="12">Eighth Triplets</option>
+            <option value="16">Sixteenth Notes</option>
           </select>
         </div>
         <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
@@ -346,7 +346,7 @@
         </div>
         <div style="display: flex; align-items: center; gap: 8px; margin-top: 5px;">
           <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
-            <input type="checkbox" id="metronome-enabled" style="cursor: pointer;">
+            <input type="checkbox" id="metronome-enabled" checked style="cursor: pointer;">
             <span style="font-size: 11px;">Metronome</span>
           </label>
         </div>
@@ -372,7 +372,8 @@
       <div style="margin-top: 10px; border-top: 1px solid #ddd; padding-top: 8px;">
         <strong style="font-size: 12px;">Playing:</strong><br>
       </div>
-      <div id="timeline-buttons-initial" style="display: flex; gap: 5px; margin-top: 5px;">
+      <!-- Timeline control buttons - Row 1: Main controls -->
+      <div style="display: flex; gap: 5px; margin-top: 5px;">
         <button id="timeline-start-btn" style="
           flex: 1;
           padding: 8px;
@@ -382,11 +383,21 @@
           border-radius: 5px;
           font-weight: bold;
           cursor: pointer;
-          font-size: 12px;
+          font-size: 11px;
         ">▶ Start</button>
-      </div>
-      <div id="timeline-buttons-recording" style="display: none; gap: 5px; margin-top: 5px;">
-        <button id="timeline-stop-btn" style="
+        <button id="timeline-pause-btn" style="
+          flex: 1;
+          padding: 8px;
+          background: #ffc107;
+          color: #333;
+          border: none;
+          border-radius: 5px;
+          font-weight: bold;
+          cursor: pointer;
+          font-size: 11px;
+          display: none;
+        ">⏸ Pause</button>
+        <button id="timeline-end-btn" style="
           flex: 1;
           padding: 8px;
           background: #dc3545;
@@ -395,10 +406,12 @@
           border-radius: 5px;
           font-weight: bold;
           cursor: pointer;
-          font-size: 12px;
-        ">■ Stop</button>
+          font-size: 11px;
+          display: none;
+        ">■ End & Save</button>
       </div>
-      <div id="timeline-buttons-stopped" style="display: none; gap: 5px; margin-top: 5px;">
+      <!-- Timeline control buttons - Row 2: Start Over / Continue -->
+      <div style="display: flex; gap: 5px; margin-top: 5px;">
         <button id="timeline-start-over-btn" style="
           flex: 1;
           padding: 8px;
@@ -409,6 +422,7 @@
           font-weight: bold;
           cursor: pointer;
           font-size: 11px;
+          display: none;
         ">↻ Start Over</button>
         <button id="timeline-continue-btn" style="
           flex: 1;
@@ -420,24 +434,44 @@
           font-weight: bold;
           cursor: pointer;
           font-size: 11px;
+          display: none;
         ">▶ Continue</button>
       </div>
         <div style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
           <label style="display: flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer;">
-            <input type="checkbox" id="timeline-auto-record" checked
+            <input type="checkbox" id="timeline-auto-record" unchecked
               style="cursor: pointer;">
-            <span>Auto-record on start</span>
+            <span>Record video with timeline</span>
           </label>
         </div>
         <div style="display: flex; align-items: center; gap: 8px; margin-top: 5px;">
           <label style="min-width: 70px; font-size: 11px;">Warm-up:</label>
           <select id="timeline-warmup-measures"
             style="flex: 1; padding: 4px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px; cursor: pointer;">
-            <option value="0" selected>0 measures</option>
-            <option value="1">1 measure</option>
+            <option value="0">0 measures</option>
+            <option value="1" selected>1 measure</option>
             <option value="2">2 measures</option>
             <option value="3">3 measures</option>
             <option value="4">4 measures</option>
+          </select>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; margin-top: 5px;">
+          <label style="min-width: 70px; font-size: 11px;">Quality:</label>
+          <select id="timeline-video-quality"
+            style="flex: 1; padding: 4px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px; cursor: pointer;">
+            <option value="low">Low (1 Mbps)</option>
+            <option value="medium" selected>Medium (2.5 Mbps)</option>
+            <option value="high">High (5 Mbps)</option>
+            <option value="ultra">Ultra (10 Mbps)</option>
+          </select>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; margin-top: 5px;">
+          <label style="min-width: 70px; font-size: 11px;">Format:</label>
+          <select id="timeline-video-format"
+            style="flex: 1; padding: 4px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px; cursor: pointer;">
+            <option value="webm-vp9" selected>WebM VP9</option>
+            <option value="webm-vp8">WebM VP8</option>
+            <option value="webm">WebM</option>
           </select>
         </div>
     </div>
@@ -718,7 +752,7 @@
     </div>
 
     <!-- Video Recording Section -->
-    <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #ddd;">
+    <div id="quick-settings-video-section" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #ddd;">
       <strong style="display: flex; align-items: center; gap: 6px; margin-bottom: 10px; font-size: 12px;">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="10"/>
@@ -772,6 +806,19 @@
         <span id="video-record-icon">●</span>
         <span id="video-record-text">Start Recording</span>
       </button>
+
+      <div id="chronicle-recording-info" style="
+        display: none;
+        margin-top: 8px;
+        padding: 8px;
+        background: #dbeafe;
+        border-left: 3px solid #3b82f6;
+        border-radius: 4px;
+        font-size: 11px;
+        color: #1e40af;
+      ">
+        ℹ️ Recording via Chronicle mode
+      </div>
 
       <div id="video-recording-status" style="
         display: none;
@@ -1441,14 +1488,14 @@
           <h4 style="color: #333; margin-top: 20px;">3️⃣ Start Playing!</h4>
           <ul style="line-height: 1.8; color: #444;">
             <li><strong>Play your drums</strong> - each hit paints on the canvas</li>
-            <li><strong>Try different paint modes</strong> (dropdown at top)</li>
+            <li><strong>Try different paint modes</strong> - Choose Freeform or Chronicle, then select a style/layout</li>
             <li><strong>Press SPACE</strong> to start/stop video recording</li>
             <li><strong>Press S</strong> to save an image</li>
             <li><strong>Press BACKSPACE</strong> to clear and start fresh</li>
           </ul>
 
           <div style="background: #fff3cd; padding: 12px; border-radius: 6px; margin-top: 20px; font-size: 13px;">
-            <strong>💡 Tip:</strong> Start with <em>Classic Pointillism</em> mode and experiment with blend modes to see beautiful color interactions!
+            <strong>💡 Tip:</strong> Start with <em>Freeform → Classic Pointillism</em> mode and experiment with blend modes to see beautiful color interactions! Try <em>Dendritic Spreading</em> for river-like patterns or <em>Lightning</em> for electric discharge effects.
           </div>
         </div>
 
@@ -1466,16 +1513,29 @@
           </p>
 
           <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Paint Modes</h4>
+          <p style="color: #444; line-height: 1.7;">
+            <strong>Two-Tier System:</strong> Choose main mode type (Freeform or Chronicle) with radio buttons, then select style/layout from dropdown.
+          </p>
+
+          <p style="color: #667eea; margin-top: 16px; margin-bottom: 8px;"><strong>Freeform Mode (Immediate visual response):</strong></p>
           <ul style="line-height: 1.8; color: #444;">
             <li><strong>Classic Pointillism:</strong> Random placement, pointillist style</li>
             <li><strong>Fibonacci Spiral:</strong> Golden ratio spiral emanating from center</li>
-            <li><strong>Radial Symmetry:</strong> Mirrored radial patterns</li>
-            <li><strong>Gravity Field:</strong> Dots fall with physics simulation</li>
-            <li><strong>Organic Growth:</strong> Natural branching, vine-like patterns</li>
-            <li><strong>Dendritic Spreading:</strong> Neural network, river-like growth</li>
-            <li><strong>Lightning:</strong> Electric branching bolts</li>
-            <li><strong>Spiral Chronicle:</strong> Time flows outward in expanding spiral, each drum at fixed angle</li>
-            <li><strong>Timeline:</strong> Musical staff notation with tempo sync and grid</li>
+            <li><strong>Radial Symmetry:</strong> 8-fold mirrored radial patterns</li>
+            <li><strong>Gravity Field:</strong> Falling dots with velocity-dependent drift and fading strokes</li>
+            <li><strong>Organic Growth:</strong> Natural clustering around migrating seed points</li>
+            <li><strong>Dendritic Spreading:</strong> Realistic river drainage networks with hierarchical branching, meandering, and convergent flow based on Horton's Laws</li>
+            <li><strong>Lightning:</strong> Cloud-to-ground electrical discharge with fractal branching, stepped leader physics, and electric corona glow</li>
+          </ul>
+
+          <p style="color: #667eea; margin-top: 16px; margin-bottom: 8px;"><strong>Chronicle Mode (Time-based recording):</strong></p>
+          <ul style="line-height: 1.8; color: #444;">
+            <li><strong>Staff Notation:</strong> Traditional horizontal DAW-style sequencer with musical grid</li>
+            <li><strong>Concentric Rings:</strong> Time flows in circles, each drum on its own ring</li>
+            <li><strong>Spiral:</strong> Archimedean spiral expanding from center, adjustable tightness and rotation speed</li>
+            <li><strong>Radial Spokes:</strong> Drums on spokes radiating from center, distance = time</li>
+            <li><strong>Flower Petals:</strong> Organic petal curves with sinusoidal oscillation</li>
+            <li><strong>Expanding Polygon:</strong> Geometric polygon growth with drums at vertices</li>
           </ul>
 
           <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Blend Modes</h4>
@@ -1509,7 +1569,7 @@
           <ul style="line-height: 1.8; color: #444;">
             <li><strong>Video Recording:</strong> Press SPACE or click recording button. Choose quality first. Saves as .webm</li>
             <li><strong>Image Save:</strong> Press S to save current canvas as PNG</li>
-            <li><strong>Timeline Recording:</strong> Use Timeline mode with Start button. Syncs to BPM with optional auto-record</li>
+            <li><strong>Chronicle Recording:</strong> Use Chronicle mode (any layout) with Start button. Check "Record video with timeline" to capture session to file. Try different layouts for varied visual styles.</li>
           </ul>
 
           <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Projects & Settings Export</h4>
@@ -1562,38 +1622,52 @@
             <li><strong>Pitch Bend Support:</strong> Pitch wheel mapped as pseudo-CC (1001-1016 for channels 1-16)</li>
           </ul>
 
-          <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Timeline Mode Advanced</h4>
+          <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Chronicle Mode Advanced</h4>
+          <p style="color: #444; line-height: 1.7; font-size: 14px;">
+            Time-based recording mode with 6 different layout options. All layouts share these features:
+          </p>
           <ul style="line-height: 1.8; color: #444; font-size: 14px;">
             <li><strong>BPM Sync:</strong> Grid aligns to beats per minute (40-240 BPM)</li>
             <li><strong>Time Signatures:</strong> Support for 2/4 through 12/4</li>
             <li><strong>Subdivisions:</strong> Quarter notes, eighth notes, triplets, sixteenths</li>
             <li><strong>MIDI Latency Compensation:</strong> Adjust 0-200ms to align visual to audio</li>
             <li><strong>Metronome:</strong> Audio click track with measure emphasis</li>
-            <li><strong>Auto-Record Toggle:</strong> Start timeline without recording to practice</li>
-            <li><strong>Grid Toggle:</strong> Hide/show staff lines</li>
-            <li><strong>Row Spacing:</strong> Adjust vertical spacing between drum lanes (0-50px)</li>
+            <li><strong>Video Recording Toggle:</strong> Check "Record video with timeline" to capture sessions to file, or uncheck for practice mode</li>
+            <li><strong>Warmup Measures:</strong> 0-4 silent measures before painting begins</li>
           </ul>
 
-          <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Spiral Mode Parameters</h4>
+          <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Chronicle Layout-Specific Settings</h4>
+          <p style="color: #444; line-height: 1.7; font-size: 14px;"><strong>Staff Notation Layout:</strong></p>
+          <ul style="line-height: 1.8; color: #444; font-size: 14px;">
+            <li><strong>Grid Toggle:</strong> Hide/show staff lines</li>
+            <li><strong>Row Spacing:</strong> Adjust vertical spacing between drum lanes (0-50px)</li>
+            <li><strong>Measures Per Staff:</strong> Auto or fixed number (1-8)</li>
+          </ul>
+
+          <p style="color: #444; line-height: 1.7; font-size: 14px; margin-top: 16px;"><strong>Spiral Layout:</strong></p>
           <ul style="line-height: 1.8; color: #444; font-size: 14px;">
             <li><strong>Tightness (5-40):</strong> Space between spiral rotations in pixels</li>
             <li><strong>Speed (1-12 RPM):</strong> How fast spiral rotates outward</li>
-            <li><strong>Angular Distribution:</strong> Drums distributed evenly around 360° (e.g., 4 drums = 90° apart)</li>
-            <li><strong>Organic Variation:</strong> ±10° angle, ±10% radius randomness</li>
-            <li><strong>Auto-Reset:</strong> Spiral restarts from center when reaching canvas edge</li>
+            <li><strong>BPM Sync:</strong> Optional - link rotation speed to BPM</li>
+            <li><strong>Start Radius:</strong> Initial radius at center (adjustable)</li>
           </ul>
+
+          <p style="color: #444; line-height: 1.7; font-size: 14px; margin-top: 16px;"><strong>Other Layouts:</strong> Rings, Radial Spokes, Flower Petals, and Expanding Polygon use automatic positioning based on drum count and time elapsed.</p>
 
           <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Keyboard Shortcuts Reference</h4>
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 13px;">
-            <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">1-8</kbd> Switch paint modes</div>
-            <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">H</kbd> Hide/show UI</div>
             <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">SPACE</kbd> Record video</div>
+            <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">H</kbd> Hide/show UI</div>
             <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">BKSP</kbd> Clear canvas</div>
             <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">S</kbd> Save image</div>
             <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">D</kbd> Save settings</div>
+            <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">Z</kbd> Undo</div>
             <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">?</kbd> Keyboard shortcuts</div>
             <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">U</kbd> User guide</div>
           </div>
+          <p style="color: #666; font-size: 12px; margin-top: 12px; font-style: italic;">
+            Note: Mode switching is done via UI radio buttons and dropdowns (two-tier selection system).
+          </p>
 
           <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Data Persistence</h4>
           <p style="color: #444; line-height: 1.7; font-size: 14px;">

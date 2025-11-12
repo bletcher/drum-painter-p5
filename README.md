@@ -4,7 +4,7 @@ Create stunning generative art with your MIDI drums! A browser-based painting ap
 
 ## Features
 
-- **8 Unique Paint Modes** - From classic pointillism to spiral chronicles
+- **Two-Tier Mode System** - Freeform (7 styles) and Chronicle (6 layouts)
 - **Device-Specific MIDI Mapping** - Use multiple MIDI devices simultaneously
 - **Bank Mode** - Map global parameters to MIDI CC controls
 - **Timeline Mode** - Record and playback drum patterns with staff notation
@@ -44,37 +44,74 @@ See [BUILD.md](BUILD.md) for complete production build and deployment instructio
 
 ## Paint Modes
 
-Access modes via dropdown or keyboard shortcuts (1-8):
+The application uses a **two-tier mode system**:
 
-### 1. Classic Pointillism (Key: 1)
+1. **Main Mode Type** (Freeform or Chronicle) - Radio buttons
+2. **Style/Layout Selection** - Dropdown menu for specific variations
+
+### Freeform Mode
+
+Immediate visual response - each drum hit creates instant patterns. Choose from 7 styles:
+
+#### Classic Pointillism
 Random placement across canvas. Each drum has unique color, size controlled by velocity.
 
-### 2. Fibonacci Spiral (Key: 2)
-Dots arranged in golden ratio spiral, building outward from center.
+#### Fibonacci Spiral
+Dots arranged in golden ratio spiral, building outward from center. Creates organic growth patterns.
 
-### 3. Radial Symmetry (Key: 3)
+#### Radial Symmetry
 8-fold symmetrical patterns - perfect for mandalas. Each hit creates 8 mirrored dots.
 
-### 4. Gravity Field (Key: 4)
-Dots fall downward creating flowing organic trails. Velocity controls trail length.
+#### Gravity Field
+Dots fall downward creating flowing organic trails. Velocity controls trail length and horizontal drift. Features fading stroke effects.
 
-### 5. Organic Growth (Key: 5)
-Cluster-based growth around "seed" points. Seeds migrate slowly creating natural clustering.
+#### Organic Growth
+Cluster-based growth around "seed" points. Seeds migrate slowly creating natural clustering patterns.
 
-### 6. Velocity Mandala (Key: 6)
-Symmetric patterns where velocity controls both size and radial position.
+#### Dendritic Spreading
+Realistic river drainage networks based on Horton's Laws of stream networks:
+- Hierarchical tributary branching (convergent)
+- Width increases downstream (stream order)
+- Natural meandering with sinusoidal curves
+- Flows away from canvas edges
+- Velocity controls length and branching complexity
+- Random branch variation for organic appearance
 
-### 7. Spiral Chronicle (Key: 7)
-Time flows outward in a spiral from center. Each drum has a fixed angular position (like hours on a clock).
-- Adjustable tightness (5-40px)
+#### Lightning
+Realistic electrical discharge with fractal branching:
+- Cloud-to-ground strikes (originates from top)
+- Stepped leader physics with sharp angular zigzags
+- Divergent branching (main bolt splits into thinner branches)
+- Multiple splits from same point (1-3 branches)
+- Width decreases along branches (energy dissipation)
+- Bright core with electric corona glow
+- Velocity controls complexity and branch count
+
+### Chronicle Mode
+
+Time-based recording with musical notation. Each drum has a fixed position, hits recorded along timeline. Choose from 6 layouts:
+
+#### Staff Notation
+Traditional horizontal DAW-style sequencer with musical grid. Each drum on its own horizontal lane, time flows left to right.
+
+#### Concentric Rings
+Time flows in circular patterns. Each drum assigned to a concentric ring, angle represents time through the measure.
+
+#### Spiral
+Archimedean spiral pattern expanding from center. Time flows outward:
+- Adjustable tightness (space between rotations)
 - Adjustable rotation speed (1-12 RPM)
-- Auto-resets when reaching canvas edge
+- Can sync to BPM
+- Drums offset radially for clarity
 
-### 8. Timeline Mode (Key: 8)
-Musical staff notation with real-time recording and playback.
-- Set BPM and subdivision (quarter, eighth, sixteenth notes)
-- Auto-record option
-- Start over or continue functionality
+#### Radial Spokes
+Drums positioned on spokes radiating from center. Distance from center represents time, creating star/burst patterns.
+
+#### Flower Petals
+Organic flower-like curves. Each drum traces a petal with sinusoidal oscillation for natural flowing patterns.
+
+#### Expanding Polygon
+Geometric polygon growth. Drums at polygon vertices, polygon expands outward with time. Number of vertices equals number of drums.
 
 ## MIDI Setup
 

@@ -337,8 +337,8 @@ export class DrumCustomizationPanel {
 
       // Update when learn completes
       const originalCallback = this.midiManager.onDrumNoteAssigned;
-      this.midiManager.onDrumNoteAssigned = (learnedDrumId, note, deviceId) => {
-        if (originalCallback) originalCallback(learnedDrumId, note, deviceId);
+      this.midiManager.onDrumNoteAssigned = (learnedDrumId, note, deviceId, stableKey) => {
+        if (originalCallback) originalCallback(learnedDrumId, note, deviceId, stableKey);
         if (learnedDrumId === drumId) {
           input.value = note;
           learnButton.textContent = '🎛';
@@ -847,6 +847,8 @@ export class DrumCustomizationPanel {
     this.drumSettings[newId] = {
       name: newDrum.name,
       midiNote: newDrum.defaultMidiNote,
+      midiDevice: null, // Volatile device ID (auto-updated on reconnect)
+      midiDeviceStable: null, // Stable device key (name::manufacturer) - persists across reconnects
       color: newDrum.defaultColor,
       shape: 'circle',
       opacity: 1.0,

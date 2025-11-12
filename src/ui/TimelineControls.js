@@ -5,9 +5,10 @@
  */
 
 export class TimelineControls {
-  constructor(timelineMode, notificationSystem) {
+  constructor(timelineMode, notificationSystem, videoRecorder = null) {
     this.timelineMode = timelineMode;
     this.notificationSystem = notificationSystem;
+    this.videoRecorder = videoRecorder;
     this.updateInterval = null;
   }
 
@@ -112,6 +113,22 @@ export class TimelineControls {
       });
     }
 
+    // Video quality selector
+    const videoQualitySelect = document.getElementById('timeline-video-quality');
+    if (videoQualitySelect && this.videoRecorder) {
+      videoQualitySelect.addEventListener('change', (e) => {
+        this.videoRecorder.setQuality(e.target.value);
+      });
+    }
+
+    // Video format selector
+    const videoFormatSelect = document.getElementById('timeline-video-format');
+    if (videoFormatSelect && this.videoRecorder) {
+      videoFormatSelect.addEventListener('change', (e) => {
+        this.videoRecorder.setFormat(e.target.value);
+      });
+    }
+
     // Warm-up measures selector
     const warmupSelect = document.getElementById('timeline-warmup-measures');
     if (warmupSelect) {
@@ -126,16 +143,22 @@ export class TimelineControls {
       startBtn.addEventListener('click', () => this.handleStart(false));
     }
 
-    // Stop button
-    const stopBtn = document.getElementById('timeline-stop-btn');
-    if (stopBtn) {
-      stopBtn.addEventListener('click', () => this.handleStop());
+    // Pause button
+    const pauseBtn = document.getElementById('timeline-pause-btn');
+    if (pauseBtn) {
+      pauseBtn.addEventListener('click', () => this.handlePause());
+    }
+
+    // End & Save button
+    const endBtn = document.getElementById('timeline-end-btn');
+    if (endBtn) {
+      endBtn.addEventListener('click', () => this.handleEnd());
     }
 
     // Start Over button
     const startOverBtn = document.getElementById('timeline-start-over-btn');
     if (startOverBtn) {
-      startOverBtn.addEventListener('click', () => this.handleStart(true));
+      startOverBtn.addEventListener('click', () => this.handleStartOver());
     }
 
     // Continue button
@@ -149,12 +172,44 @@ export class TimelineControls {
   }
 
   /**
+   * Show Chronicle recording info in Quick Settings (disables video button)
+   */
+  showChronicleRecordingInfo() {
+    const recordBtn = document.getElementById('video-record-btn');
+    const infoDiv = document.getElementById('chronicle-recording-info');
+    if (recordBtn) {
+      recordBtn.disabled = true;
+      recordBtn.style.opacity = '0.5';
+      recordBtn.style.cursor = 'not-allowed';
+    }
+    if (infoDiv) {
+      infoDiv.style.display = 'block';
+    }
+  }
+
+  /**
+   * Hide Chronicle recording info in Quick Settings (re-enables video button)
+   */
+  hideChronicleRecordingInfo() {
+    const recordBtn = document.getElementById('video-record-btn');
+    const infoDiv = document.getElementById('chronicle-recording-info');
+    if (recordBtn) {
+      recordBtn.disabled = false;
+      recordBtn.style.opacity = '1';
+      recordBtn.style.cursor = 'pointer';
+    }
+    if (infoDiv) {
+      infoDiv.style.display = 'none';
+    }
+  }
+
+  /**
    * Handle start button click
    */
   handleStart(startOver) {
-    // Check if auto-record is enabled
-    const autoRecordCheckbox = document.getElementById('timeline-auto-record');
-    const shouldAutoRecord = autoRecordCheckbox ? autoRecordCheckbox.checked : true;
+    // Check if video recording should start with timeline
+    const recordVideoCheckbox = document.getElementById('timeline-auto-record');
+    const shouldRecordVideo = recordVideoCheckbox ? recordVideoCheckbox.checked : false;
 
     if (startOver) {
       // Clear canvas if starting over
@@ -173,28 +228,33 @@ export class TimelineControls {
       if (window.resetTimelineScroll) {
         window.resetTimelineScroll();
       }
-      if (shouldAutoRecord) {
-        this.notificationSystem.show('Recording Started (New)');
+      if (shouldRecordVideo) {
+        this.notificationSystem.show('Timeline started • Recording video');
       } else {
-        this.notificationSystem.show('Timeline Started (Not Recording)');
+        this.notificationSystem.show('Timeline started');
       }
     } else {
-      if (shouldAutoRecord) {
-        this.notificationSystem.show(this.timelineMode.startTime ? 'Recording Continued' : 'Recording Started');
+      if (shouldRecordVideo) {
+        this.notificationSystem.show(this.timelineMode.startTime ? 'Timeline continued • Recording video' : 'Timeline started • Recording video');
       } else {
-        this.notificationSystem.show('Timeline Started (Not Recording)');
+        this.notificationSystem.show(this.timelineMode.startTime ? 'Timeline continued' : 'Timeline started');
       }
     }
 
-    // Only start recording if auto-record is enabled
-    if (shouldAutoRecord) {
-      this.timelineMode.startRecording(startOver);
-    } else {
-      // Start timeline but don't record
-      this.timelineMode.recording = false;
-      if (startOver || !this.timelineMode.startTime) {
-        this.timelineMode.startTime = Date.now();
-      }
+    // Always start timeline recording (painting at time positions)
+    this.timelineMode.startRecording(startOver);
+
+    // Start video recording if checkbox is checked
+    if (shouldRecordVideo && this.videoRecorder && !this.videoRecorder.isRecording) {
+      this.videoRecorder.startRecording().then(success => {
+        if (success && window.updateVideoRecordingUI) {
+          window.updateVideoRecordingUI(true);
+        }
+        // Disable Quick Settings video button while Chronicle is recording
+        if (success) {
+          this.showChronicleRecordingInfo();
+        }
+      });
     }
 
     this.updateButtonsUI();
@@ -202,11 +262,77 @@ export class TimelineControls {
   }
 
   /**
-   * Handle stop button click
+   * Handle pause button click
    */
-  handleStop() {
+  handlePause() {
     this.timelineMode.stopRecording();
-    this.notificationSystem.show('Recording Stopped');
+    // Note: Video recording continues, we just pause the timeline
+    this.notificationSystem.show('Timeline paused');
+    this.updateButtonsUI();
+    this.updateStatusText();
+  }
+
+  /**
+   * Handle end & save button click
+   */
+  handleEnd() {
+    this.timelineMode.stopRecording();
+
+    // Stop and save video recording if it's running
+    if (this.videoRecorder && this.videoRecorder.isRecording) {
+      this.videoRecorder.stopRecording();
+      if (window.updateVideoRecordingUI) {
+        window.updateVideoRecordingUI(false);
+      }
+      // Re-enable Quick Settings video button
+      this.hideChronicleRecordingInfo();
+      this.notificationSystem.show('Timeline ended • Video saved');
+    } else {
+      this.notificationSystem.show('Timeline ended');
+    }
+
+    this.updateButtonsUI();
+    this.updateStatusText();
+  }
+
+  /**
+   * Handle start over button click
+   */
+  handleStartOver() {
+    // Save video first if recording
+    if (this.videoRecorder && this.videoRecorder.isRecording) {
+      this.videoRecorder.stopRecording();
+      if (window.updateVideoRecordingUI) {
+        window.updateVideoRecordingUI(false);
+      }
+      // Re-enable Quick Settings video button
+      this.hideChronicleRecordingInfo();
+    }
+
+    // Clear canvas
+    const paintCanvas = window.paintCanvas;
+    const currentBgColor = window.currentBgColor || 0;
+    const BG_COLORS = [255, 0, 32, 240, 200];
+    if (paintCanvas) {
+      const BLEND_MODES = window.BLEND_MODES || [window.BLEND];
+      const currentBlendMode = window.currentBlendMode || 0;
+      paintCanvas.blendMode(window.BLEND);
+      paintCanvas.background(BG_COLORS[currentBgColor]);
+      paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
+    }
+
+    // Reset scroll position
+    if (window.resetTimelineScroll) {
+      window.resetTimelineScroll();
+    }
+
+    // Reset timeline
+    this.timelineMode.startTime = null;
+    this.timelineMode.stopTime = null;
+    this.timelineMode.pausedTime = 0;
+    this.timelineMode.recording = false;
+
+    this.notificationSystem.show('Canvas cleared • Ready to start');
     this.updateButtonsUI();
     this.updateStatusText();
   }
@@ -217,20 +343,35 @@ export class TimelineControls {
   updateButtonsUI() {
     const state = this.timelineMode.getRecordingState();
 
-    const initialButtons = document.getElementById('timeline-buttons-initial');
-    const recordingButtons = document.getElementById('timeline-buttons-recording');
-    const stoppedButtons = document.getElementById('timeline-buttons-stopped');
+    const startBtn = document.getElementById('timeline-start-btn');
+    const pauseBtn = document.getElementById('timeline-pause-btn');
+    const endBtn = document.getElementById('timeline-end-btn');
+    const startOverBtn = document.getElementById('timeline-start-over-btn');
+    const continueBtn = document.getElementById('timeline-continue-btn');
 
-    if (initialButtons) initialButtons.style.display = 'none';
-    if (recordingButtons) recordingButtons.style.display = 'none';
-    if (stoppedButtons) stoppedButtons.style.display = 'none';
-
+    // Initial state: Show only Start button
     if (state === 'initial') {
-      if (initialButtons) initialButtons.style.display = 'flex';
-    } else if (state === 'recording') {
-      if (recordingButtons) recordingButtons.style.display = 'flex';
-    } else if (state === 'stopped') {
-      if (stoppedButtons) stoppedButtons.style.display = 'flex';
+      if (startBtn) startBtn.style.display = 'block';
+      if (pauseBtn) pauseBtn.style.display = 'none';
+      if (endBtn) endBtn.style.display = 'none';
+      if (startOverBtn) startOverBtn.style.display = 'none';
+      if (continueBtn) continueBtn.style.display = 'none';
+    }
+    // Recording state: Show Pause and End buttons
+    else if (state === 'recording') {
+      if (startBtn) startBtn.style.display = 'none';
+      if (pauseBtn) pauseBtn.style.display = 'block';
+      if (endBtn) endBtn.style.display = 'block';
+      if (startOverBtn) startOverBtn.style.display = 'none';
+      if (continueBtn) continueBtn.style.display = 'none';
+    }
+    // Stopped state: Show Start Over and Continue buttons
+    else if (state === 'stopped') {
+      if (startBtn) startBtn.style.display = 'none';
+      if (pauseBtn) pauseBtn.style.display = 'none';
+      if (endBtn) endBtn.style.display = 'none';
+      if (startOverBtn) startOverBtn.style.display = 'block';
+      if (continueBtn) continueBtn.style.display = 'block';
     }
   }
 
@@ -243,25 +384,21 @@ export class TimelineControls {
 
     const state = this.timelineMode.getRecordingState();
     const elapsed = this.timelineMode.getElapsedTime();
-    const autoRecordCheckbox = document.getElementById('timeline-auto-record');
-    const shouldAutoRecord = autoRecordCheckbox ? autoRecordCheckbox.checked : true;
+    const recordVideoCheckbox = document.getElementById('timeline-auto-record');
+    const shouldRecordVideo = recordVideoCheckbox ? recordVideoCheckbox.checked : false;
 
     if (state === 'initial') {
-      statusDiv.textContent = shouldAutoRecord ? 'Press Start to begin recording' : 'Press Start (auto-record OFF)';
+      statusDiv.textContent = shouldRecordVideo ? 'Press Start (will record video)' : 'Press Start';
     } else if (state === 'recording') {
       // Check if we're in warm-up period
       if (this.timelineMode.isInWarmup()) {
         statusDiv.textContent = `⏱ Warming up... ${elapsed.toFixed(1)}s`;
       } else {
-        statusDiv.textContent = `🔴 Recording... ${elapsed.toFixed(1)}s`;
+        const recordingText = shouldRecordVideo && this.videoRecorder && this.videoRecorder.isRecording ? ' • 🔴 Recording' : '';
+        statusDiv.textContent = `▶ Timeline: ${elapsed.toFixed(1)}s${recordingText}`;
       }
     } else if (state === 'stopped') {
-      // Check if timeline is running but not recording
-      if (this.timelineMode.startTime && !this.timelineMode.recording && !shouldAutoRecord) {
-        statusDiv.textContent = `⏸ Timeline running... ${elapsed.toFixed(1)}s (not recording)`;
-      } else {
-        statusDiv.textContent = `Recording paused at ${elapsed.toFixed(1)}s`;
-      }
+      statusDiv.textContent = `⏸ Timeline paused at ${elapsed.toFixed(1)}s`;
     }
   }
 
