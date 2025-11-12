@@ -46,6 +46,13 @@ export class TimelineMode {
     this.ringSpacing = 40; // Spacing between concentric rings
     this.petalCount = 0; // Auto-calculated from drum count
     this.polygonSides = 6; // Number of sides for polygon layout
+    this.spiralSettings = {
+      tightness: 15,         // Space between rotations (pixels per rotation)
+      rotationsPerMinute: 4, // How fast the spiral rotates (visual speed)
+      startRadius: 50,       // Initial radius at center
+      syncToBPM: false,      // Whether to sync rotation speed to BPM
+      pattern: 'spiral'      // Pattern type (for future expansion)
+    };
 
     // Metronome state
     this.metronomeEnabled = false;
@@ -155,6 +162,21 @@ export class TimelineMode {
         return {
           x: centerX + polygonRadius * Math.cos(vertexAngle),
           y: centerY + polygonRadius * Math.sin(vertexAngle)
+        };
+
+      case 'spiral':
+        // Archimedean spiral - all drums follow same spiral, position based on beats
+        // Each drum gets a slight offset based on its lane
+        const beatsPerRotation = this.spiralSettings.rotationsPerMinute / (this.bpm / 60);
+        const theta = (beatCount / beatsPerRotation) * Math.PI * 2;
+        const spiralRadius = this.spiralSettings.startRadius +
+                           (this.spiralSettings.tightness * theta / (Math.PI * 2));
+        // Offset each drum slightly radially based on lane
+        const laneOffset = (laneIndex - this.timelineLaneCount / 2) * 8;
+        const finalRadius = spiralRadius + laneOffset;
+        return {
+          x: centerX + finalRadius * Math.cos(theta),
+          y: centerY + finalRadius * Math.sin(theta)
         };
 
       case 'staff':

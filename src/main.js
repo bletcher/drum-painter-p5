@@ -5,14 +5,7 @@
 
 import { PAINT_CANVAS_WIDTH, PAINT_CANVAS_HEIGHT, BG_COLORS, BLEND_MODE_NAMES } from './config/constants.js';
 import { DRUM_KIT_CONFIG, generateFactorySettings } from './config/drumKit.js';
-import { ClassicMode } from './modes/ClassicMode.js';
-import { FibonacciMode } from './modes/FibonacciMode.js';
-import { RadialMode } from './modes/RadialMode.js';
-import { GravityMode } from './modes/GravityMode.js';
-import { OrganicMode } from './modes/OrganicMode.js';
-import { DendriticMode } from './modes/DendriticMode.js';
-import { LightningMode } from './modes/LightningMode.js';
-import { SpiralMode } from './modes/SpiralMode.js';
+import { FreeformMode } from './modes/FreeformMode.js';
 import { TimelineMode } from './modes/TimelineMode.js';
 import { MidiManager } from './midi/MidiManager.js';
 import { StateManager } from './state/StateManager.js';
@@ -28,7 +21,7 @@ import { applyAllThemes } from './utils/applyTheme.js';
 // ===== GLOBAL STATE =====
 let paintCanvas;
 let particles = [];
-let currentMode = 0;
+let currentModeType = 'freeform'; // 'freeform' or 'chronicle'
 let strokeCount = 0;
 let globalSizeMultiplier = 1.0;
 let showUI = true;
@@ -60,19 +53,13 @@ let midiStatusEl;
 let controlsEl;
 
 // Initialize paint modes
-const timelineMode = new TimelineMode(DRUM_KIT_CONFIG);
-const spiralMode = new SpiralMode();
-const modes = [
-  new ClassicMode(),
-  new FibonacciMode(),
-  new RadialMode(),
-  new GravityMode(),
-  new OrganicMode(),
-  new DendriticMode(),
-  new LightningMode(),
-  spiralMode,
-  timelineMode
-];
+const freeformMode = new FreeformMode();
+const chronicleMode = new TimelineMode(DRUM_KIT_CONFIG);
+
+// Helper function to get current active mode
+function getCurrentMode() {
+  return currentModeType === 'freeform' ? freeformMode : chronicleMode;
+}
 
 // ===== P5.JS SKETCH =====
 
@@ -123,7 +110,7 @@ window.setup = async function() {
   midiMappingPanel = new MidiMappingPanel(drumSettings, midiManager, notificationSystem, updateActiveDrumIndicator);
 
   // Initialize timeline controls
-  timelineControls = new TimelineControls(timelineMode, notificationSystem);
+  timelineControls = new TimelineControls(chronicleMode, notificationSystem);
   timelineControls.initialize();
 
   // Initialize video recorder
@@ -275,17 +262,95 @@ window.setup = async function() {
 // ===== UI INITIALIZATION =====
 
 function initializeUI() {
-  // Mode selector dropdown
-  const modeSelect = document.getElementById('mode-select');
-  if (modeSelect) {
-    modeSelect.value = currentMode.toString();
-    modeSelect.addEventListener('change', (e) => {
-      const newMode = parseInt(e.target.value);
-      if (newMode !== currentMode && newMode < modes.length) {
-        switchMode(newMode);
+  // Mode type selector (Freeform / Chronicle radio buttons)
+  const freeformRadio = document.getElementById('mode-type-freeform');
+  const chronicleRadio = document.getElementById('mode-type-chronicle');
+  const freeformStyleSelector = document.getElementById('freeform-style-selector');
+  const chronicleLayoutSelector = document.getElementById('chronicle-layout-selector');
+  const freeformStyleSelect = document.getElementById('freeform-style-select');
+  const chronicleLayoutSelect = document.getElementById('chronicle-layout-select');
+
+  // Sync UI with current mode state (important for loading saved settings)
+  if (freeformRadio && chronicleRadio) {
+    if (currentModeType === 'freeform') {
+      freeformRadio.checked = true;
+    } else {
+      chronicleRadio.checked = true;
+    }
+  }
+  if (freeformStyleSelect) {
+    freeformStyleSelect.value = freeformMode.style;
+  }
+  if (chronicleLayoutSelect) {
+    chronicleLayoutSelect.value = chronicleMode.layout;
+  }
+
+  // Function to update UI visibility based on mode type
+  function updateModeUI() {
+    const isFreeform = currentModeType === 'freeform';
+
+    // Show/hide appropriate selectors
+    if (freeformStyleSelector) {
+      freeformStyleSelector.style.display = isFreeform ? 'block' : 'none';
+    }
+    if (chronicleLayoutSelector) {
+      chronicleLayoutSelector.style.display = isFreeform ? 'none' : 'block';
+    }
+
+    // Show/hide Timeline controls (only for Chronicle mode)
+    const timelineControlsEl = document.getElementById('timeline-controls');
+    if (timelineControlsEl) {
+      timelineControlsEl.style.display = isFreeform ? 'none' : 'block';
+    }
+  }
+
+  // Mode type change handlers
+  if (freeformRadio) {
+    freeformRadio.addEventListener('change', (e) => {
+      if (e.target.checked) {
+        getCurrentMode().onDeactivate({ paintCanvas });
+        currentModeType = 'freeform';
+        getCurrentMode().onActivate({ paintCanvas });
+        updateModeUI();
+        notificationSystem.show('Freeform Mode');
       }
     });
   }
+
+  if (chronicleRadio) {
+    chronicleRadio.addEventListener('change', (e) => {
+      if (e.target.checked) {
+        getCurrentMode().onDeactivate({ paintCanvas });
+        currentModeType = 'chronicle';
+        getCurrentMode().onActivate({ paintCanvas });
+        updateModeUI();
+        notificationSystem.show('Chronicle Mode');
+      }
+    });
+  }
+
+  // Freeform style selector
+  if (freeformStyleSelect) {
+    freeformStyleSelect.addEventListener('change', (e) => {
+      const style = e.target.value;
+      freeformMode.setStyle(style);
+      const styleName = e.target.options[e.target.selectedIndex].text.split('—')[0].trim();
+      notificationSystem.show(styleName);
+    });
+  }
+
+  // Chronicle layout selector
+  if (chronicleLayoutSelect) {
+    chronicleLayoutSelect.addEventListener('change', (e) => {
+      const layout = e.target.value;
+      chronicleMode.layout = layout;
+      const layoutName = e.target.options[e.target.selectedIndex].text;
+      notificationSystem.show(`Layout: ${layoutName}`);
+    });
+  }
+
+  // Initialize UI state
+  updateModeUI();
 
   // Blend mode selector dropdown
   const blendSelect = document.getElementById('blend-select');
@@ -328,7 +393,7 @@ function initializeUI() {
     // Apply parameter only when slider is released (don't reset spiral)
     spiralTightnessSlider.addEventListener('change', (e) => {
       const value = parseInt(e.target.value);
-      spiralMode.setParameters({ tightness: value });
+      chronicleMode.spiralSettings.tightness = value;
       notificationSystem.show(`Tightness: ${value}`);
     });
   }
@@ -345,7 +410,7 @@ function initializeUI() {
     // Apply parameter only when slider is released
     spiralSpeedSlider.addEventListener('change', (e) => {
       const value = parseFloat(e.target.value);
-      spiralMode.setParameters({ rotationsPerMinute: value });
+      chronicleMode.spiralSettings.rotationsPerMinute = value;
       notificationSystem.show(`Speed: ${value} RPM`);
     });
   }
@@ -354,7 +419,7 @@ function initializeUI() {
   if (spiralPatternSelect) {
     spiralPatternSelect.addEventListener('change', (e) => {
       const pattern = e.target.value;
-      spiralMode.setParameters({ pattern: pattern });
+      chronicleMode.spiralSettings.pattern = pattern;
       notificationSystem.show(`Pattern: ${pattern.charAt(0).toUpperCase() + pattern.slice(1)}`);
     });
   }
@@ -362,7 +427,8 @@ function initializeUI() {
   const spiralResetBtn = document.getElementById('spiral-reset-btn');
   if (spiralResetBtn) {
     spiralResetBtn.addEventListener('click', () => {
-      spiralMode.reset();
+      // Reset spiral settings - note: spiral mode is now a Chronicle layout
+      chronicleMode.startTime = Date.now();
       // Temporarily reset blend mode to normal for clearing
       paintCanvas.blendMode(BLEND);
       paintCanvas.background(BG_COLORS[currentBgColor]);
@@ -446,25 +512,27 @@ function initializeUI() {
         globalSizeMultiplier,
         currentBlendMode,
         currentBgColor,
-        currentMode,
+        currentModeType,
+        freeformStyle: freeformMode.style,
+        chronicleLayout: chronicleMode.layout,
         spiralSettings: {
-          tightness: spiralMode.spiralTightness,
-          rotationsPerMinute: spiralMode.rotationsPerMinute,
-          startRadius: spiralMode.startRadius,
-          syncToBPM: spiralMode.syncToBPM,
-          pattern: spiralMode.pattern
+          tightness: chronicleMode.spiralSettings.tightness,
+          rotationsPerMinute: chronicleMode.spiralSettings.rotationsPerMinute,
+          startRadius: chronicleMode.spiralSettings.startRadius,
+          syncToBPM: chronicleMode.spiralSettings.syncToBPM,
+          pattern: chronicleMode.spiralSettings.pattern
         },
         timelineSettings: {
-          bpm: timelineMode.bpm,
-          subdivision: timelineMode.subdivision,
-          beatsPerMeasure: timelineMode.beatsPerMeasure,
-          metronomeEnabled: timelineMode.metronomeEnabled,
-          midiLatencyMs: timelineMode.midiLatencyMs,
-          showGrid: timelineMode.showGrid,
-          rowSpacing: timelineMode.rowSpacing,
-          layout: timelineMode.layout,
-          warmupMeasures: timelineMode.warmupMeasures,
-          measuresPerStaffPreference: timelineMode.measuresPerStaffPreference
+          bpm: chronicleMode.bpm,
+          subdivision: chronicleMode.subdivision,
+          beatsPerMeasure: chronicleMode.beatsPerMeasure,
+          metronomeEnabled: chronicleMode.metronomeEnabled,
+          midiLatencyMs: chronicleMode.midiLatencyMs,
+          showGrid: chronicleMode.showGrid,
+          rowSpacing: chronicleMode.rowSpacing,
+          layout: chronicleMode.layout,
+          warmupMeasures: chronicleMode.warmupMeasures,
+          measuresPerStaffPreference: chronicleMode.measuresPerStaffPreference
         },
         bankModeSettings: midiManager.getState()
       };
@@ -518,25 +586,27 @@ function initializeUI() {
         globalSizeMultiplier,
         currentBlendMode,
         currentBgColor,
-        currentMode,
+        currentModeType,
+        freeformStyle: freeformMode.style,
+        chronicleLayout: chronicleMode.layout,
         spiralSettings: {
-          tightness: spiralMode.spiralTightness,
-          rotationsPerMinute: spiralMode.rotationsPerMinute,
-          startRadius: spiralMode.startRadius,
-          syncToBPM: spiralMode.syncToBPM,
-          pattern: spiralMode.pattern
+          tightness: chronicleMode.spiralSettings.tightness,
+          rotationsPerMinute: chronicleMode.spiralSettings.rotationsPerMinute,
+          startRadius: chronicleMode.spiralSettings.startRadius,
+          syncToBPM: chronicleMode.spiralSettings.syncToBPM,
+          pattern: chronicleMode.spiralSettings.pattern
         },
         timelineSettings: {
-          bpm: timelineMode.bpm,
-          subdivision: timelineMode.subdivision,
-          beatsPerMeasure: timelineMode.beatsPerMeasure,
-          metronomeEnabled: timelineMode.metronomeEnabled,
-          midiLatencyMs: timelineMode.midiLatencyMs,
-          showGrid: timelineMode.showGrid,
-          rowSpacing: timelineMode.rowSpacing,
-          layout: timelineMode.layout,
-          warmupMeasures: timelineMode.warmupMeasures,
-          measuresPerStaffPreference: timelineMode.measuresPerStaffPreference
+          bpm: chronicleMode.bpm,
+          subdivision: chronicleMode.subdivision,
+          beatsPerMeasure: chronicleMode.beatsPerMeasure,
+          metronomeEnabled: chronicleMode.metronomeEnabled,
+          midiLatencyMs: chronicleMode.midiLatencyMs,
+          showGrid: chronicleMode.showGrid,
+          rowSpacing: chronicleMode.rowSpacing,
+          layout: chronicleMode.layout,
+          warmupMeasures: chronicleMode.warmupMeasures,
+          measuresPerStaffPreference: chronicleMode.measuresPerStaffPreference
         },
         bankModeSettings: midiManager.getState()
       };
@@ -796,16 +866,18 @@ function initializeUI() {
         globalSizeMultiplier,
         currentBlendMode,
         currentBgColor,
-        currentMode,
+        currentModeType,
+        freeformStyle: freeformMode.style,
+        chronicleLayout: chronicleMode.layout,
         bankModeSettings: midiManager.getState(),
         timelineSettings: {
-          bpm: timelineMode.bpm,
-          subdivision: timelineMode.subdivision,
-          beatsPerMeasure: timelineMode.beatsPerMeasure,
-          metronomeEnabled: timelineMode.metronomeEnabled,
-          midiLatencyMs: timelineMode.midiLatencyMs,
-          showGrid: timelineMode.showGrid,
-          rowSpacing: timelineMode.rowSpacing
+          bpm: chronicleMode.bpm,
+          subdivision: chronicleMode.subdivision,
+          beatsPerMeasure: chronicleMode.beatsPerMeasure,
+          metronomeEnabled: chronicleMode.metronomeEnabled,
+          midiLatencyMs: chronicleMode.midiLatencyMs,
+          showGrid: chronicleMode.showGrid,
+          rowSpacing: chronicleMode.rowSpacing
         },
         timestamp: new Date().toISOString()
       };
@@ -873,33 +945,33 @@ function initializeUI() {
         }
 
         // Load timeline settings
-        if (projectData.timelineSettings && timelineMode) {
+        if (projectData.timelineSettings && chronicleMode) {
           if (projectData.timelineSettings.bpm !== undefined) {
-            timelineMode.bpm = projectData.timelineSettings.bpm;
+            chronicleMode.bpm = projectData.timelineSettings.bpm;
           }
           if (projectData.timelineSettings.subdivision !== undefined) {
-            timelineMode.subdivision = projectData.timelineSettings.subdivision;
+            chronicleMode.subdivision = projectData.timelineSettings.subdivision;
           }
           if (projectData.timelineSettings.beatsPerMeasure !== undefined) {
-            timelineMode.beatsPerMeasure = projectData.timelineSettings.beatsPerMeasure;
+            chronicleMode.beatsPerMeasure = projectData.timelineSettings.beatsPerMeasure;
           }
           if (projectData.timelineSettings.metronomeEnabled !== undefined) {
-            timelineMode.metronomeEnabled = projectData.timelineSettings.metronomeEnabled;
+            chronicleMode.metronomeEnabled = projectData.timelineSettings.metronomeEnabled;
           }
           if (projectData.timelineSettings.midiLatencyMs !== undefined) {
-            timelineMode.midiLatencyMs = projectData.timelineSettings.midiLatencyMs;
+            chronicleMode.midiLatencyMs = projectData.timelineSettings.midiLatencyMs;
           }
           if (projectData.timelineSettings.showGrid !== undefined) {
-            timelineMode.showGrid = projectData.timelineSettings.showGrid;
+            chronicleMode.showGrid = projectData.timelineSettings.showGrid;
           }
           if (projectData.timelineSettings.rowSpacing !== undefined) {
-            timelineMode.rowSpacing = projectData.timelineSettings.rowSpacing;
+            chronicleMode.rowSpacing = projectData.timelineSettings.rowSpacing;
           }
           if (projectData.timelineSettings.warmupMeasures !== undefined) {
-            timelineMode.warmupMeasures = projectData.timelineSettings.warmupMeasures;
+            chronicleMode.warmupMeasures = projectData.timelineSettings.warmupMeasures;
           }
           if (projectData.timelineSettings.measuresPerStaffPreference !== undefined) {
-            timelineMode.measuresPerStaffPreference = projectData.timelineSettings.measuresPerStaffPreference;
+            chronicleMode.measuresPerStaffPreference = projectData.timelineSettings.measuresPerStaffPreference;
           }
           // Sync UI with loaded settings
           if (timelineControls) {
@@ -1189,7 +1261,7 @@ window.draw = function() {
   // Calculate scaling and offset
   let scaleFactor, displayWidth, displayHeight, offsetX, offsetY;
 
-  if (currentMode === 8) {
+  if (currentModeType === "chronicle") {
     // Timeline mode: scale based on width only, allow vertical scrolling
     scaleFactor = (width / paintCanvas.width) * 0.95;
     displayWidth = paintCanvas.width * scaleFactor;
@@ -1215,29 +1287,26 @@ window.draw = function() {
   // Draw the paint canvas
   image(paintCanvas, offsetX, offsetY, displayWidth, displayHeight);
 
-  // Draw spiral timeline guide over the canvas if in spiral mode (appears as background guide)
-  if (currentMode === 7) {
-    push();
-    translate(offsetX, offsetY);
-    scale(scaleFactor);
-    spiralMode.draw(paintCanvas.width, paintCanvas.height);
-    pop();
+  // Draw spiral timeline guide over the canvas if in Chronicle mode with spiral layout
+  if (currentModeType === 'chronicle' && chronicleMode.layout === 'spiral') {
+    // Could add a spiral guide visualization here if needed
+    // For now, spiral is drawn as part of Chronicle mode's drawLaneGuides
   }
 
-  // Draw timeline guides OVER the canvas if in timeline mode
-  if (currentMode === 8) {
-    timelineMode.drawLaneGuides(window, offsetX, offsetY, scaleFactor, paintCanvas);
+  // Draw timeline guides OVER the canvas if in Chronicle mode
+  if (currentModeType === "chronicle") {
+    chronicleMode.drawLaneGuides(window, offsetX, offsetY, scaleFactor, paintCanvas);
 
     // Draw circular visual metronome
-    timelineMode.drawCircularMetronome(window, width, height);
+    chronicleMode.drawCircularMetronome(window, width, height);
 
     // Auto-scroll to keep current playhead visible when recording
-    if (timelineMode.recording && timelineMode.startTime !== null) {
-      const timeElapsed = timelineMode.getElapsedTime();
-      const totalX = timeElapsed * timelineMode.pixelsPerSecond;
-      const staffIndex = Math.floor(totalX / timelineMode.staffWidth);
-      const currentStaffY = staffIndex * timelineMode.staffHeight * scaleFactor;
-      const currentStaffBottomY = (staffIndex + 1) * timelineMode.staffHeight * scaleFactor;
+    if (chronicleMode.recording && chronicleMode.startTime !== null) {
+      const timeElapsed = chronicleMode.getElapsedTime();
+      const totalX = timeElapsed * chronicleMode.pixelsPerSecond;
+      const staffIndex = Math.floor(totalX / chronicleMode.staffWidth);
+      const currentStaffY = staffIndex * chronicleMode.staffHeight * scaleFactor;
+      const currentStaffBottomY = (staffIndex + 1) * chronicleMode.staffHeight * scaleFactor;
 
       // Auto-scroll if playhead is below viewport
       const viewportBottom = -timelineScrollY + height - 100; // Leave some margin
@@ -1273,7 +1342,7 @@ window.draw = function() {
   }
 
   // Update timeline mode if active (mode 8) - handles metronome
-  if (currentMode === 8) {
+  if (currentModeType === "chronicle") {
     const context = {
       paintCanvas,
       drumSettings,
@@ -1283,7 +1352,7 @@ window.draw = function() {
       currentBgColor
     };
 
-    timelineMode.update(context);
+    chronicleMode.update(context);
   }
 
   // Update and draw notification system
@@ -1297,7 +1366,7 @@ window.draw = function() {
     noStroke();
     textAlign(CENTER, CENTER);
     textSize(24);
-    text(modes[currentMode].name, width / 2, 50);
+    text(getCurrentMode().name, width / 2, 50);
     pop();
   }
 };
@@ -1399,11 +1468,13 @@ window.keyPressed = function() {
     particles = [];
 
     // Reset mode-specific state
-    if (currentMode === 1) {
-      modes[currentMode].spiralAngle = 0;
-    }
-    if (currentMode === 4) {
-      modes[currentMode].resetGrowthPoints(paintCanvas);
+    if (currentModeType === 'freeform') {
+      if (freeformMode.style === 'fibonacci' && freeformMode.styles.fibonacci.spiralAngle !== undefined) {
+        freeformMode.styles.fibonacci.spiralAngle = 0;
+      }
+      if (freeformMode.style === 'organic' && freeformMode.styles.organic.resetGrowthPoints) {
+        freeformMode.styles.organic.resetGrowthPoints(paintCanvas);
+      }
     }
 
     // Save state for undo
@@ -1416,7 +1487,7 @@ window.keyPressed = function() {
 
   // S - save image
   if (key === 's' || key === 'S') {
-    let filename = `drum-painting-${modes[currentMode].name.replace(/\s+/g, '-')}-${Date.now()}.png`;
+    let filename = `drum-painting-${getCurrentMode().name.replace(/\s+/g, '-')}-${Date.now()}.png`;
     paintCanvas.save(filename);
     console.log(`Saved: ${filename}`);
     notificationSystem.show(`Saved: ${filename}`);
@@ -1433,23 +1504,25 @@ window.keyPressed = function() {
       globalSizeMultiplier,
       currentBlendMode,
       currentBgColor,
-      currentMode,
+      currentModeType,
+        freeformStyle: freeformMode.style,
+        chronicleLayout: chronicleMode.layout,
       spiralSettings: {
-        tightness: spiralMode.spiralTightness,
-        rotationsPerMinute: spiralMode.rotationsPerMinute,
-        startRadius: spiralMode.startRadius,
-        syncToBPM: spiralMode.syncToBPM
+        tightness: chronicleMode.spiralSettings.tightness,
+        rotationsPerMinute: chronicleMode.spiralSettings.rotationsPerMinute,
+        startRadius: chronicleMode.spiralSettings.startRadius,
+        syncToBPM: chronicleMode.spiralSettings.syncToBPM
       },
       timelineSettings: {
-        bpm: timelineMode.bpm,
-        subdivision: timelineMode.subdivision,
-        beatsPerMeasure: timelineMode.beatsPerMeasure,
-        metronomeEnabled: timelineMode.metronomeEnabled,
-        midiLatencyMs: timelineMode.midiLatencyMs,
-        showGrid: timelineMode.showGrid,
-        rowSpacing: timelineMode.rowSpacing,
-        warmupMeasures: timelineMode.warmupMeasures,
-        measuresPerStaffPreference: timelineMode.measuresPerStaffPreference
+        bpm: chronicleMode.bpm,
+        subdivision: chronicleMode.subdivision,
+        beatsPerMeasure: chronicleMode.beatsPerMeasure,
+        metronomeEnabled: chronicleMode.metronomeEnabled,
+        midiLatencyMs: chronicleMode.midiLatencyMs,
+        showGrid: chronicleMode.showGrid,
+        rowSpacing: chronicleMode.rowSpacing,
+        warmupMeasures: chronicleMode.warmupMeasures,
+        measuresPerStaffPreference: chronicleMode.measuresPerStaffPreference
       },
       bankModeSettings: midiManager.getState()
     };
@@ -1541,7 +1614,7 @@ function handlePaint(note, velocity, deviceId) {
 
   // Paint with current mode
   try {
-    modes[currentMode].paint(note, velocity, context);
+    getCurrentMode().paint(note, velocity, context);
     strokeCount++;
   } catch (error) {
     console.error('Error painting:', error);
@@ -1632,57 +1705,63 @@ function updateActiveDrumIndicator() {
 }
 
 /**
- * Switch to a new paint mode
+ * Switch to a new paint mode (legacy compatibility - now uses mode type and style/layout)
+ * This is kept for loading old saved states
  */
-function switchMode(newMode) {
-  if (newMode < 0 || newMode >= modes.length || newMode === currentMode) {
-    return;
-  }
+function switchMode(oldModeIndex) {
+  // Map old mode indices to new structure
+  // 0-6: Freeform styles, 7: Spiral (now Chronicle spiral layout), 8: Timeline (now Chronicle)
+  const modeMap = {
+    0: { type: 'freeform', style: 'classic' },
+    1: { type: 'freeform', style: 'fibonacci' },
+    2: { type: 'freeform', style: 'radial' },
+    3: { type: 'freeform', style: 'gravity' },
+    4: { type: 'freeform', style: 'organic' },
+    5: { type: 'freeform', style: 'dendritic' },
+    6: { type: 'freeform', style: 'lightning' },
+    7: { type: 'chronicle', layout: 'spiral' },  // Old Spiral mode
+    8: { type: 'chronicle', layout: 'staff' }     // Old Timeline mode
+  };
 
-  // Deactivate old mode
-  modes[currentMode].onDeactivate({ paintCanvas });
+  const mapping = modeMap[oldModeIndex];
+  if (!mapping) return;
 
-  // Hide mode-specific controls when leaving
-  if (currentMode === 7) {
-    // Leaving Spiral mode
-    const spiralControls = document.getElementById('spiral-controls');
-    if (spiralControls) spiralControls.style.display = 'none';
-  }
-  if (currentMode === 8) {
-    // Leaving Timeline mode
-    timelineControls.hide();
-  }
+  // Deactivate current mode
+  getCurrentMode().onDeactivate({ paintCanvas });
 
-  // Switch mode
-  currentMode = newMode;
-  strokeCount = 0;
+  // Switch to new mode type
+  currentModeType = mapping.type;
+
+  if (mapping.type === 'freeform') {
+    freeformMode.setStyle(mapping.style);
+    const freeformRadio = document.getElementById('mode-type-freeform');
+    const freeformStyleSelect = document.getElementById('freeform-style-select');
+    if (freeformRadio) freeformRadio.checked = true;
+    if (freeformStyleSelect) freeformStyleSelect.value = mapping.style;
+  } else {
+    chronicleMode.layout = mapping.layout;
+    const chronicleRadio = document.getElementById('mode-type-chronicle');
+    const chronicleLayoutSelect = document.getElementById('chronicle-layout-select');
+    if (chronicleRadio) chronicleRadio.checked = true;
+    if (chronicleLayoutSelect) chronicleLayoutSelect.value = mapping.layout;
+  }
 
   // Activate new mode
-  modes[currentMode].onActivate({ paintCanvas });
+  getCurrentMode().onActivate({ paintCanvas });
 
-  // Show mode-specific controls when entering
-  if (currentMode === 7) {
-    // Entering Spiral mode
-    const spiralControls = document.getElementById('spiral-controls');
-    if (spiralControls) spiralControls.style.display = 'block';
-  } else if (currentMode === 8) {
-    // Entering Timeline mode
-    timelineControls.show();
-    timelineScrollY = 0; // Reset scroll position
-    isDraggingScrollbar = false; // Reset scrollbar state
-  } else {
-    // Reset scrollbar state when leaving timeline mode
-    isDraggingScrollbar = false;
+  // Update UI visibility
+  const freeformStyleSelector = document.getElementById('freeform-style-selector');
+  const chronicleLayoutSelector = document.getElementById('chronicle-layout-selector');
+  if (freeformStyleSelector) freeformStyleSelector.style.display = mapping.type === 'freeform' ? 'block' : 'none';
+  if (chronicleLayoutSelector) chronicleLayoutSelector.style.display = mapping.type === 'chronicle' ? 'block' : 'none';
+
+  const timelineControlsEl = document.getElementById('timeline-controls');
+  if (timelineControlsEl) {
+    timelineControlsEl.style.display = mapping.type === 'chronicle' ? 'block' : 'none';
   }
 
-  // Update dropdown to match
-  const modeSelect = document.getElementById('mode-select');
-  if (modeSelect) {
-    modeSelect.value = currentMode.toString();
-  }
-
-  console.log(`Mode: ${modes[currentMode].name}`);
-  notificationSystem.show(modes[currentMode].name);
+  console.log(`Mode: ${getCurrentMode().name}`);
+  notificationSystem.show(getCurrentMode().name);
 }
 
 /**
@@ -1770,23 +1849,25 @@ async function loadSavedSettings() {
       globalSizeMultiplier,
       currentBlendMode,
       currentBgColor,
-      currentMode,
+      currentModeType,
+        freeformStyle: freeformMode.style,
+        chronicleLayout: chronicleMode.layout,
       spiralSettings: {
-        tightness: spiralMode.spiralTightness,
-        rotationsPerMinute: spiralMode.rotationsPerMinute,
-        startRadius: spiralMode.startRadius,
-        syncToBPM: spiralMode.syncToBPM
+        tightness: chronicleMode.spiralSettings.tightness,
+        rotationsPerMinute: chronicleMode.spiralSettings.rotationsPerMinute,
+        startRadius: chronicleMode.spiralSettings.startRadius,
+        syncToBPM: chronicleMode.spiralSettings.syncToBPM
       },
       timelineSettings: {
-        bpm: timelineMode.bpm,
-        subdivision: timelineMode.subdivision,
-        beatsPerMeasure: timelineMode.beatsPerMeasure,
-        metronomeEnabled: timelineMode.metronomeEnabled,
-        midiLatencyMs: timelineMode.midiLatencyMs,
-        showGrid: timelineMode.showGrid,
-        rowSpacing: timelineMode.rowSpacing,
-        warmupMeasures: timelineMode.warmupMeasures,
-        measuresPerStaffPreference: timelineMode.measuresPerStaffPreference
+        bpm: chronicleMode.bpm,
+        subdivision: chronicleMode.subdivision,
+        beatsPerMeasure: chronicleMode.beatsPerMeasure,
+        metronomeEnabled: chronicleMode.metronomeEnabled,
+        midiLatencyMs: chronicleMode.midiLatencyMs,
+        showGrid: chronicleMode.showGrid,
+        rowSpacing: chronicleMode.rowSpacing,
+        warmupMeasures: chronicleMode.warmupMeasures,
+        measuresPerStaffPreference: chronicleMode.measuresPerStaffPreference
       },
       bankModeSettings: midiManager.getState()
     };
@@ -1831,36 +1912,54 @@ async function loadSavedSettings() {
     updateActiveDrumIndicator(); // Update indicator if bank mode was saved as enabled
   }
 
-  // Load paint mode
-  if (savedState.currentMode !== undefined) {
+  // Load paint mode (new two-tier structure)
+  if (savedState.currentModeType !== undefined) {
+    // Load new two-tier mode structure
+    currentModeType = savedState.currentModeType;
+
+    if (savedState.freeformStyle !== undefined) {
+      freeformMode.setStyle(savedState.freeformStyle);
+    }
+
+    if (savedState.chronicleLayout !== undefined) {
+      chronicleMode.layout = savedState.chronicleLayout;
+    }
+
+    // Sync UI elements - note that initializeUI hasn't been called yet, so we need to do this after
+    // For now, just set the mode type and we'll sync UI in initializeUI
+    console.log('✓ Loaded paint mode (new structure):', currentModeType,
+                savedState.freeformStyle || 'default',
+                savedState.chronicleLayout || 'default');
+  } else if (savedState.currentMode !== undefined) {
+    // Legacy: Load old mode index and convert to new structure
     switchMode(savedState.currentMode);
-    console.log('✓ Loaded paint mode:', savedState.currentMode);
+    console.log('✓ Loaded paint mode (legacy):', savedState.currentMode);
   }
 
   // Load spiral settings
-  if (savedState.spiralSettings && spiralMode) {
+  if (savedState.spiralSettings && chronicleMode) {
     if (savedState.spiralSettings.tightness !== undefined) {
-      spiralMode.spiralTightness = savedState.spiralSettings.tightness;
+      chronicleMode.spiralSettings.tightness = savedState.spiralSettings.tightness;
       const spiralTightnessSlider = document.getElementById('spiral-tightness');
       const spiralTightnessVal = document.getElementById('spiral-tightness-val');
       if (spiralTightnessSlider) spiralTightnessSlider.value = savedState.spiralSettings.tightness;
       if (spiralTightnessVal) spiralTightnessVal.textContent = savedState.spiralSettings.tightness;
     }
     if (savedState.spiralSettings.rotationsPerMinute !== undefined) {
-      spiralMode.rotationsPerMinute = savedState.spiralSettings.rotationsPerMinute;
+      chronicleMode.spiralSettings.rotationsPerMinute = savedState.spiralSettings.rotationsPerMinute;
       const spiralSpeedSlider = document.getElementById('spiral-speed');
       const spiralSpeedVal = document.getElementById('spiral-speed-val');
       if (spiralSpeedSlider) spiralSpeedSlider.value = savedState.spiralSettings.rotationsPerMinute;
       if (spiralSpeedVal) spiralSpeedVal.textContent = savedState.spiralSettings.rotationsPerMinute;
     }
     if (savedState.spiralSettings.startRadius !== undefined) {
-      spiralMode.startRadius = savedState.spiralSettings.startRadius;
+      chronicleMode.spiralSettings.startRadius = savedState.spiralSettings.startRadius;
     }
     if (savedState.spiralSettings.syncToBPM !== undefined) {
-      spiralMode.syncToBPM = savedState.spiralSettings.syncToBPM;
+      chronicleMode.spiralSettings.syncToBPM = savedState.spiralSettings.syncToBPM;
     }
     if (savedState.spiralSettings.pattern !== undefined) {
-      spiralMode.pattern = savedState.spiralSettings.pattern;
+      chronicleMode.spiralSettings.pattern = savedState.spiralSettings.pattern;
       const spiralPatternSelect = document.getElementById('spiral-pattern');
       if (spiralPatternSelect) spiralPatternSelect.value = savedState.spiralSettings.pattern;
     }
@@ -1868,36 +1967,36 @@ async function loadSavedSettings() {
   }
 
   // Load timeline settings
-  if (savedState.timelineSettings && timelineMode) {
+  if (savedState.timelineSettings && chronicleMode) {
     if (savedState.timelineSettings.bpm !== undefined) {
-      timelineMode.bpm = savedState.timelineSettings.bpm;
+      chronicleMode.bpm = savedState.timelineSettings.bpm;
     }
     if (savedState.timelineSettings.subdivision !== undefined) {
-      timelineMode.subdivision = savedState.timelineSettings.subdivision;
+      chronicleMode.subdivision = savedState.timelineSettings.subdivision;
     }
     if (savedState.timelineSettings.beatsPerMeasure !== undefined) {
-      timelineMode.beatsPerMeasure = savedState.timelineSettings.beatsPerMeasure;
+      chronicleMode.beatsPerMeasure = savedState.timelineSettings.beatsPerMeasure;
     }
     if (savedState.timelineSettings.metronomeEnabled !== undefined) {
-      timelineMode.metronomeEnabled = savedState.timelineSettings.metronomeEnabled;
+      chronicleMode.metronomeEnabled = savedState.timelineSettings.metronomeEnabled;
     }
     if (savedState.timelineSettings.midiLatencyMs !== undefined) {
-      timelineMode.midiLatencyMs = savedState.timelineSettings.midiLatencyMs;
+      chronicleMode.midiLatencyMs = savedState.timelineSettings.midiLatencyMs;
     }
     if (savedState.timelineSettings.showGrid !== undefined) {
-      timelineMode.showGrid = savedState.timelineSettings.showGrid;
+      chronicleMode.showGrid = savedState.timelineSettings.showGrid;
     }
     if (savedState.timelineSettings.rowSpacing !== undefined) {
-      timelineMode.rowSpacing = savedState.timelineSettings.rowSpacing;
+      chronicleMode.rowSpacing = savedState.timelineSettings.rowSpacing;
     }
     if (savedState.timelineSettings.warmupMeasures !== undefined) {
-      timelineMode.warmupMeasures = savedState.timelineSettings.warmupMeasures;
+      chronicleMode.warmupMeasures = savedState.timelineSettings.warmupMeasures;
     }
     if (savedState.timelineSettings.measuresPerStaffPreference !== undefined) {
-      timelineMode.measuresPerStaffPreference = savedState.timelineSettings.measuresPerStaffPreference;
+      chronicleMode.measuresPerStaffPreference = savedState.timelineSettings.measuresPerStaffPreference;
     }
     if (savedState.timelineSettings.layout !== undefined) {
-      timelineMode.layout = savedState.timelineSettings.layout;
+      chronicleMode.layout = savedState.timelineSettings.layout;
       const timelineLayoutSelect = document.getElementById('timeline-layout');
       if (timelineLayoutSelect) timelineLayoutSelect.value = savedState.timelineSettings.layout;
     }
@@ -1947,23 +2046,25 @@ function migrateDrumIdChanges() {
       globalSizeMultiplier,
       currentBlendMode,
       currentBgColor,
-      currentMode,
+      currentModeType,
+        freeformStyle: freeformMode.style,
+        chronicleLayout: chronicleMode.layout,
       spiralSettings: {
-        tightness: spiralMode.spiralTightness,
-        rotationsPerMinute: spiralMode.rotationsPerMinute,
-        startRadius: spiralMode.startRadius,
-        syncToBPM: spiralMode.syncToBPM
+        tightness: chronicleMode.spiralSettings.tightness,
+        rotationsPerMinute: chronicleMode.spiralSettings.rotationsPerMinute,
+        startRadius: chronicleMode.spiralSettings.startRadius,
+        syncToBPM: chronicleMode.spiralSettings.syncToBPM
       },
       timelineSettings: {
-        bpm: timelineMode.bpm,
-        subdivision: timelineMode.subdivision,
-        beatsPerMeasure: timelineMode.beatsPerMeasure,
-        metronomeEnabled: timelineMode.metronomeEnabled,
-        midiLatencyMs: timelineMode.midiLatencyMs,
-        showGrid: timelineMode.showGrid,
-        rowSpacing: timelineMode.rowSpacing,
-        warmupMeasures: timelineMode.warmupMeasures,
-        measuresPerStaffPreference: timelineMode.measuresPerStaffPreference
+        bpm: chronicleMode.bpm,
+        subdivision: chronicleMode.subdivision,
+        beatsPerMeasure: chronicleMode.beatsPerMeasure,
+        metronomeEnabled: chronicleMode.metronomeEnabled,
+        midiLatencyMs: chronicleMode.midiLatencyMs,
+        showGrid: chronicleMode.showGrid,
+        rowSpacing: chronicleMode.rowSpacing,
+        warmupMeasures: chronicleMode.warmupMeasures,
+        measuresPerStaffPreference: chronicleMode.measuresPerStaffPreference
       },
       bankModeSettings: midiManager.getState()
     };
@@ -2025,23 +2126,25 @@ function migrateDrumMappingsToStableKeys() {
       globalSizeMultiplier,
       currentBlendMode,
       currentBgColor,
-      currentMode,
+      currentModeType,
+        freeformStyle: freeformMode.style,
+        chronicleLayout: chronicleMode.layout,
       spiralSettings: {
-        tightness: spiralMode.spiralTightness,
-        rotationsPerMinute: spiralMode.rotationsPerMinute,
-        startRadius: spiralMode.startRadius,
-        syncToBPM: spiralMode.syncToBPM
+        tightness: chronicleMode.spiralSettings.tightness,
+        rotationsPerMinute: chronicleMode.spiralSettings.rotationsPerMinute,
+        startRadius: chronicleMode.spiralSettings.startRadius,
+        syncToBPM: chronicleMode.spiralSettings.syncToBPM
       },
       timelineSettings: {
-        bpm: timelineMode.bpm,
-        subdivision: timelineMode.subdivision,
-        beatsPerMeasure: timelineMode.beatsPerMeasure,
-        metronomeEnabled: timelineMode.metronomeEnabled,
-        midiLatencyMs: timelineMode.midiLatencyMs,
-        showGrid: timelineMode.showGrid,
-        rowSpacing: timelineMode.rowSpacing,
-        warmupMeasures: timelineMode.warmupMeasures,
-        measuresPerStaffPreference: timelineMode.measuresPerStaffPreference
+        bpm: chronicleMode.bpm,
+        subdivision: chronicleMode.subdivision,
+        beatsPerMeasure: chronicleMode.beatsPerMeasure,
+        metronomeEnabled: chronicleMode.metronomeEnabled,
+        midiLatencyMs: chronicleMode.midiLatencyMs,
+        showGrid: chronicleMode.showGrid,
+        rowSpacing: chronicleMode.rowSpacing,
+        warmupMeasures: chronicleMode.warmupMeasures,
+        measuresPerStaffPreference: chronicleMode.measuresPerStaffPreference
       },
       bankModeSettings: midiManager.getState()
     };
@@ -2159,7 +2262,7 @@ window.mousePressed = function() {
   }
 
   // Handle metronome dragging in timeline mode
-  if (currentMode === 8 && timelineMode.handleMetronomeMousePressed(mouseX, mouseY)) {
+  if (currentModeType === "chronicle" && chronicleMode.handleMetronomeMousePressed(mouseX, mouseY)) {
     return; // Metronome was clicked, don't do anything else
   }
 
@@ -2200,8 +2303,8 @@ window.mousePressed = function() {
 
 window.mouseDragged = function() {
   // Handle metronome dragging in timeline mode
-  if (currentMode === 8) {
-    timelineMode.handleMetronomeMouseDragged(mouseX, mouseY);
+  if (currentModeType === "chronicle") {
+    chronicleMode.handleMetronomeMouseDragged(mouseX, mouseY);
   }
 
   // Handle scrollbar dragging (any mode with tall canvas)
@@ -2275,8 +2378,8 @@ window.mouseClicked = function() {
 
 window.mouseReleased = function() {
   // Handle metronome release in timeline mode
-  if (currentMode === 8) {
-    timelineMode.handleMetronomeMouseReleased();
+  if (currentModeType === "chronicle") {
+    chronicleMode.handleMetronomeMouseReleased();
   }
 
   // Stop dragging scrollbar

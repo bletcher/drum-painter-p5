@@ -191,9 +191,23 @@
 
     <!-- Mode Selector -->
     <div style="margin: 10px 0;">
-      <label style="display: block; margin-bottom: 5px; font-weight: bold; font-size: 11px;">Paint Mode:</label>
-      <div data-tooltip="Choose how drum hits create visual patterns" style="display: block;">
-        <select id="mode-select" style="
+      <label style="display: block; margin-bottom: 8px; font-weight: bold; font-size: 11px;">Paint Mode:</label>
+
+      <!-- Mode Type Selection (Freeform / Chronicle) -->
+      <div style="display: flex; gap: 15px; margin-bottom: 8px;">
+        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; font-size: 11px;">
+          <input type="radio" name="mode-type" id="mode-type-freeform" value="freeform" checked>
+          <span>Freeform</span>
+        </label>
+        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; font-size: 11px;">
+          <input type="radio" name="mode-type" id="mode-type-chronicle" value="chronicle">
+          <span>Chronicle</span>
+        </label>
+      </div>
+
+      <!-- Freeform Style Selector (shown when Freeform is selected) -->
+      <div id="freeform-style-selector" data-tooltip="Choose visual art style" style="display: block;">
+        <select id="freeform-style-select" style="
           width: 100%;
           padding: 6px;
           border: 1px solid #ddd;
@@ -201,15 +215,32 @@
           font-size: 11px;
           background: white;
         ">
-          <option value="0">Classic Pointillism — Random dots across canvas</option>
-          <option value="1">Fibonacci Spiral — Golden ratio spiral pattern</option>
-          <option value="2">Radial Symmetry — Mirror around center point</option>
-          <option value="3">Gravity Field — Dots fall with physics</option>
-          <option value="4">Organic Growth — Natural branching patterns</option>
-          <option value="5">Dendritic Spreading — Tree-like neural growth</option>
-          <option value="6">Lightning — Electric branching bolts</option>
-          <option value="7">Spiral Chronicle — Time flows outward in spiral</option>
-          <option value="8">Timeline — Musical staff notation recording</option>
+          <option value="classic">Classic Pointillism — Random dots</option>
+          <option value="fibonacci">Fibonacci Spiral — Golden ratio pattern</option>
+          <option value="radial">Radial Symmetry — Mirror patterns</option>
+          <option value="gravity">Gravity Field — Physics simulation</option>
+          <option value="organic">Organic Growth — Natural branching</option>
+          <option value="dendritic">Dendritic Spreading — Tree-like growth</option>
+          <option value="lightning">Lightning — Electric branching</option>
+        </select>
+      </div>
+
+      <!-- Chronicle Layout Selector (shown when Chronicle is selected) -->
+      <div id="chronicle-layout-selector" data-tooltip="Choose timeline visualization layout" style="display: none;">
+        <select id="chronicle-layout-select" style="
+          width: 100%;
+          padding: 6px;
+          border: 1px solid #ddd;
+          border-radius: 4px;
+          font-size: 11px;
+          background: white;
+        ">
+          <option value="staff" selected>Staff Notation</option>
+          <option value="rings">Concentric Rings</option>
+          <option value="spiral">Spiral</option>
+          <option value="radial">Radial Spokes</option>
+          <option value="flower">Flower Petals</option>
+          <option value="polygon">Expanding Polygon</option>
         </select>
       </div>
     </div>
@@ -294,6 +325,7 @@
             style="flex: 1; padding: 4px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px; cursor: pointer;">
             <option value="staff" selected>Staff</option>
             <option value="rings">Rings</option>
+            <option value="spiral">Spiral</option>
             <option value="radial">Radial</option>
             <option value="flower">Flower</option>
             <option value="polygon">Polygon</option>
