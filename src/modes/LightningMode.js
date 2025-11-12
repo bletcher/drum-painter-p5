@@ -1,6 +1,7 @@
 /**
  * Lightning Mode
- * Creates jagged electrical discharge effects
+ * Creates realistic electrical discharge with fractal branching
+ * Based on dielectric breakdown model (DBM) and stepped leader physics
  */
 
 import { ModeBase } from './ModeBase.js';
@@ -35,31 +36,16 @@ export class LightningMode extends ModeBase {
     let scaledVelSize = applyScalingCurve(velocity, settings?.sizeScaling || 'linear');
     let scaledVelOpacity = applyScalingCurve(velocity, settings?.opacityScaling || 'linear');
 
-    // Lightning starts from random top area or side
-    let startX, startY, endX, endY;
-    const direction = random(1);
+    // Lightning origin - starts in upper area (cloud layer)
+    const originX = random(paintCanvas.width * 0.1, paintCanvas.width * 0.9);
+    const originY = random(paintCanvas.height * 0.1, paintCanvas.height * 0.4);
 
-    if (direction < 0.5) {
-      // Vertical lightning (top to bottom)
-      startX = random(paintCanvas.width);
-      startY = random(paintCanvas.height * 0.2);
-      endX = startX + random(-100, 100);
-      endY = random(paintCanvas.height * 0.6, paintCanvas.height * 0.9);
-    } else {
-      // Horizontal lightning (left to right or right to left)
-      if (random(1) < 0.5) {
-        startX = random(paintCanvas.width * 0.1);
-        endX = random(paintCanvas.width * 0.6, paintCanvas.width * 0.9);
-      } else {
-        startX = random(paintCanvas.width * 0.9, paintCanvas.width);
-        endX = random(paintCanvas.width * 0.1, paintCanvas.width * 0.4);
-      }
-      startY = random(paintCanvas.height);
-      endY = startY + random(-100, 100);
-    }
+    // Strike downward like cloud-to-ground lightning (with slight variation)
+    // HALF_PI = straight down, add variation of ±20 degrees
+    const strikeAngle = HALF_PI + random(-PI/9, PI/9);
 
     let col = getDrumColor(note, midiDeviceId, scaledVelOpacity, drumSettings);
-    if (!col) return; // Safety check - should not happen but handle gracefully
+    if (!col) return;
 
     let shape = getDrumShape(note, midiDeviceId, drumSettings);
     let opacityMult = getDrumOpacity(note, midiDeviceId, drumSettings);
@@ -68,76 +54,136 @@ export class LightningMode extends ModeBase {
 
     paintCanvas.push();
 
-    // Create jagged lightning bolt
-    const drawLightningBolt = (x1, y1, x2, y2, thickness, alpha) => {
-      const segments = floor(10 + scaledVelOpacity * 15);
-      let points = [{x: x1, y: y1}];
-
-      // Create jagged path
-      for (let i = 1; i < segments; i++) {
-        const t = i / segments;
-        let x = lerp(x1, x2, t);
-        let y = lerp(y1, y2, t);
-
-        // Add random offset perpendicular to the main direction
-        const offset = random(-15, 15) * (1 - abs(t - 0.5) * 2); // More jagged in middle
-        const angle = atan2(y2 - y1, x2 - x1) + HALF_PI;
-        x += cos(angle) * offset;
-        y += sin(angle) * offset;
-
-        points.push({x, y});
+    // Lightning segment class
+    class LightningSegment {
+      constructor(x, y, angle, generation, energy) {
+        this.x = x;
+        this.y = y;
+        this.angle = angle;
+        this.generation = generation; // 0 = main bolt, higher = branches
+        this.energy = energy; // Decreases with branching
+        this.children = [];
       }
-      points.push({x: x2, y: y2});
+    }
 
-      // Draw the lightning bolt
-      for (let i = 0; i < points.length; i++) {
-        const size = thickness * random(0.7, 1.3);
-        paintDot(paintCanvas, points[i].x, points[i].y, size, col, alpha, shape, stroke, rotation);
+    // Build lightning tree using fractal branching
+    function createLightningTree(startX, startY, startAngle, maxGenerations) {
+      const root = new LightningSegment(startX, startY, startAngle, 0, 1.0);
+      const allSegments = [root];
 
-        // Randomly create side branches
-        if (i > 0 && i < points.length - 1 && random(1) < 0.2) {
-          const branchAngle = random(PI/4, PI/2) * (random(1) < 0.5 ? 1 : -1);
-          const branchLength = random(20, 50);
-          const branchEndX = points[i].x + cos(branchAngle) * branchLength;
-          const branchEndY = points[i].y + sin(branchAngle) * branchLength;
+      function growBranch(parent, stepsRemaining) {
+        if (stepsRemaining <= 0 || parent.energy < 0.1) return;
 
-          // Draw smaller branch
-          const branchSegments = 3;
-          for (let j = 0; j <= branchSegments; j++) {
-            const bt = j / branchSegments;
-            const bx = lerp(points[i].x, branchEndX, bt);
-            const by = lerp(points[i].y, branchEndY, bt);
-            paintDot(paintCanvas, bx, by, size * 0.6, col, alpha * 0.7, shape, stroke, rotation);
+        // Stepped leader - create zigzag path with sudden direction changes
+        const stepLength = random(8, 20); // Realistic step length
+        const angleJitter = random(-PI/3, PI/3); // Sharp angular changes
+        const newAngle = parent.angle + angleJitter;
+
+        const newX = parent.x + cos(newAngle) * stepLength;
+        const newY = parent.y + sin(newAngle) * stepLength;
+
+        // Check bounds
+        if (newX < 0 || newX > paintCanvas.width || newY < 0 || newY > paintCanvas.height) {
+          return;
+        }
+
+        const segment = new LightningSegment(newX, newY, newAngle, parent.generation, parent.energy);
+        parent.children.push(segment);
+        allSegments.push(segment);
+
+        // Branch probability increases with energy and velocity
+        const branchProbability = 0.15 + scaledVelOpacity * 0.15;
+
+        // Create side branches (lightning can split multiple times from same point)
+        if (random() < branchProbability && parent.generation < maxGenerations) {
+          // Can create 1-3 branches from same point
+          const numBranches = random() < 0.7 ? 1 : (random() < 0.6 ? 2 : 3);
+
+          for (let i = 0; i < numBranches; i++) {
+            // Branch at wider angles (45-90 degrees from main)
+            const branchAngle = newAngle + random(PI/4, HALF_PI) * (random() < 0.5 ? 1 : -1);
+            const branchEnergy = parent.energy * random(0.5, 0.75); // Energy splits
+            const branchSegment = new LightningSegment(
+              newX,
+              newY,
+              branchAngle,
+              parent.generation + 1,
+              branchEnergy
+            );
+            segment.children.push(branchSegment);
+            allSegments.push(branchSegment);
+
+            // Continue branch with reduced steps
+            growBranch(branchSegment, floor(stepsRemaining * random(0.4, 0.7)));
+          }
+        }
+
+        // Continue main path
+        growBranch(segment, stepsRemaining - 1);
+      }
+
+      // Start growing from origin
+      const totalSteps = floor(15 + scaledVelOpacity * 25);
+      const maxGen = floor(2 + scaledVelOpacity * 3);
+      growBranch(root, totalSteps, maxGen);
+
+      return allSegments;
+    }
+
+    // Create the lightning tree
+    const maxGenerations = floor(2 + scaledVelOpacity * 3);
+    const segments = createLightningTree(originX, originY, strikeAngle, maxGenerations);
+
+    // Draw glow (corona) first - larger, fainter
+    const baseSize = (3 + scaledVelSize * 10) * globalSizeMultiplier * getDrumSize(note, midiDeviceId, drumSettings);
+
+    for (let segment of segments) {
+      // Width decreases with generation (main bolt thickest)
+      const widthScale = pow(0.65, segment.generation);
+      const glowSize = baseSize * widthScale * 3;
+      const glowAlpha = (80 * segment.energy * scaledVelOpacity * opacityMult);
+
+      paintDot(paintCanvas, segment.x, segment.y, glowSize, col, glowAlpha, 'circle', null, 0);
+    }
+
+    // Draw bright core
+    for (let segment of segments) {
+      const widthScale = pow(0.65, segment.generation);
+      const segmentSize = baseSize * widthScale;
+      const segmentAlpha = (240 * segment.energy * scaledVelOpacity * opacityMult);
+
+      paintDot(paintCanvas, segment.x, segment.y, segmentSize, col, segmentAlpha, shape, stroke, rotation);
+
+      // Draw connecting lines for stronger visual continuity
+      if (segment.children.length > 0) {
+        for (let child of segment.children) {
+          // Interpolate a few dots between parent and child
+          const numInterps = 2;
+          for (let i = 1; i <= numInterps; i++) {
+            const t = i / (numInterps + 1);
+            const interpX = lerp(segment.x, child.x, t);
+            const interpY = lerp(segment.y, child.y, t);
+            const interpSize = lerp(segmentSize, baseSize * pow(0.65, child.generation), t);
+            const interpAlpha = lerp(segmentAlpha, 240 * child.energy * scaledVelOpacity * opacityMult, t);
+
+            paintDot(paintCanvas, interpX, interpY, interpSize, col, interpAlpha, shape, stroke, rotation);
           }
         }
       }
-    };
-
-    // Main lightning bolt
-    const mainThickness = (3 + scaledVelSize * 10) * globalSizeMultiplier * getDrumSize(note, midiDeviceId, drumSettings);
-    const mainAlpha = 220 * scaledVelOpacity * opacityMult;
-    drawLightningBolt(startX, startY, endX, endY, mainThickness, mainAlpha);
-
-    // Add glow effect with fainter outer bolts
-    if (scaledVelOpacity > 0.5) {
-      drawLightningBolt(
-        startX + random(-3, 3),
-        startY + random(-3, 3),
-        endX + random(-3, 3),
-        endY + random(-3, 3),
-        mainThickness * 1.5,
-        mainAlpha * 0.3
-      );
     }
 
+    // Add extra bright flash at origin
+    const flashSize = baseSize * 2.5;
+    paintDot(paintCanvas, originX, originY, flashSize, col, 255 * scaledVelOpacity * opacityMult, 'circle', null, 0);
+
     paintCanvas.pop();
-    particles.push(new Particle(startX, startY, 8, col));
+    particles.push(new Particle(originX, originY, baseSize, col));
 
     // Record actual calculated values for debug panel
     if (debugPanel && actualDrumId) {
       debugPanel.recordPaint(actualDrumId, note, velocity, {
-        size: mainThickness,
-        opacity: (mainAlpha) / 255,
+        size: baseSize,
+        opacity: (240 * scaledVelOpacity * opacityMult) / 255,
         color: col.toString('#rrggbb'),
         rotation: rotation,
         strokeColor: stroke?.enabled ? stroke.color : null,

@@ -85,6 +85,10 @@ export class StateManager {
           bgColor: appState.currentBgColor
         },
         currentMode: appState.currentMode,
+        // Two-tier mode system
+        currentModeType: appState.currentModeType,
+        freeformStyle: appState.freeformStyle,
+        chronicleLayout: appState.chronicleLayout,
         spiralSettings: appState.spiralSettings || {
           tightness: 15,
           rotationsPerMinute: 4,
@@ -177,6 +181,10 @@ export class StateManager {
           bgColor: appState.currentBgColor
         },
         currentMode: appState.currentMode,
+        // Two-tier mode system
+        currentModeType: appState.currentModeType,
+        freeformStyle: appState.freeformStyle,
+        chronicleLayout: appState.chronicleLayout,
         spiralSettings: appState.spiralSettings || {
           tightness: 15,
           rotationsPerMinute: 4,

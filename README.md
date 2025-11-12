@@ -255,15 +255,16 @@ drum-painter-p5/
 │   │   ├── constants.js   # Global constants
 │   │   └── drumKit.js     # Default drum configurations
 │   ├── modes/
-│   │   ├── ModeBase.js    # Base class for paint modes
-│   │   ├── ClassicMode.js
-│   │   ├── FibonacciMode.js
-│   │   ├── RadialMode.js
-│   │   ├── GravityMode.js
-│   │   ├── OrganicMode.js
-│   │   ├── VelocityMandalaMode.js
-│   │   ├── SpiralMode.js
-│   │   └── TimelineMode.js
+│   │   ├── ModeBase.js      # Base class for all modes
+│   │   ├── FreeformMode.js  # Freeform wrapper (delegates to style modes)
+│   │   ├── ClassicMode.js   # Classic pointillism style
+│   │   ├── FibonacciMode.js # Fibonacci spiral style
+│   │   ├── RadialMode.js    # Radial symmetry style
+│   │   ├── GravityMode.js   # Gravity field style
+│   │   ├── OrganicMode.js   # Organic growth style
+│   │   ├── DendriticMode.js # River dendritic style
+│   │   ├── LightningMode.js # Lightning branching style
+│   │   └── TimelineMode.js  # Chronicle mode (staff/rings/spiral/radial/flower/polygon)
 │   ├── midi/
 │   │   └── MidiManager.js # MIDI input handling
 │   ├── state/

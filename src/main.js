@@ -251,11 +251,14 @@ window.setup = async function() {
   // Initialize UI controls
   initializeUI();
 
+  // Activate the current mode (important for initializing mode-specific state)
+  getCurrentMode().onActivate({ paintCanvas });
+
   // Rebuild customization panel to reflect loaded settings (including custom drums)
   customizationPanel.build();
 
   console.log('🎨 Drum Painter - Modular Version');
-  console.log('📦 Loaded modes:', modes.map(m => m.name));
+  console.log('📦 Current mode:', currentModeType, '- Style/Layout:', currentModeType === 'freeform' ? freeformMode.style : chronicleMode.layout);
   console.log('🥁 Drum kit:', DRUM_KIT_CONFIG.map(d => d.name));
 };
 
@@ -333,7 +336,22 @@ function initializeUI() {
   if (freeformStyleSelect) {
     freeformStyleSelect.addEventListener('change', (e) => {
       const style = e.target.value;
+
+      // Deactivate old style
+      const oldStyle = freeformMode.getActiveStyle();
+      if (oldStyle.onDeactivate) {
+        oldStyle.onDeactivate({ paintCanvas });
+      }
+
+      // Switch to new style
       freeformMode.setStyle(style);
+
+      // Activate new style
+      const newStyle = freeformMode.getActiveStyle();
+      if (newStyle.onActivate) {
+        newStyle.onActivate({ paintCanvas });
+      }
+
       const styleName = e.target.options[e.target.selectedIndex].text.split('—')[0].trim();
       notificationSystem.show(styleName);
     });

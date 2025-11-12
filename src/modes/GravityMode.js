@@ -11,6 +11,7 @@ import {
   ALPHA_GRAVITY_MIN,
   GRAVITY_STEPS_BASE,
   GRAVITY_STEPS_MULT,
+  GRAVITY_STEPS_VELOCITY_MULT,
   GRAVITY_STEP_MIN,
   GRAVITY_STEP_MAX,
   GRAVITY_DRIFT_MIN,
@@ -49,7 +50,7 @@ export class GravityMode extends ModeBase {
 
     // Start from top area
     let x = random(paintCanvas.width);
-    let y = random(paintCanvas.height * 0.3);
+    let y = random(paintCanvas.height * 0.8);
     let size = (this.baseSize + scaledVelSize * this.velocityMult) * globalSizeMultiplier * getDrumSize(note, midiDeviceId, drumSettings);
 
     // Get visual properties
@@ -69,14 +70,23 @@ export class GravityMode extends ModeBase {
     paintCanvas.push();
 
     // Paint falling trail
-    let steps = floor(GRAVITY_STEPS_BASE + scaledVelOpacity * GRAVITY_STEPS_MULT);
+    // Steps scale with velocity: base steps + (velocity-scaled steps * velocity multiplier)
+    let steps = floor(GRAVITY_STEPS_BASE + scaledVelOpacity * GRAVITY_STEPS_MULT * GRAVITY_STEPS_VELOCITY_MULT);
+
+    // Calculate drift range based on velocity (higher velocity = more drift)
+    const driftRange = (GRAVITY_DRIFT_MAX - GRAVITY_DRIFT_MIN) * scaledVelOpacity;
+    const driftMin = GRAVITY_DRIFT_MIN * scaledVelOpacity;
+    const driftMax = driftMin + driftRange;
+
     for (let i = 0; i < steps; i++) {
       y += random(GRAVITY_STEP_MIN, GRAVITY_STEP_MAX);
-      x += random(GRAVITY_DRIFT_MIN, GRAVITY_DRIFT_MAX);
+      // Velocity-dependent drift
+      x += random(driftMin, driftMax);
 
       // Alpha decreases as it falls
       let alpha = map(i, 0, steps, ALPHA_GRAVITY * scaledVelOpacity * opacityMult, ALPHA_GRAVITY_MIN * scaledVelOpacity * opacityMult);
-      paintDot(paintCanvas, x, y, size, col, alpha, shape, stroke, rotation);
+      // Pass alpha to stroke as well so it fades with the dots
+      paintDot(paintCanvas, x, y, size, col, alpha, shape, stroke, rotation, alpha);
 
       // Stop if it goes off canvas
       if (y > paintCanvas.height) break;

@@ -23,13 +23,13 @@ export const VELOCITY_MULT_GRAVITY = 60;
 export const BASE_SIZE_ORGANIC = 5;
 export const VELOCITY_MULT_ORGANIC = 60;
 
-// ===== ALPHA/OPACITY SETTINGS =====
-export const ALPHA_CLASSIC = 150;
-export const ALPHA_FIBONACCI = 180;
-export const ALPHA_SYMMETRY = 160;
-export const ALPHA_GRAVITY = 180;
-export const ALPHA_ORGANIC = 140;
-export const ALPHA_GRAVITY_MIN = 40;
+// ===== ALPHA/OPACITY SETTINGS (out of 255)=====
+export const ALPHA_CLASSIC = 255;
+export const ALPHA_FIBONACCI = 255;
+export const ALPHA_SYMMETRY = 255;
+export const ALPHA_GRAVITY = 255;
+export const ALPHA_ORGANIC = 255;
+export const ALPHA_GRAVITY_MIN = 55;
 
 // ===== MODE-SPECIFIC SETTINGS =====
 export const SYMMETRY_ORDER = 8;
@@ -37,14 +37,20 @@ export const GROWTH_POINTS_COUNT = 5;
 export const FIBONACCI_RADIUS_MULT = 15;
 export const GRAVITY_STEPS_BASE = 10;
 export const GRAVITY_STEPS_MULT = 20;
+export const GRAVITY_STEPS_VELOCITY_MULT = 0.8; // Multiplier for velocity's effect on step count
 export const GRAVITY_STEP_MIN = 3;
 export const GRAVITY_STEP_MAX = 8;
-export const GRAVITY_DRIFT_MIN = -5;
-export const GRAVITY_DRIFT_MAX = 5;
+export const GRAVITY_DRIFT_MIN = -20;
+export const GRAVITY_DRIFT_MAX = 20;
 export const ORGANIC_DISTANCE_BASE = 30;
-export const ORGANIC_DISTANCE_SPREAD = 50;
-export const ORGANIC_MOVE_PROBABILITY = 0.05;
+export const ORGANIC_DISTANCE_SPREAD = 40;
+export const ORGANIC_MOVE_PROBABILITY = 0.1;
 export const ORGANIC_MOVE_RANGE = 100;
+
+// ===== DENDRITIC SETTINGS =====
+export const DENDRITIC_BRANCH_BASE = 2.5; // Base number of main branches
+export const DENDRITIC_BRANCH_VELOCITY_MULT = 1.0; // Multiplier for velocity's effect on branch count
+export const DENDRITIC_MAINSTEM_LENGTH_MULT = 0.33; // Multiplier for main stem length (0.5-2.0)
 
 // ===== SYMMETRY SETTINGS =====
 export const SYMMETRY_RADIUS_MIN = 100;

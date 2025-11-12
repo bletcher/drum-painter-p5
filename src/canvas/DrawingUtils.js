@@ -14,8 +14,9 @@
  * @param {string} shape - Shape type ('circle', 'square', 'triangle', 'diamond', 'star', 'hexagon')
  * @param {Object} stroke - Stroke settings {enabled, weight, color}
  * @param {number} rotation - Rotation angle in degrees
+ * @param {number} strokeAlpha - Optional alpha for stroke (defaults to same as fill alpha)
  */
-export function paintDot(paintCanvas, x, y, size, col, alpha, shape = 'circle', stroke = null, rotation = 0) {
+export function paintDot(paintCanvas, x, y, size, col, alpha, shape = 'circle', stroke = null, rotation = 0, strokeAlpha = null) {
   let r = red(col), g = green(col), b = blue(col);
   paintCanvas.fill(r, g, b, alpha);
 
@@ -24,7 +25,9 @@ export function paintDot(paintCanvas, x, y, size, col, alpha, shape = 'circle', 
     let sr = parseInt(stroke.color.slice(1, 3), 16);
     let sg = parseInt(stroke.color.slice(3, 5), 16);
     let sb = parseInt(stroke.color.slice(5, 7), 16);
-    paintCanvas.stroke(sr, sg, sb);
+    // Use provided strokeAlpha if available, otherwise use same alpha as fill
+    let sa = strokeAlpha !== null ? strokeAlpha : alpha;
+    paintCanvas.stroke(sr, sg, sb, sa);
     paintCanvas.strokeWeight(stroke.weight);
   } else {
     paintCanvas.noStroke();

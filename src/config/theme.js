@@ -18,7 +18,7 @@ export const COLORS = {
   // Success/positive colors (used for calculated values, confirmations)
   success: {
     main: '#28a745',
-    light: '#22c55e',
+    light: '#3cb368ff',
     dark: '#166534',
     bg: '#f0fff4',
     bgGradient: 'linear-gradient(135deg, #f0fff4 0%, #dcfce7 100%)'
@@ -38,14 +38,14 @@ export const COLORS = {
   // Error/danger colors
   error: {
     main: '#dc3545',
-    light: '#ef4444',
+    light: '#db3e3eff',
     dark: '#b91c1c',
     bg: '#fef2f2'
   },
 
   // Info colors
   info: {
-    main: '#3b82f6',
+    main: '#3c79daff',
     light: '#60a5fa',
     dark: '#1e40af',
     bg: '#eff6ff'
@@ -256,7 +256,7 @@ export const QUICK_SETTINGS_PANEL = {
     save: COLORS.success.light,
     load: COLORS.info.main,
     delete: COLORS.error.light,
-    videoRecord: '#dc2626'
+    videoRecord: '#da3939ff'
   },
   panel: {
     background: 'rgba(255, 255, 255, 0.95)',
