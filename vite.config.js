@@ -24,9 +24,15 @@ export default defineConfig({
     // Source maps for debugging (set to false for smaller build)
     sourcemap: false,
 
-    // Chunk splitting for better caching
+    // Rollup options for cache busting and chunk splitting
     rollupOptions: {
       output: {
+        // Cache busting - adds hash to filenames
+        entryFileNames: 'assets/[name]-[hash].js',
+        chunkFileNames: 'assets/[name]-[hash].js',
+        assetFileNames: 'assets/[name]-[hash].[ext]',
+
+        // Chunk splitting for better caching
         manualChunks(id) {
           // Split vendor modules into separate chunk
           if (id.includes('node_modules')) {

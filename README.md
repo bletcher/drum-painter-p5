@@ -42,6 +42,32 @@ Click and drag on the canvas to paint manually and explore visual styles before 
 
 See [BUILD.md](BUILD.md) for complete production build and deployment instructions.
 
+### Deployment & Cache Invalidation
+
+After building and uploading to your server:
+
+**1. Build the production files:**
+```bash
+npm run build
+```
+
+**2. Upload `dist/` contents to your server** (S3, CloudFront, etc.)
+
+**3. Clear CloudFront cache** (if using AWS CloudFront):
+```powershell
+.\invalidate-cache.ps1
+```
+
+The script will:
+- Verify AWS credentials
+- Create invalidation for `/drum-painter/*`
+- Monitor progress (typically 1-5 minutes)
+- Notify when complete
+
+**Note**: The vite.config.js includes automatic cache-busting via filename hashing, but CloudFront invalidation ensures immediate updates for users.
+
+**First time setup**: Edit `invalidate-cache.ps1` and set your CloudFront distribution ID.
+
 ## Paint Modes
 
 The application uses a **two-tier mode system**:
