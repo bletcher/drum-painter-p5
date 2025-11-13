@@ -57,7 +57,7 @@ export const SYMMETRY_RADIUS_MIN = 100;
 export const SYMMETRY_RADIUS_MAX = 400;
 
 // ===== BLEND MODE SETTINGS =====
-export const BLEND_MODE_NAMES = ['Normal', 'Multiply', 'Screen', 'Overlay', 'Dodge', 'Burn'];
+export const BLEND_MODE_NAMES = ['Normal', 'Multiply', 'Screen', 'Overlay', 'Dodge', 'Burn', 'Add', 'Difference'];
 
 // ===== BACKGROUND COLOR SETTINGS =====
 export const BG_COLORS = [255, 0, 32, 240, 200]; // White, Black, Dark gray, Light gray, Beige
@@ -81,6 +81,7 @@ export const MAX_HISTORY = 2;
 */
 // ===== SCALING CURVES =====
 export const SCALING_CURVES = {
+  FIXED: 'fixed',
   ONE_TO_ONE: '1:1',
   BOOST_SOFT: 'boost-soft',
   GATE_SOFT: 'gate-soft',
@@ -88,6 +89,7 @@ export const SCALING_CURVES = {
 };
 
 export const SCALING_CURVE_NAMES = {
+  [SCALING_CURVES.FIXED]: 'Fixed',
   [SCALING_CURVES.ONE_TO_ONE]: '1:1',
   [SCALING_CURVES.BOOST_SOFT]: 'Boost Soft',
   [SCALING_CURVES.GATE_SOFT]: 'Gate Soft',

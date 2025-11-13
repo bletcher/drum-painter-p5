@@ -16,6 +16,10 @@ export function applyScalingCurve(value, scaling) {
   value = constrain(value, 0, 1);
 
   switch (scaling) {
+    case SCALING_CURVES.FIXED:
+      // Fixed: always return 1, ignoring velocity (use full slider value)
+      return 1;
+
     case SCALING_CURVES.BOOST_SOFT:
     case 'log': // Backwards compatibility
     case 'logarithmic':

@@ -70,7 +70,7 @@ window.setup = async function() {
   canvas.parent(document.body);
 
   // Initialize blend modes array (needs p5 constants)
-  BLEND_MODES = [BLEND, MULTIPLY, SCREEN, OVERLAY, DODGE, BURN];
+  BLEND_MODES = [BLEND, MULTIPLY, SCREEN, OVERLAY, DODGE, BURN, ADD, DIFFERENCE];
 
   // Create offscreen painting canvas
   paintCanvas = createGraphics(PAINT_CANVAS_WIDTH, PAINT_CANVAS_HEIGHT);
