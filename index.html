@@ -1551,6 +1551,8 @@
             <li><strong>Overlay:</strong> Boosts contrast, vivid results</li>
             <li><strong>Dodge:</strong> Brightens highlights, glowing effect</li>
             <li><strong>Burn:</strong> Deepens shadows, dramatic darkening</li>
+            <li><strong>Add:</strong> Additive light for bright glowing overlaps</li>
+            <li><strong>Difference:</strong> Inverts colors for psychedelic effects</li>
           </ul>
 
           <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Drum Customization</h4>
@@ -1604,14 +1606,18 @@
 
           <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Velocity Scaling Curves</h4>
           <p style="color: #444; line-height: 1.7; font-size: 14px;">
-            Apply non-linear curves to how velocity affects size and opacity:
+            Apply non-linear curves to how velocity affects size, opacity, and hue variation:
           </p>
           <ul style="line-height: 1.8; color: #444; font-size: 14px;">
-            <li><strong>Linear:</strong> Direct 1:1 response</li>
-            <li><strong>Exponential:</strong> Soft hits very small, hard hits huge (dynamic range)</li>
-            <li><strong>Logarithmic:</strong> More gradual change, easier to control</li>
-            <li><strong>S-Curve:</strong> Smooth acceleration, best for musical expression</li>
+            <li><strong>Fixed:</strong> Ignores velocity completely, always uses the slider value (constant size/opacity/hue)</li>
+            <li><strong>1:1:</strong> Direct linear response between velocity and value</li>
+            <li><strong>Boost Soft:</strong> Amplifies soft hits using logarithmic scaling - more sensitivity at lower velocities</li>
+            <li><strong>Gate Soft:</strong> Suppresses soft hits using exponential scaling - emphasizes harder hits</li>
+            <li><strong>Gate Loud:</strong> Smooth quadratic suppression curve</li>
           </ul>
+          <p style="color: #444; line-height: 1.7; font-size: 14px; margin-top: 12px;">
+            Each drum can have independent curves for size, opacity, and hue variation. Use <strong>Fixed</strong> when you want consistent visuals regardless of how hard you hit the drum.
+          </p>
 
           <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">MIDI CC Live Control</h4>
           <p style="color: #444; line-height: 1.7; font-size: 14px;">

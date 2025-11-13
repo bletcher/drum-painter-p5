@@ -11,7 +11,7 @@ Create stunning generative art with your MIDI drums! A browser-based painting ap
 - **Video Recording** - Capture your creative sessions
 - **Velocity Curves** - Customize response to drum dynamics
 - **Project System** - Save and load complete setups
-- **Blend Modes** - Layer effects like multiply, screen, overlay
+- **Blend Modes** - 8 layering effects including Add, Difference, Multiply, Screen
 - **Comprehensive Customization** - Color, size, shape, opacity per drum
 
 ## Quick Start
@@ -169,21 +169,22 @@ Click "Customize Drums" to adjust:
 
 Control how drum velocity affects visuals:
 
-- **Linear** - Direct 1:1 response
-- **Exponential** - Emphasizes harder hits
-- **Logarithmic** - Compresses dynamic range
-- **S-Curve** - Smooth acceleration
-- **Inverted** - Softer hits = larger/brighter
+- **Fixed** - Uses slider value regardless of velocity (constant size/opacity)
+- **1:1** - Direct linear response
+- **Boost Soft** - Amplifies soft hits (logarithmic)
+- **Gate Soft** - Suppresses soft hits (exponential)
+- **Gate Loud** - Smooth quadratic suppression
 
 Separate curves for:
 - Size scaling
 - Opacity scaling
+- Hue variation scaling
 
 ### Global Settings
 
 - **Global Size Multiplier** - Scale all dots (0.1x to 5x)
 - **Background Color** - Black, white, or custom
-- **Blend Mode** - 14 modes including Multiply, Screen, Overlay, Difference
+- **Blend Mode** - 8 modes: Normal, Multiply, Screen, Overlay, Dodge, Burn, Add, Difference
 
 ## Keyboard Shortcuts
 
@@ -380,13 +381,16 @@ Web MIDI API support required:
 
 ### Velocity Curves
 
-Each drum can have independent curves for size and opacity:
+Each drum can have independent curves for size, opacity, and hue:
 
 ```javascript
 // In DrumCustomizationPanel.js
-settings.sizeScaling = 'exponential';    // Harder hits emphasized
-settings.opacityScaling = 'logarithmic'; // Compress dynamic range
+settings.sizeScaling = 'gate-soft';      // Suppress soft hits
+settings.opacityScaling = 'boost-soft';  // Amplify soft hits
+settings.hueScaling = 'fixed';           // Ignore velocity, use slider value
 ```
+
+Available curves: `'fixed'`, `'1:1'`, `'boost-soft'`, `'gate-soft'`, `'gate-loud'`
 
 ### Custom Shapes
 
@@ -435,7 +439,10 @@ Use HSL mode to create harmonious color schemes:
 Use blend modes to create complex overlays:
 - **Multiply** - Darkens, like ink layers
 - **Screen** - Lightens, like projecting light
-- **Overlay** - Combines multiply and screen
+- **Overlay** - Combines multiply and screen for contrast boost
+- **Add** - Additive light for bright glowing overlaps
+- **Difference** - Inverts colors for psychedelic effects
+- **Dodge/Burn** - Brightens highlights or deepens shadows
 
 ### Performance Recording
 

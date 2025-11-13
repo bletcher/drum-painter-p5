@@ -5,48 +5,60 @@
       "id": "snare",
       "name": "Snare",
       "defaultMidiNote": 49,
-      "defaultColor": "#C82832"
+      "defaultColor": "#f26419"
     },
     {
       "id": "drum_1762791844722",
       "name": "Drum 5",
       "defaultMidiNote": 64,
-      "defaultColor": "#bf2222"
+      "defaultColor": "#33658a"
+    },
+    {
+      "id": "drum_1762996086573",
+      "name": "Rack tom",
+      "defaultMidiNote": 65,
+      "defaultColor": "#697819"
+    },
+    {
+      "id": "drum_1762996582203",
+      "name": "Rack-rim",
+      "defaultMidiNote": 66,
+      "defaultColor": "#33b49e"
     },
     {
       "id": "floor_tom",
       "name": "Floor Tom",
       "defaultMidiNote": 39,
-      "defaultColor": "#DC6428"
+      "defaultColor": "#86bbd8"
     },
     {
       "id": "drum_1762125826961",
       "name": "Drum 8",
       "defaultMidiNote": 60,
-      "defaultColor": "#E67E22"
+      "defaultColor": "#f6ae2d"
     },
     {
       "id": "kick",
       "name": "Kick",
       "defaultMidiNote": 51,
-      "defaultColor": "#141E50"
+      "defaultColor": "#2f4858"
     }
   ],
   "drumSettings": {
     "kick": {
       "name": "Kick",
-      "midiNote": 51,
-      "midiDevice": "input-1",
-      "midiDeviceStable": "Alesis Strike MultiPad::Alesis",
-      "color": "#141E50",
+      "midiNote": 60,
+      "midiDevice": "input-5",
+      "midiDeviceStable": "TriggerIO::Alesis",
+      "color": "#2f4858",
       "shape": "circle",
-      "opacity": 0.1,
-      "opacityScaling": "linear",
-      "size": 1.6181102362204727,
-      "sizeScaling": "gate-soft",
+      "opacity": 0.65,
+      "opacityScaling": "1:1",
+      "size": 1,
+      "sizeScaling": "1:1",
       "strokeEnabled": true,
-      "strokeWeight": 5.251968503937007,
-      "strokeColor": "#57557c",
+      "strokeWeight": 4,
+      "strokeColor": "#33658a",
       "hueVariation": 30,
       "hueScaling": "linear",
       "rotation": 0,
@@ -86,22 +98,23 @@
           "ccMin": 0,
           "ccMax": 127
         }
-      }
+      },
+      "hueVariationScaling": "1:1"
     },
     "snare": {
       "name": "Snare",
-      "midiNote": 49,
-      "midiDevice": "input-1",
-      "midiDeviceStable": "Alesis Strike MultiPad::Alesis",
-      "color": "#C82832",
+      "midiNote": 62,
+      "midiDevice": "input-5",
+      "midiDeviceStable": "TriggerIO::Alesis",
+      "color": "#f26419",
       "shape": "circle",
       "opacity": 1,
-      "opacityScaling": "linear",
+      "opacityScaling": "1:1",
       "size": 1,
       "sizeScaling": "1:1",
       "strokeEnabled": true,
-      "strokeWeight": 2,
-      "strokeColor": "#c21414",
+      "strokeWeight": 1.5,
+      "strokeColor": "#f6ae2d",
       "hueVariation": 6,
       "hueScaling": "linear",
       "rotation": 0,
@@ -142,24 +155,192 @@
           "ccMax": 127
         }
       },
-      "hueVariationScaling": "boost-soft"
+      "hueVariationScaling": "1:1"
     },
     "floor_tom": {
       "name": "Floor Tom",
-      "midiNote": 39,
-      "midiDevice": "input-1",
-      "midiDeviceStable": "Alesis Strike MultiPad::Alesis",
-      "color": "#DC6428",
+      "midiNote": 70,
+      "midiDevice": "input-5",
+      "midiDeviceStable": "TriggerIO::Alesis",
+      "color": "#86bbd8",
       "shape": "circle",
       "opacity": 1,
-      "opacityScaling": "linear",
+      "opacityScaling": "1:1",
       "size": 1,
-      "sizeScaling": "linear",
-      "strokeEnabled": false,
+      "sizeScaling": "1:1",
+      "strokeEnabled": true,
       "strokeWeight": 2,
-      "strokeColor": "#000000",
+      "strokeColor": "#33658a",
       "hueVariation": 0,
       "hueScaling": "linear",
+      "rotation": 0,
+      "midiCC": {
+        "size": {
+          "cc": null,
+          "min": 30,
+          "max": 300,
+          "ccMin": 0,
+          "ccMax": 127
+        },
+        "opacity": {
+          "cc": null,
+          "min": 10,
+          "max": 100,
+          "ccMin": 0,
+          "ccMax": 127
+        },
+        "hueVariation": {
+          "cc": null,
+          "min": 0,
+          "max": 30,
+          "ccMin": 0,
+          "ccMax": 127
+        },
+        "rotation": {
+          "cc": null,
+          "min": 0,
+          "max": 360,
+          "ccMin": 0,
+          "ccMax": 127
+        },
+        "strokeWeight": {
+          "cc": null,
+          "min": 1,
+          "max": 10,
+          "ccMin": 0,
+          "ccMax": 127
+        }
+      },
+      "hueVariationScaling": "1:1"
+    },
+    "drum_1762125826961": {
+      "name": "Floor-rim",
+      "midiNote": 71,
+      "color": "#f6ae2d",
+      "shape": "circle",
+      "opacity": 1,
+      "opacityScaling": "1:1",
+      "size": 1,
+      "sizeScaling": "1:1",
+      "strokeEnabled": true,
+      "strokeWeight": 2,
+      "strokeColor": "#f26419",
+      "hueVariation": 0,
+      "hueScaling": "linear",
+      "rotation": 0,
+      "midiCC": {
+        "size": {
+          "cc": null,
+          "min": 30,
+          "max": 300,
+          "ccMin": 0,
+          "ccMax": 127
+        },
+        "opacity": {
+          "cc": null,
+          "min": 10,
+          "max": 100,
+          "ccMin": 0,
+          "ccMax": 127
+        },
+        "hueVariation": {
+          "cc": null,
+          "min": 0,
+          "max": 30,
+          "ccMin": 0,
+          "ccMax": 127
+        },
+        "rotation": {
+          "cc": null,
+          "min": 0,
+          "max": 360,
+          "ccMin": 0,
+          "ccMax": 127
+        },
+        "strokeWeight": {
+          "cc": null,
+          "min": 1,
+          "max": 10,
+          "ccMin": 0,
+          "ccMax": 127
+        }
+      },
+      "midiDevice": "input-5",
+      "midiDeviceStable": "TriggerIO::Alesis",
+      "hueVariationScaling": "1:1"
+    },
+    "drum_1762791844722": {
+      "name": "Snare-rim",
+      "midiNote": 63,
+      "color": "#33658a",
+      "shape": "circle",
+      "opacity": 1,
+      "opacityScaling": "1:1",
+      "size": 1,
+      "sizeScaling": "1:1",
+      "strokeEnabled": true,
+      "strokeWeight": 3,
+      "strokeColor": "#86bbd8",
+      "hueVariation": 0,
+      "hueScaling": "linear",
+      "rotation": 0,
+      "midiCC": {
+        "size": {
+          "cc": null,
+          "min": 30,
+          "max": 300,
+          "ccMin": 0,
+          "ccMax": 127
+        },
+        "opacity": {
+          "cc": null,
+          "min": 10,
+          "max": 100,
+          "ccMin": 0,
+          "ccMax": 127
+        },
+        "hueVariation": {
+          "cc": null,
+          "min": 0,
+          "max": 30,
+          "ccMin": 0,
+          "ccMax": 127
+        },
+        "rotation": {
+          "cc": null,
+          "min": 0,
+          "max": 360,
+          "ccMin": 0,
+          "ccMax": 127
+        },
+        "strokeWeight": {
+          "cc": null,
+          "min": 1,
+          "max": 10,
+          "ccMin": 0,
+          "ccMax": 127
+        }
+      },
+      "midiDevice": "input-5",
+      "midiDeviceStable": "TriggerIO::Alesis",
+      "hueVariationScaling": "1:1"
+    },
+    "drum_1762996086573": {
+      "name": "Rack tom",
+      "midiNote": 68,
+      "midiDevice": "input-5",
+      "midiDeviceStable": "TriggerIO::Alesis",
+      "color": "#697819",
+      "shape": "circle",
+      "opacity": 1,
+      "opacityScaling": "1:1",
+      "size": 1,
+      "sizeScaling": "1:1",
+      "strokeEnabled": true,
+      "strokeWeight": 2,
+      "strokeColor": "#343b12",
+      "hueVariation": 0,
+      "hueScaling": "1:1",
       "rotation": 0,
       "midiCC": {
         "size": {
@@ -199,20 +380,22 @@
         }
       }
     },
-    "drum_1762125826961": {
-      "name": "Floor-rim",
-      "midiNote": 48,
-      "color": "#98602f",
+    "drum_1762996582203": {
+      "name": "Rack-rim",
+      "midiNote": 69,
+      "midiDevice": "input-5",
+      "midiDeviceStable": "TriggerIO::Alesis",
+      "color": "#33b49e",
       "shape": "circle",
       "opacity": 1,
-      "opacityScaling": "linear",
+      "opacityScaling": "1:1",
       "size": 1,
-      "sizeScaling": "linear",
-      "strokeEnabled": true,
-      "strokeWeight": 3,
+      "sizeScaling": "1:1",
+      "strokeEnabled": false,
+      "strokeWeight": 2,
       "strokeColor": "#000000",
       "hueVariation": 0,
-      "hueScaling": "linear",
+      "hueScaling": "1:1",
       "rotation": 0,
       "midiCC": {
         "size": {
@@ -250,70 +433,35 @@
           "ccMin": 0,
           "ccMax": 127
         }
-      },
-      "midiDevice": "input-1",
-      "midiDeviceStable": "Alesis Strike MultiPad::Alesis"
-    },
-    "drum_1762791844722": {
-      "name": "Snare-rim",
-      "midiNote": 50,
-      "color": "#bf2222",
-      "shape": "circle",
-      "opacity": 1,
-      "opacityScaling": "linear",
-      "size": 1,
-      "sizeScaling": "linear",
-      "strokeEnabled": true,
-      "strokeWeight": 3,
-      "strokeColor": "#602a2a",
-      "hueVariation": 0,
-      "hueScaling": "linear",
-      "rotation": 0,
-      "midiCC": {
-        "size": {
-          "cc": null,
-          "min": 30,
-          "max": 300,
-          "ccMin": 0,
-          "ccMax": 127
-        },
-        "opacity": {
-          "cc": null,
-          "min": 10,
-          "max": 100,
-          "ccMin": 0,
-          "ccMax": 127
-        },
-        "hueVariation": {
-          "cc": null,
-          "min": 0,
-          "max": 30,
-          "ccMin": 0,
-          "ccMax": 127
-        },
-        "rotation": {
-          "cc": null,
-          "min": 0,
-          "max": 360,
-          "ccMin": 0,
-          "ccMax": 127
-        },
-        "strokeWeight": {
-          "cc": null,
-          "min": 1,
-          "max": 10,
-          "ccMin": 0,
-          "ccMax": 127
-        }
-      },
-      "midiDevice": "input-1",
-      "midiDeviceStable": "Alesis Strike MultiPad::Alesis"
+      }
     }
   },
   "globalSettings": {
     "sizeMultiplier": 1,
     "blendMode": 0,
     "bgColor": 0
+  },
+  "currentModeType": "freeform",
+  "freeformStyle": "classic",
+  "chronicleLayout": "staff",
+  "spiralSettings": {
+    "tightness": 15,
+    "rotationsPerMinute": 4,
+    "startRadius": 50,
+    "syncToBPM": false,
+    "pattern": "spiral"
+  },
+  "timelineSettings": {
+    "bpm": 120,
+    "subdivision": 4,
+    "beatsPerMeasure": 4,
+    "metronomeEnabled": false,
+    "midiLatencyMs": 70,
+    "showGrid": true,
+    "rowSpacing": 10,
+    "layout": "staff",
+    "warmupMeasures": 0,
+    "measuresPerStaffPreference": 4
   },
   "bankModeSettings": {
     "bankModeEnabled": false,
@@ -324,6 +472,10 @@
         "deviceId": null
       },
       "snare": {
+        "note": null,
+        "deviceId": null
+      },
+      "snare_rim": {
         "note": null,
         "deviceId": null
       },
@@ -367,38 +519,44 @@
     "deviceRegistry": {
       "devices": [
         {
-          "stableKey": "Focusrite USB MIDI::unknown",
-          "name": "Focusrite USB MIDI",
-          "manufacturer": "Unknown",
-          "lastSeen": 1762809117911
-        },
-        {
-          "stableKey": "Alesis Strike MultiPad::Alesis",
-          "name": "Alesis Strike MultiPad",
-          "manufacturer": "Alesis",
-          "lastSeen": 1762809117911
-        },
-        {
           "stableKey": "Looptimus Mini::Atmel Corp.",
           "name": "Looptimus Mini",
           "manufacturer": "Atmel Corp.",
-          "lastSeen": 1762809117912
+          "lastSeen": 1763062080417
         },
         {
           "stableKey": "Arturia KeyLab Essential 49::unknown",
           "name": "Arturia KeyLab Essential 49",
           "manufacturer": "Unknown",
-          "lastSeen": 1762809117912
+          "lastSeen": 1763062080417
         },
         {
           "stableKey": "MIDIIN2 (Arturia KeyLab Essenti::unknown",
           "name": "MIDIIN2 (Arturia KeyLab Essenti",
           "manufacturer": "Unknown",
-          "lastSeen": 1762809117912
+          "lastSeen": 1763062080417
+        },
+        {
+          "stableKey": "Focusrite USB MIDI::unknown",
+          "name": "Focusrite USB MIDI",
+          "manufacturer": "Unknown",
+          "lastSeen": 1763062080418
+        },
+        {
+          "stableKey": "Alesis Strike MultiPad::Alesis",
+          "name": "Alesis Strike MultiPad",
+          "manufacturer": "Alesis",
+          "lastSeen": 1763062080418
+        },
+        {
+          "stableKey": "TriggerIO::Alesis",
+          "name": "TriggerIO",
+          "manufacturer": "Alesis",
+          "lastSeen": 1763062080418
         }
       ],
-      "timestamp": 1762809158128
+      "timestamp": 1763062317884
     }
   },
-  "timestamp": "2025-11-10T21:12:38.128Z"
+  "timestamp": "2025-11-13T19:31:57.884Z"
 }
