@@ -452,7 +452,7 @@
     "pattern": "spiral"
   },
   "timelineSettings": {
-    "bpm": 120,
+    "bpm": 80,
     "subdivision": 4,
     "beatsPerMeasure": 4,
     "metronomeEnabled": false,

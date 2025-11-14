@@ -224,6 +224,7 @@ Press **?** to see all shortcuts, or **U** for the complete User Guide.
 - **Z** - Undo last action
 - **Y** - Redo
 - **H** - Hide/show UI
+- **F** - Toggle fullscreen
 - **?** - Show keyboard shortcuts
 - **U** - Show user guide
 

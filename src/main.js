@@ -104,7 +104,7 @@ window.setup = async function() {
   midiManager = new MidiManager((note, velocity, deviceId) => handlePaint(note, velocity, deviceId));
 
   // Initialize customization panel
-  customizationPanel = new DrumCustomizationPanel(drumSettings, midiManager, stateManager, notificationSystem);
+  customizationPanel = new DrumCustomizationPanel(drumSettings, midiManager, stateManager, notificationSystem, chronicleMode);
 
   // Initialize MIDI mapping panel
   midiMappingPanel = new MidiMappingPanel(drumSettings, midiManager, notificationSystem, updateActiveDrumIndicator);
@@ -1441,6 +1441,14 @@ window.keyPressed = function() {
     if (window.toggleUserGuide) {
       window.toggleUserGuide();
     }
+    return false;
+  }
+
+  // F - toggle fullscreen (always allow this)
+  if (key === 'f' || key === 'F') {
+    let fs = fullscreen();
+    fullscreen(!fs);
+    notificationSystem.show(fs ? 'Exited fullscreen' : 'Entered fullscreen');
     return false;
   }
 

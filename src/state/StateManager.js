@@ -97,7 +97,7 @@ export class StateManager {
           pattern: 'spiral'
         },
         timelineSettings: appState.timelineSettings || {
-          bpm: 120,
+          bpm: 80,
           subdivision: 16,
           beatsPerMeasure: 4,
           metronomeEnabled: false,
@@ -193,7 +193,7 @@ export class StateManager {
           pattern: 'spiral'
         },
         timelineSettings: appState.timelineSettings || {
-          bpm: 120,
+          bpm: 80,
           subdivision: 16,
           beatsPerMeasure: 4,
           metronomeEnabled: false,

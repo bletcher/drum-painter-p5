@@ -8,11 +8,12 @@ import { SCALING_CURVES, SCALING_CURVE_NAMES, SHAPE_OPTIONS } from '../config/co
 import { CUSTOMIZATION_PANEL, COLORS, SPACING, RADIUS, TYPOGRAPHY, SHADOWS } from '../config/theme.js';
 
 export class DrumCustomizationPanel {
-  constructor(drumSettings, midiManager, stateManager, notificationSystem) {
+  constructor(drumSettings, midiManager, stateManager, notificationSystem, chronicleMode) {
     this.drumSettings = drumSettings;
     this.midiManager = midiManager;
     this.stateManager = stateManager;
     this.notificationSystem = notificationSystem;
+    this.chronicleMode = chronicleMode;
     this.currentTab = DRUM_KIT_CONFIG[0]?.id || 'kick';
     this.isVisible = false;
     this.draggedTabIndex = null;
@@ -872,6 +873,12 @@ export class DrumCustomizationPanel {
 
     this.currentTab = newId;
     this.build();
+
+    // Update timeline lanes to match new drum count
+    if (this.chronicleMode) {
+      this.chronicleMode.regenerateLanes();
+    }
+
     this.notificationSystem.show(`Added ${newDrum.name}`);
   }
 
@@ -901,6 +908,12 @@ export class DrumCustomizationPanel {
     this.currentTab = DRUM_KIT_CONFIG[0].id;
 
     this.build();
+
+    // Update timeline lanes to match new drum count
+    if (this.chronicleMode) {
+      this.chronicleMode.regenerateLanes();
+    }
+
     this.notificationSystem.show('Drum deleted');
   }
 }

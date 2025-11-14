@@ -16,7 +16,7 @@ export class TimelineMode {
     this.stopTime = null; // When we last stopped recording
 
     // Musical settings
-    this.bpm = 120; // Beats per minute
+    this.bpm = 80; // Beats per minute
     this.subdivision = 4; // Beat subdivision (4 = quarter notes, 8 = eighth notes, 16 = sixteenth notes)
     this.beatsPerMeasure = 4; // Time signature numerator (2/4, 3/4, 4/4, etc.)
     this.midiLatencyMs = 70; // MIDI latency compensation in milliseconds
@@ -35,7 +35,7 @@ export class TimelineMode {
     // Grid/Staff layout
     this.pixelsPerSecond = 200; // How many pixels = 1 second
     this.staffWidth = 1800; // Width before wrapping to next staff (calculated dynamically)
-    this.staffHeight = 80; // Total height of one staff (all drums)
+    this.staffHeight = 80; // Total height of one staff (calculated based on drum count in regenerateLanes)
     this.drumLineSpacing = 15; // Vertical spacing between drum lines
     this.measuresPerStaff = 4; // Number of complete measures per staff row (calculated dynamically)
     this.measuresPerStaffPreference = 4; // User preference: 0 = auto, or specific number
@@ -76,6 +76,10 @@ export class TimelineMode {
       this.timelineLanes[drum.id] = index;
     });
     this.timelineLaneCount = this.drumKitConfig.length;
+
+    // Update staff height based on number of drums
+    // Each drum gets drumLineSpacing, plus one extra spacing at the top
+    this.staffHeight = (this.timelineLaneCount * this.drumLineSpacing) + this.drumLineSpacing;
   }
 
   /**
@@ -719,6 +723,11 @@ export class TimelineMode {
    * Draw timeline lane guides overlay
    */
   drawLaneGuides(p5Instance, offsetX, offsetY, scale, paintCanvas) {
+    // Only draw staff grid when using staff layout
+    if (this.layout !== 'staff') {
+      return;
+    }
+
     p5Instance.push();
     p5Instance.colorMode(p5Instance.RGB, 255);
 

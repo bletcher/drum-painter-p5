@@ -167,6 +167,40 @@ export class TimelineControls {
       continueBtn.addEventListener('click', () => this.handleStart(false));
     }
 
+    // Save Recording Modal buttons
+    const saveBtn = document.getElementById('save-recording-save-btn');
+    if (saveBtn) {
+      saveBtn.addEventListener('click', () => this.handleSaveRecording());
+    }
+
+    const discardBtn = document.getElementById('save-recording-discard-btn');
+    if (discardBtn) {
+      discardBtn.addEventListener('click', () => this.handleDiscardRecording());
+    }
+
+    const cancelBtn = document.getElementById('save-recording-cancel-btn');
+    if (cancelBtn) {
+      cancelBtn.addEventListener('click', () => this.handleCancelSave());
+    }
+
+    // Keyboard shortcuts for Save Recording Modal
+    this.saveRecordingKeyHandler = (e) => {
+      const modal = document.getElementById('save-recording-backdrop');
+      if (modal && modal.style.display === 'flex') {
+        if (e.key === 's' || e.key === 'S') {
+          e.preventDefault();
+          this.handleSaveRecording();
+        } else if (e.key === 'd' || e.key === 'D') {
+          e.preventDefault();
+          this.handleDiscardRecording();
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          this.handleCancelSave();
+        }
+      }
+    };
+    document.addEventListener('keydown', this.saveRecordingKeyHandler);
+
     // Start update loop for UI
     this.startUpdateLoop();
   }
@@ -273,9 +307,32 @@ export class TimelineControls {
   }
 
   /**
-   * Handle end & save button click
+   * Handle end button click - show save/discard modal
    */
   handleEnd() {
+    // Pause the recording (don't stop yet)
+    if (this.timelineMode.recording) {
+      this.timelineMode.stopRecording();
+    }
+
+    // Show the save/discard modal
+    const modal = document.getElementById('save-recording-backdrop');
+    if (modal) {
+      modal.style.display = 'flex';
+    }
+  }
+
+  /**
+   * Handle save recording from modal
+   */
+  handleSaveRecording() {
+    // Close modal
+    const modal = document.getElementById('save-recording-backdrop');
+    if (modal) {
+      modal.style.display = 'none';
+    }
+
+    // Stop recording (keeps the recording)
     this.timelineMode.stopRecording();
 
     // Stop and save video recording if it's running
@@ -286,13 +343,57 @@ export class TimelineControls {
       }
       // Re-enable Quick Settings video button
       this.hideChronicleRecordingInfo();
-      this.notificationSystem.show('Timeline ended • Video saved');
+      this.notificationSystem.show('Timeline saved • Video saved');
     } else {
-      this.notificationSystem.show('Timeline ended');
+      this.notificationSystem.show('Timeline saved');
     }
 
     this.updateButtonsUI();
     this.updateStatusText();
+  }
+
+  /**
+   * Handle discard recording from modal
+   */
+  handleDiscardRecording() {
+    // Close modal
+    const modal = document.getElementById('save-recording-backdrop');
+    if (modal) {
+      modal.style.display = 'none';
+    }
+
+    // Stop video recording if it's running (without saving)
+    if (this.videoRecorder && this.videoRecorder.isRecording) {
+      this.videoRecorder.stopRecording();
+      if (window.updateVideoRecordingUI) {
+        window.updateVideoRecordingUI(false);
+      }
+      // Re-enable Quick Settings video button
+      this.hideChronicleRecordingInfo();
+    }
+
+    // Clear the timeline by starting over
+    this.handleStartOver();
+
+    this.notificationSystem.show('Recording discarded');
+  }
+
+  /**
+   * Handle cancel from save modal - resume recording
+   */
+  handleCancelSave() {
+    // Close modal
+    const modal = document.getElementById('save-recording-backdrop');
+    if (modal) {
+      modal.style.display = 'none';
+    }
+
+    // Resume recording (unpause) - false means don't start over, resume from where we paused
+    this.timelineMode.startRecording(false);
+
+    this.updateButtonsUI();
+    this.updateStatusText();
+    this.notificationSystem.show('Resuming recording');
   }
 
   /**
@@ -349,6 +450,11 @@ export class TimelineControls {
     const startOverBtn = document.getElementById('timeline-start-over-btn');
     const continueBtn = document.getElementById('timeline-continue-btn');
 
+    // Sections to show/hide during recording
+    const mainPanelSections = document.getElementById('main-panel-sections');
+    const settingsSection = document.getElementById('timeline-settings-section');
+    const recordingOptions = document.getElementById('timeline-recording-options');
+
     // Initial state: Show only Start button
     if (state === 'initial') {
       if (startBtn) startBtn.style.display = 'block';
@@ -356,14 +462,22 @@ export class TimelineControls {
       if (endBtn) endBtn.style.display = 'none';
       if (startOverBtn) startOverBtn.style.display = 'none';
       if (continueBtn) continueBtn.style.display = 'none';
+      // Show all sections
+      if (mainPanelSections) mainPanelSections.style.display = 'block';
+      if (settingsSection) settingsSection.style.display = 'block';
+      if (recordingOptions) recordingOptions.style.display = 'block';
     }
-    // Recording state: Show Pause and End buttons
+    // Recording state: Show ONLY Playing section with Pause and End buttons
     else if (state === 'recording') {
       if (startBtn) startBtn.style.display = 'none';
       if (pauseBtn) pauseBtn.style.display = 'block';
       if (endBtn) endBtn.style.display = 'block';
       if (startOverBtn) startOverBtn.style.display = 'none';
       if (continueBtn) continueBtn.style.display = 'none';
+      // Hide everything except the Playing section
+      if (mainPanelSections) mainPanelSections.style.display = 'none';
+      if (settingsSection) settingsSection.style.display = 'none';
+      if (recordingOptions) recordingOptions.style.display = 'none';
     }
     // Stopped state: Show Start Over and Continue buttons
     else if (state === 'stopped') {
@@ -372,6 +486,10 @@ export class TimelineControls {
       if (endBtn) endBtn.style.display = 'none';
       if (startOverBtn) startOverBtn.style.display = 'block';
       if (continueBtn) continueBtn.style.display = 'block';
+      // Show all sections
+      if (mainPanelSections) mainPanelSections.style.display = 'block';
+      if (settingsSection) settingsSection.style.display = 'block';
+      if (recordingOptions) recordingOptions.style.display = 'block';
     }
   }
 

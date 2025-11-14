@@ -136,6 +136,7 @@
       </svg>
       DRUM PAINTER
     </h3>
+    <div id="main-panel-sections">
     <div id="midi-status" style="
       display: flex;
       align-items: center;
@@ -274,6 +275,7 @@
     <div style="margin-top: 10px;">
       <strong>Keyboard Shortcuts:</strong><br>
       <span class="key">H</span> Hide/show UI<br>
+      <span class="key">F</span> Fullscreen<br>
       <span class="key">BKSP</span> Clear canvas<br>
       <span class="key">SPACE</span> Record video<br>
       <span class="key">S</span> Save image<br>
@@ -283,9 +285,11 @@
       <span class="key">?</span> Keyboard shortcuts<br>
       <span class="key">Click</span> Test paint
     </div>
+    </div>
 
     <!-- Timeline Settings (shown only in timeline mode) -->
     <div id="timeline-controls" style="display: none; margin-top: 10px; border-top: 1px solid #ddd; padding-top: 10px;">
+      <div id="timeline-settings-section">
       <strong>Timeline Settings:</strong><br>
       <div style="margin-top: 8px; font-size: 11px;">
         <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
@@ -321,7 +325,7 @@
           <label style="min-width: 45px;">BPM:</label>
           <input type="number" id="timeline-bpm" value="80" min="30" max="240" step="1"
             style="flex: 1; padding: 4px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px;">
-          <span id="bpm-display" style="min-width: 40px; text-align: right; font-weight: bold;">120</span>
+          <span id="bpm-display" style="min-width: 40px; text-align: right; font-weight: bold;">80</span>
         </div>
         <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
           <label style="min-width: 45px;">Grid:</label>
@@ -371,7 +375,9 @@
           <span style="font-size: 11px; min-width: 30px;">ms</span>
         </div>
       </div>
-      <div style="margin-top: 10px; border-top: 1px solid #ddd; padding-top: 8px;">
+      </div>
+      <div id="timeline-playing-section">
+      <div style="margin-top: 10px; padding-top: 8px;">
         <strong style="font-size: 12px;">Playing:</strong><br>
       </div>
       <!-- Timeline control buttons - Row 1: Main controls -->
@@ -410,7 +416,7 @@
           cursor: pointer;
           font-size: 11px;
           display: none;
-        ">■ End & Save</button>
+        ">■ End</button>
       </div>
       <!-- Timeline control buttons - Row 2: Start Over / Continue -->
       <div style="display: flex; gap: 5px; margin-top: 5px;">
@@ -439,6 +445,8 @@
           display: none;
         ">▶ Continue</button>
       </div>
+      </div>
+        <div id="timeline-recording-options">
         <div style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
           <label style="display: flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer;">
             <input type="checkbox" id="timeline-auto-record" unchecked
@@ -475,6 +483,7 @@
             <option value="webm-vp8">WebM VP8</option>
             <option value="webm">WebM</option>
           </select>
+        </div>
         </div>
     </div>
 
@@ -1287,6 +1296,10 @@
             <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">H</kbd>
           </div>
           <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
+            <span style="font-size: 13px;">Toggle fullscreen</span>
+            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">F</kbd>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
             <span style="font-size: 13px;">Show this help</span>
             <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">?</kbd>
           </div>
@@ -1667,6 +1680,7 @@
             <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">SPACE</kbd> Record video</div>
             <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">H</kbd> Hide/show UI</div>
             <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">BKSP</kbd> Clear canvas</div>
+            <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">F</kbd> Toggle fullscreen</div>
             <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">S</kbd> Save image</div>
             <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">D</kbd> Save settings</div>
             <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">Z</kbd> Undo</div>
@@ -1774,6 +1788,91 @@
         color: white;
       ">
         <!-- Devices will be populated here -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Save Recording Modal -->
+  <div id="save-recording-backdrop" style="
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+    z-index: 10000;
+    align-items: center;
+    justify-content: center;
+  ">
+    <div id="save-recording-modal" style="
+      background: linear-gradient(135deg, #8b90c0 0%, #8087be 100%);
+      border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+      width: 90%;
+      max-width: 400px;
+      overflow: hidden;
+      animation: slideIn 0.3s ease-out;
+    ">
+      <!-- Header -->
+      <div style="padding: 24px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.2);">
+        <h2 style="margin: 0; color: white; font-size: 20px; font-weight: 600;">
+          Save Recording?
+        </h2>
+        <p style="margin: 8px 0 0 0; color: rgba(255,255,255,0.8); font-size: 14px;">
+          Choose whether to save or discard this session
+        </p>
+      </div>
+
+      <!-- Buttons -->
+      <div style="padding: 24px; display: flex; flex-direction: column; gap: 10px;">
+        <button id="save-recording-save-btn" style="
+          padding: 14px;
+          background: #28a745;
+          color: white;
+          border: none;
+          border-radius: 8px;
+          font-weight: bold;
+          font-size: 15px;
+          cursor: pointer;
+          transition: all 0.2s;
+          box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
+        " onmouseover="this.style.background='#218838'; this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 16px rgba(40, 167, 69, 0.4)'"
+           onmouseout="this.style.background='#28a745'; this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 12px rgba(40, 167, 69, 0.3)'">
+          💾 Save (S)
+        </button>
+
+        <button id="save-recording-discard-btn" style="
+          padding: 14px;
+          background: #c23b49;
+          color: white;
+          border: none;
+          border-radius: 8px;
+          font-weight: bold;
+          font-size: 15px;
+          cursor: pointer;
+          transition: all 0.2s;
+          box-shadow: 0 4px 12px rgba(220, 53, 69, 0.3);
+        " onmouseover="this.style.background='#c82333'; this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 16px rgba(220, 53, 69, 0.4)'"
+           onmouseout="this.style.background='#dc3545'; this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 12px rgba(220, 53, 69, 0.3)'">
+          🗑️ Discard (D)
+        </button>
+
+        <button id="save-recording-cancel-btn" style="
+          padding: 14px;
+          background: rgba(255, 255, 255, 0.2);
+          color: white;
+          border: 1px solid rgba(255, 255, 255, 0.3);
+          border-radius: 8px;
+          font-weight: 600;
+          font-size: 15px;
+          cursor: pointer;
+          transition: all 0.2s;
+        " onmouseover="this.style.background='rgba(255, 255, 255, 0.3)'; this.style.transform='translateY(-2px)'"
+           onmouseout="this.style.background='rgba(255, 255, 255, 0.2)'; this.style.transform='translateY(0)'">
+          Cancel (ESC)
+        </button>
       </div>
     </div>
   </div>

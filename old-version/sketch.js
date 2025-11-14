@@ -93,13 +93,13 @@ let drumLineSpacing = 15; // Vertical spacing between drum lines within a staff
 let timelineRecording = false; // Whether timeline is currently recording
 let timelinePausedTime = 0; // Accumulated paused time in milliseconds
 let timelineStopTime = null; // When we last stopped recording
-let timelineBPM = 120; // Beats per minute for metronome
+let timelineBPM = 80; // Beats per minute for metronome
 let timelineSubdivision = 4; // Beat subdivision (4 = quarter notes, 8 = eighth notes, 16 = sixteenth notes)
 let timelineBeatsPerMeasure = 4; // Time signature numerator (2/4, 3/4, 4/4, 5/4, etc.)
 let metronomeEnabled = false; // Whether metronome sound is enabled
 let lastMetronomeClick = -1; // Last subdivision index that played a click
 let audioContext = null; // Web Audio API context for metronome
-let lastMetronomeBPM = 120; // Track BPM changes
+let lastMetronomeBPM = 80; // Track BPM changes
 let lastMetronomeSubdivision = 4; // Track subdivision changes
 let midiLatencyMs = 70; // MIDI latency compensation in milliseconds (adjustable)
 
