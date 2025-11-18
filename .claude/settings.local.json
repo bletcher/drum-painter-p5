@@ -7,7 +7,10 @@
       "Bash(test:*)",
       "Bash(npm start)",
       "Bash(npm run dev:*)",
-      "Bash(timeout /t 3)"
+      "Bash(timeout /t 3)",
+      "WebSearch",
+      "WebFetch(domain:www.rtings.com)",
+      "WebFetch(domain:www.amazon.com)"
     ],
     "deny": [],
     "ask": []
