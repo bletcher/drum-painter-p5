@@ -20,6 +20,10 @@ export function applyScalingCurve(value, scaling) {
       // Fixed: always return 1, ignoring velocity (use full slider value)
       return 1;
 
+    case SCALING_CURVES.INVERSE:
+      // Inverse: inverts the relationship (high velocity = low value)
+      return 1 - value;
+
     case SCALING_CURVES.BOOST_SOFT:
     case 'log': // Backwards compatibility
     case 'logarithmic':
@@ -45,3 +49,4 @@ export function applyScalingCurve(value, scaling) {
       return value;
   }
 }
+

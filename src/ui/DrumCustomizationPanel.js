@@ -6,6 +6,7 @@
 import { DRUM_KIT_CONFIG } from '../config/drumKit.js';
 import { SCALING_CURVES, SCALING_CURVE_NAMES, SHAPE_OPTIONS } from '../config/constants.js';
 import { CUSTOMIZATION_PANEL, COLORS, SPACING, RADIUS, TYPOGRAPHY, SHADOWS } from '../config/theme.js';
+import { drawSplatterCanvas, drawBrushStrokeCanvas } from '../canvas/DrawingUtils.js';
 
 export class DrumCustomizationPanel {
   constructor(drumSettings, midiManager, stateManager, notificationSystem, chronicleMode) {
@@ -754,10 +755,14 @@ export class DrumCustomizationPanel {
     if (!previewDiv) return;
 
     const settings = this.drumSettings[drumId];
-    const size = 50;
+    // Use settings.size (which is a multiplier, e.g., 1.0 = 100%)
+    // Scale it to a reasonable preview size (30-70 pixels)
+    const baseSize = 40;
+    const size = baseSize * (settings.size || 1.0);
+    const canvasSize = 80;
     const canvas = document.createElement('canvas');
-    canvas.width = size + 20;
-    canvas.height = size + 20;
+    canvas.width = canvasSize;
+    canvas.height = canvasSize;
     const ctx = canvas.getContext('2d');
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -765,61 +770,84 @@ export class DrumCustomizationPanel {
     ctx.translate(canvas.width / 2, canvas.height / 2);
     ctx.rotate((settings.rotation || 0) * Math.PI / 180);
 
-    // Set fill
-    ctx.fillStyle = settings.color;
+    // Set fill with opacity
+    const color = settings.color;
+    const opacity = settings.opacity !== undefined ? settings.opacity : 1.0;
+    const r = parseInt(color.slice(1, 3), 16);
+    const g = parseInt(color.slice(3, 5), 16);
+    const b = parseInt(color.slice(5, 7), 16);
+    ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${opacity})`;
 
     // Set stroke
     if (settings.strokeEnabled) {
-      ctx.strokeStyle = settings.strokeColor || '#000000';
+      const strokeColor = settings.strokeColor || '#000000';
+      const sr = parseInt(strokeColor.slice(1, 3), 16);
+      const sg = parseInt(strokeColor.slice(3, 5), 16);
+      const sb = parseInt(strokeColor.slice(5, 7), 16);
+      ctx.strokeStyle = `rgba(${sr}, ${sg}, ${sb}, ${opacity})`;
       ctx.lineWidth = settings.strokeWeight || 2;
     }
 
     // Draw shape
-    ctx.beginPath();
-    switch (settings.shape) {
-      case 'circle':
-        ctx.arc(0, 0, size / 2, 0, Math.PI * 2);
-        break;
-      case 'square':
-        ctx.rect(-size / 2, -size / 2, size, size);
-        break;
-      case 'triangle':
-        ctx.moveTo(0, -size / 2);
-        ctx.lineTo(-size / 2, size / 2);
-        ctx.lineTo(size / 2, size / 2);
-        ctx.closePath();
-        break;
-      case 'diamond':
-        ctx.moveTo(0, -size / 2);
-        ctx.lineTo(size / 2, 0);
-        ctx.lineTo(0, size / 2);
-        ctx.lineTo(-size / 2, 0);
-        ctx.closePath();
-        break;
-      case 'star':
-        for (let i = 0; i < 10; i++) {
-          const radius = i % 2 === 0 ? size / 2 : size / 4;
-          const angle = (i * Math.PI) / 5 - Math.PI / 2;
-          const x = Math.cos(angle) * radius;
-          const y = Math.sin(angle) * radius;
-          i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-        }
-        ctx.closePath();
-        break;
-      case 'hexagon':
-        for (let i = 0; i < 6; i++) {
-          const angle = (i * Math.PI) / 3 - Math.PI / 2;
-          const x = Math.cos(angle) * size / 2;
-          const y = Math.sin(angle) * size / 2;
-          i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-        }
-        ctx.closePath();
-        break;
-    }
+    // Special handling for splatter and brushstroke (they use custom drawing functions)
+    if (settings.shape === 'splatter') {
+      drawSplatterCanvas(ctx, 0, 0, size);
+      if (settings.strokeEnabled) {
+        // Note: splatter doesn't use stroke in the same way
+      }
+    } else if (settings.shape === 'brushstroke') {
+      drawBrushStrokeCanvas(ctx, 0, 0, size, settings.rotation ? (settings.rotation * Math.PI) / 180 : 0);
+      if (settings.strokeEnabled) {
+        // Note: brushstroke doesn't use stroke in the same way
+      }
+    } else {
+      // Standard shapes use beginPath/fill pattern
+      ctx.beginPath();
+      switch (settings.shape) {
+        case 'circle':
+          ctx.arc(0, 0, size / 2, 0, Math.PI * 2);
+          break;
+        case 'square':
+          ctx.rect(-size / 2, -size / 2, size, size);
+          break;
+        case 'triangle':
+          ctx.moveTo(0, -size / 2);
+          ctx.lineTo(-size / 2, size / 2);
+          ctx.lineTo(size / 2, size / 2);
+          ctx.closePath();
+          break;
+        case 'diamond':
+          ctx.moveTo(0, -size / 2);
+          ctx.lineTo(size / 2, 0);
+          ctx.lineTo(0, size / 2);
+          ctx.lineTo(-size / 2, 0);
+          ctx.closePath();
+          break;
+        case 'star':
+          for (let i = 0; i < 10; i++) {
+            const radius = i % 2 === 0 ? size / 2 : size / 4;
+            const angle = (i * Math.PI) / 5 - Math.PI / 2;
+            const x = Math.cos(angle) * radius;
+            const y = Math.sin(angle) * radius;
+            i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+          }
+          ctx.closePath();
+          break;
+        case 'hexagon':
+          for (let i = 0; i < 6; i++) {
+            const angle = (i * Math.PI) / 3 - Math.PI / 2;
+            const x = Math.cos(angle) * size / 2;
+            const y = Math.sin(angle) * size / 2;
+            i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+          }
+          ctx.closePath();
+          break;
+      }
 
-    ctx.fill();
-    if (settings.strokeEnabled) {
-      ctx.stroke();
+      ctx.fill();
+      if (settings.strokeEnabled) {
+        ctx.stroke();
+      }
     }
 
     ctx.restore();

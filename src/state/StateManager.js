@@ -114,6 +114,8 @@ export class StateManager {
           padAssignments: {},
           globalVariables: {}
         },
+        // Projector settings (optional, v2.1+)
+        projectorSettings: appState.projectorSettings || null,
         timestamp: new Date().toISOString()
       };
 
@@ -210,6 +212,8 @@ export class StateManager {
           padAssignments: {},
           globalVariables: {}
         },
+        // Projector settings (optional, v2.1+)
+        projectorSettings: appState.projectorSettings || null,
         timestamp: new Date().toISOString()
       };
 

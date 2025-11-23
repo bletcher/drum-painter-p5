@@ -528,6 +528,79 @@
         </div>
       </div>
     </div>
+
+    <!-- Projector Mode Controls -->
+    <div id="projector-controls" style="margin-top: 10px; border-top: 1px solid #ddd; padding-top: 10px;">
+      <strong>🎥 Projector Mode:</strong><br>
+      <div style="margin-top: 8px; font-size: 11px;">
+        <!-- Enable/Disable Toggle -->
+        <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; cursor: pointer;">
+          <input type="checkbox" id="projector-enabled" style="cursor: pointer;">
+          <span>Enable Projector Simulation</span>
+        </label>
+
+        <!-- Projector Profile -->
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
+          <label style="min-width: 70px;">Brightness:</label>
+          <select id="projector-profile"
+            style="flex: 1; padding: 4px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px; cursor: pointer;"
+            data-tooltip="Adjust colors for different projector brightness levels">
+            <option value="low-lumens">Low (&lt;1000 lumens)</option>
+            <option value="medium-lumens" selected>Medium (1000-2500)</option>
+            <option value="high-lumens">High (2500+)</option>
+            <option value="native">Native (No adjustments)</option>
+          </select>
+        </div>
+
+        <!-- Performance Tier -->
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
+          <label style="min-width: 70px;">Performance:</label>
+          <select id="projector-performance"
+            style="flex: 1; padding: 4px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px; cursor: pointer;"
+            data-tooltip="Balance quality vs framerate">
+            <option value="ultra">Ultra Quality</option>
+            <option value="high">High Quality</option>
+            <option value="balanced" selected>Balanced</option>
+            <option value="performance">Performance</option>
+          </select>
+        </div>
+
+        <!-- Ambient Light Simulation -->
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
+          <label style="min-width: 70px;">Ambient:</label>
+          <input type="range" id="projector-ambient" value="0" min="0" max="100" step="5"
+            style="flex: 1; cursor: pointer;"
+            data-tooltip="Simulate ambient light in the room">
+          <span id="projector-ambient-val" style="min-width: 35px; text-align: right;">0%</span>
+        </div>
+
+        <!-- FPS Counter Toggle -->
+        <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; cursor: pointer;">
+          <input type="checkbox" id="projector-show-fps" style="cursor: pointer;">
+          <span>Show FPS Counter</span>
+        </label>
+
+        <!-- Open Projector Window Button -->
+        <div style="margin-top: 8px;">
+          <button id="projector-open-btn" style="
+            width: 100%;
+            padding: 6px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.2s;
+          " disabled>▶ Open Projector Window</button>
+        </div>
+
+        <div style="margin-top: 6px; font-size: 10px; color: #666; line-height: 1.4;">
+          <em>Enable checkbox above to activate projector simulation. Opens in popup window.</em>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- Active Drum Indicator (Bank Mode) -->

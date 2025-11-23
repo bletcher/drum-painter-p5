@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Projector Output - Drum Painter</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: #000;
+      overflow: hidden;
+      font-family: monospace;
+    }
+
+    #canvas-container {
+      width: 100vw;
+      height: 100vh;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #projector-canvas {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      image-rendering: auto;
+    }
+
+    #effects-badge {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: rgba(0, 0, 0, 0.7);
+      padding: 12px 16px;
+      color: #fff;
+      font-family: monospace;
+      font-size: 11px;
+      border-radius: 6px;
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      pointer-events: none;
+      opacity: 0.8;
+      transition: opacity 0.3s;
+    }
+
+    #effects-badge:hover {
+      opacity: 1;
+    }
+
+    #effects-badge .title {
+      font-size: 12px;
+      font-weight: bold;
+      margin-bottom: 8px;
+      color: #4CAF50;
+    }
+
+    #effects-badge .row {
+      margin: 4px 0;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    #effects-badge .label {
+      color: #999;
+    }
+
+    #effects-badge .value {
+      color: #fff;
+      font-weight: bold;
+    }
+
+    #effects-badge .fps {
+      color: #4CAF50;
+    }
+
+    #effects-badge .fps.warning {
+      color: #FFA726;
+    }
+
+    #effects-badge .fps.error {
+      color: #EF5350;
+    }
+
+    #ambient-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: white;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s;
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    #loading {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: #999;
+      font-size: 14px;
+      text-align: center;
+    }
+
+    #loading .spinner {
+      width: 40px;
+      height: 40px;
+      margin: 0 auto 16px;
+      border: 3px solid rgba(255, 255, 255, 0.1);
+      border-top-color: #4CAF50;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div id="loading">
+    <div class="spinner"></div>
+    <div>Waiting for canvas data...</div>
+  </div>
+
+  <div id="canvas-container" class="hidden">
+    <img id="projector-canvas" alt="Projector output">
+    <div id="ambient-overlay"></div>
+  </div>
+
+  <div id="effects-badge">
+    <div class="title">🎥 PROJECTOR SIMULATION</div>
+    <div class="row">
+      <span class="label">Profile:</span>
+      <span class="value" id="profile-name">Medium Lumens</span>
+    </div>
+    <div class="row">
+      <span class="label">Performance:</span>
+      <span class="value" id="perf-tier">Balanced</span>
+    </div>
+    <div class="row">
+      <span class="label">FPS:</span>
+      <span class="value fps" id="fps-counter">60</span>
+    </div>
+    <div class="row">
+      <span class="label">Avg FPS:</span>
+      <span class="value" id="avg-fps">60</span>
+    </div>
+    <div class="row">
+      <span class="label">Frame:</span>
+      <span class="value" id="frame-time">16.7ms</span>
+    </div>
+    <div class="row">
+      <span class="label">Ambient:</span>
+      <span class="value" id="ambient-level">0%</span>
+    </div>
+  </div>
+
+  <script>
+    const canvasImg = document.getElementById('projector-canvas');
+    const canvasContainer = document.getElementById('canvas-container');
+    const loading = document.getElementById('loading');
+    const ambientOverlay = document.getElementById('ambient-overlay');
+
+    const profileName = document.getElementById('profile-name');
+    const perfTier = document.getElementById('perf-tier');
+    const fpsCounter = document.getElementById('fps-counter');
+    const avgFps = document.getElementById('avg-fps');
+    const frameTime = document.getElementById('frame-time');
+    const ambientLevel = document.getElementById('ambient-level');
+
+    let frameReceived = false;
+
+    // Listen for canvas frames from parent window
+    window.addEventListener('message', (event) => {
+      if (event.data.type === 'frame') {
+        // Hide loading on first frame
+        if (!frameReceived) {
+          loading.classList.add('hidden');
+          canvasContainer.classList.remove('hidden');
+          frameReceived = true;
+        }
+
+        // Update canvas image
+        canvasImg.src = event.data.data;
+
+        // Apply projector color profile via CSS filters
+        applyProjectorProfile(event.data.profile);
+
+        // Update ambient light overlay
+        const ambient = event.data.ambientLight || 0;
+        ambientOverlay.style.opacity = ambient / 100 * 0.3; // Max 30% white overlay
+
+        // Update HUD
+        if (event.data.profile) {
+          profileName.textContent = event.data.profile.name || 'Unknown';
+        }
+
+        if (event.data.performanceTier) {
+          perfTier.textContent = event.data.performanceTier.name || 'Unknown';
+        }
+
+        // Update FPS with color coding
+        const fps = event.data.fps || 0;
+        fpsCounter.textContent = fps;
+        fpsCounter.className = 'value fps';
+        if (fps < 45) {
+          fpsCounter.classList.add('error');
+        } else if (fps < 55) {
+          fpsCounter.classList.add('warning');
+        }
+
+        avgFps.textContent = event.data.avgFPS || 0;
+        frameTime.textContent = event.data.frameTime ? `${event.data.frameTime}ms` : '--';
+        ambientLevel.textContent = `${ambient}%`;
+      }
+    });
+
+    // Apply projector color profile using CSS filters
+    function applyProjectorProfile(profile) {
+      if (!profile) return;
+
+      const saturation = profile.saturationBoost || 1.0;
+      const brightness = 1.0 - (profile.minBrightness / 200); // Approximate brightness adjustment
+      const contrast = profile.contrastMultiplier || 1.0;
+
+      // Apply CSS filter to simulate projector color adjustments
+      canvasImg.style.filter = `
+        saturate(${saturation})
+        brightness(${1.0 + brightness * 0.2})
+        contrast(${contrast})
+      `;
+    }
+
+    // Handle window close
+    window.addEventListener('beforeunload', () => {
+      // Notify parent that window is closing
+      if (window.opener && !window.opener.closed) {
+        window.opener.postMessage({ type: 'projector-closed' }, '*');
+      }
+    });
+
+    // Add keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+      switch(e.key.toLowerCase()) {
+        case 'f':
+          // Toggle fullscreen
+          if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen();
+          } else {
+            document.exitFullscreen();
+          }
+          break;
+        case 'h':
+          // Toggle HUD
+          const badge = document.getElementById('effects-badge');
+          badge.style.display = badge.style.display === 'none' ? 'block' : 'none';
+          break;
+        case 'escape':
+          if (document.fullscreenElement) {
+            document.exitFullscreen();
+          }
+          break;
+      }
+    });
+
+    console.log('🎥 Projector view ready');
+    console.log('Keyboard shortcuts:');
+    console.log('  F - Toggle fullscreen');
+    console.log('  H - Toggle HUD');
+  </script>
+</body>
+</html>

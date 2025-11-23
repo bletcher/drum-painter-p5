@@ -10,7 +10,11 @@
       "Bash(timeout /t 3)",
       "WebSearch",
       "WebFetch(domain:www.rtings.com)",
-      "WebFetch(domain:www.amazon.com)"
+      "WebFetch(domain:www.amazon.com)",
+      "WebFetch(domain:www.gorillasun.de)",
+      "WebFetch(domain:github.com)",
+      "Bash(npm install:*)",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []

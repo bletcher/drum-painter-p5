@@ -83,6 +83,7 @@ export const MAX_HISTORY = 2;
 export const SCALING_CURVES = {
   FIXED: 'fixed',
   ONE_TO_ONE: '1:1',
+  INVERSE: 'inverse',
   BOOST_SOFT: 'boost-soft',
   GATE_SOFT: 'gate-soft',
   GATE_LOUD: 'gate-loud'
@@ -91,13 +92,14 @@ export const SCALING_CURVES = {
 export const SCALING_CURVE_NAMES = {
   [SCALING_CURVES.FIXED]: 'Fixed',
   [SCALING_CURVES.ONE_TO_ONE]: '1:1',
+  [SCALING_CURVES.INVERSE]: 'Inverse',
   [SCALING_CURVES.BOOST_SOFT]: 'Boost Soft',
   [SCALING_CURVES.GATE_SOFT]: 'Gate Soft',
   [SCALING_CURVES.GATE_LOUD]: 'Gate Loud'
 };
 
 // ===== UI SETTINGS =====
-export const SHAPE_OPTIONS = ['circle', 'square', 'triangle', 'diamond', 'star', 'hexagon'];
+export const SHAPE_OPTIONS = ['circle', 'square', 'triangle', 'diamond', 'star', 'hexagon', 'splatter', 'brushstroke'];
 
 export const MODE_NAMES = [
   'Classic Pointillism',

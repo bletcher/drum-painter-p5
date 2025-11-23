@@ -17,6 +17,7 @@ import { VideoRecorder } from './ui/VideoRecorder.js';
 import { DebugPanel } from './ui/DebugPanel.js';
 import { findDrumByMidiNote } from './utils/drumHelpers.js';
 import { applyAllThemes } from './utils/applyTheme.js';
+import { projectorSimulator } from './display/ProjectorSimulator.js';
 
 // ===== GLOBAL STATE =====
 let paintCanvas;
@@ -77,7 +78,7 @@ window.setup = async function() {
   paintCanvas.background(BG_COLORS[currentBgColor]);
   paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
 
-  // Expose paintCanvas and currentBgColor globally
+  // Expose paintCanvas globally
   window.paintCanvas = paintCanvas;
   window.currentBgColor = currentBgColor;
   window.BLEND_MODES = BLEND_MODES;
@@ -469,6 +470,81 @@ function initializeUI() {
     });
   }
 
+  // ===== PROJECTOR MODE CONTROLS =====
+  const projectorEnabled = document.getElementById('projector-enabled');
+  const projectorProfile = document.getElementById('projector-profile');
+  const projectorPerformance = document.getElementById('projector-performance');
+  const projectorAmbient = document.getElementById('projector-ambient');
+  const projectorAmbientVal = document.getElementById('projector-ambient-val');
+  const projectorShowFPS = document.getElementById('projector-show-fps');
+  const projectorOpenBtn = document.getElementById('projector-open-btn');
+
+  // Initialize projector simulator
+  projectorSimulator.init();
+
+  // Enable/Disable projector mode
+  if (projectorEnabled) {
+    projectorEnabled.addEventListener('change', (e) => {
+      const enabled = e.target.checked;
+      projectorSimulator.updateConfig({ enabled });
+
+      // Enable/disable the open button
+      if (projectorOpenBtn) {
+        projectorOpenBtn.disabled = !enabled;
+        projectorOpenBtn.style.opacity = enabled ? '1' : '0.5';
+        projectorOpenBtn.style.cursor = enabled ? 'pointer' : 'not-allowed';
+      }
+
+      notificationSystem.show(enabled ? '🎥 Projector mode enabled' : 'Projector mode disabled');
+    });
+  }
+
+  // Projector profile selector
+  if (projectorProfile) {
+    projectorProfile.addEventListener('change', (e) => {
+      const profile = e.target.value;
+      projectorSimulator.updateConfig({ profile });
+      notificationSystem.show(`Projector: ${e.target.options[e.target.selectedIndex].text}`);
+    });
+  }
+
+  // Performance tier selector
+  if (projectorPerformance) {
+    projectorPerformance.addEventListener('change', (e) => {
+      const performanceTier = e.target.value;
+      projectorSimulator.updateConfig({ performanceTier });
+      notificationSystem.show(`Performance: ${e.target.options[e.target.selectedIndex].text}`);
+    });
+  }
+
+  // Ambient light slider
+  if (projectorAmbient && projectorAmbientVal) {
+    projectorAmbient.addEventListener('input', (e) => {
+      const level = parseInt(e.target.value);
+      projectorAmbientVal.textContent = `${level}%`;
+      projectorSimulator.updateConfig({ ambientLightLevel: level });
+    });
+  }
+
+  // FPS counter toggle
+  if (projectorShowFPS) {
+    projectorShowFPS.addEventListener('change', (e) => {
+      const show = e.target.checked;
+      projectorSimulator.updateConfig({ showFPSCounter: show });
+    });
+  }
+
+  // Open projector window button
+  if (projectorOpenBtn) {
+    projectorOpenBtn.addEventListener('click', () => {
+      if (projectorSimulator.isEnabled()) {
+        projectorSimulator.openPopupWindow();
+      } else {
+        notificationSystem.show('⚠️ Enable projector mode first');
+      }
+    });
+  }
+
   // Customize button
   const customizeBtn = document.getElementById('customize-btn');
   if (customizeBtn) {
@@ -565,7 +641,8 @@ function initializeUI() {
           warmupMeasures: chronicleMode.warmupMeasures,
           measuresPerStaffPreference: chronicleMode.measuresPerStaffPreference
         },
-        bankModeSettings: midiManager.getState()
+        bankModeSettings: midiManager.getState(),
+        projectorSettings: projectorSimulator.getState()
       };
 
       console.log('Saving settings:', JSON.stringify(appState.drumSettings, null, 2));
@@ -639,7 +716,8 @@ function initializeUI() {
           warmupMeasures: chronicleMode.warmupMeasures,
           measuresPerStaffPreference: chronicleMode.measuresPerStaffPreference
         },
-        bankModeSettings: midiManager.getState()
+        bankModeSettings: midiManager.getState(),
+        projectorSettings: projectorSimulator.getState()
       };
       if (stateManager.exportToFile(appState)) {
         notificationSystem.show('Settings exported!');
@@ -1955,6 +2033,37 @@ async function loadSavedSettings() {
     midiManager.loadState(savedState.bankModeSettings);
     console.log('✓ Loaded bank mode settings');
     updateActiveDrumIndicator(); // Update indicator if bank mode was saved as enabled
+  }
+
+  // Load projector settings (optional, v2.1+)
+  if (savedState.projectorSettings && projectorSimulator) {
+    projectorSimulator.loadState(savedState.projectorSettings);
+
+    // Update UI controls to match loaded state
+    const projectorEnabled = document.getElementById('projector-enabled');
+    const projectorProfile = document.getElementById('projector-profile');
+    const projectorPerformance = document.getElementById('projector-performance');
+    const projectorAmbient = document.getElementById('projector-ambient');
+    const projectorAmbientVal = document.getElementById('projector-ambient-val');
+    const projectorShowFPS = document.getElementById('projector-show-fps');
+    const projectorOpenBtn = document.getElementById('projector-open-btn');
+
+    if (projectorEnabled) projectorEnabled.checked = savedState.projectorSettings.enabled || false;
+    if (projectorProfile) projectorProfile.value = savedState.projectorSettings.profile || 'medium-lumens';
+    if (projectorPerformance) projectorPerformance.value = savedState.projectorSettings.performanceTier || 'balanced';
+    if (projectorAmbient) projectorAmbient.value = savedState.projectorSettings.ambientLightLevel || 0;
+    if (projectorAmbientVal) projectorAmbientVal.textContent = `${savedState.projectorSettings.ambientLightLevel || 0}%`;
+    if (projectorShowFPS) projectorShowFPS.checked = savedState.projectorSettings.showFPSCounter || false;
+
+    // Update open button state
+    if (projectorOpenBtn) {
+      const enabled = savedState.projectorSettings.enabled || false;
+      projectorOpenBtn.disabled = !enabled;
+      projectorOpenBtn.style.opacity = enabled ? '1' : '0.5';
+      projectorOpenBtn.style.cursor = enabled ? 'pointer' : 'not-allowed';
+    }
+
+    console.log('✓ Loaded projector settings');
   }
 
   // Load paint mode (new two-tier structure)
