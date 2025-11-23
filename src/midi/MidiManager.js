@@ -36,11 +36,24 @@ export class MidiManager {
     this.activeDrumBank = 'kick';
     this.bankPadAssignments = {};
     this.globalVariableAssignments = {
+      // Per-drum parameters
       size: { cc: null, ccMin: 0, ccMax: 127, deviceId: null },
       opacity: { cc: null, ccMin: 0, ccMax: 127, deviceId: null },
       hueVariation: { cc: null, ccMin: 0, ccMax: 127, deviceId: null },
       rotation: { cc: null, ccMin: 0, ccMax: 127, deviceId: null },
-      strokeWeight: { cc: null, ccMin: 0, ccMax: 127, deviceId: null }
+      strokeWeight: { cc: null, ccMin: 0, ccMax: 127, deviceId: null },
+
+      // Visual style parameters (affect brushstroke/splatter globally)
+      splatterDensity: { cc: null, ccMin: 0, ccMax: 127, deviceId: null },          // Splatter droplet count
+      splatterConnectionThickness: { cc: null, ccMin: 0, ccMax: 127, deviceId: null }, // Connection width
+      splatterSprayIntensity: { cc: null, ccMin: 0, ccMax: 127, deviceId: null },   // Spray dot count
+      splatterConnectionAmount: { cc: null, ccMin: 0, ccMax: 127, deviceId: null }, // Connection probability
+      splatterCoreSize: { cc: null, ccMin: 0, ccMax: 127, deviceId: null },         // Blob radius
+      brushDensity: { cc: null, ccMin: 0, ccMax: 127, deviceId: null },             // Bristles per cluster
+      brushOpacity: { cc: null, ccMin: 0, ccMax: 127, deviceId: null },             // Bristle alpha
+      brushEdgeSoftness: { cc: null, ccMin: 0, ccMax: 127, deviceId: null },        // Edge variation
+      brushStrokeVariation: { cc: null, ccMin: 0, ccMax: 127, deviceId: null },     // Pressure sigma
+      splatterSpraySize: { cc: null, ccMin: 0, ccMax: 127, deviceId: null }         // Spray dot size
     };
     this.bankLearnMode = false;
     this.bankLearnType = null;

@@ -6,7 +6,7 @@
 import { DRUM_KIT_CONFIG } from '../config/drumKit.js';
 import { SCALING_CURVES, SCALING_CURVE_NAMES, SHAPE_OPTIONS } from '../config/constants.js';
 import { CUSTOMIZATION_PANEL, COLORS, SPACING, RADIUS, TYPOGRAPHY, SHADOWS } from '../config/theme.js';
-import { drawSplatterCanvas, drawBrushStrokeCanvas } from '../canvas/DrawingUtils.js';
+import { drawSplatterCanvas, drawBrushStrokeCanvas, drawInkBlotCanvas } from '../canvas/DrawingUtils.js';
 
 export class DrumCustomizationPanel {
   constructor(drumSettings, midiManager, stateManager, notificationSystem, chronicleMode) {
@@ -428,6 +428,12 @@ export class DrumCustomizationPanel {
     select.onchange = () => {
       this.drumSettings[drumId].shape = select.value;
       this.updatePreview(drumId);
+
+      // Hide stroke section for brushstroke shape
+      const strokeSection = document.getElementById(`stroke-section-${drumId}`);
+      if (strokeSection) {
+        strokeSection.style.display = select.value === 'brushstroke' ? 'none' : 'block';
+      }
     };
 
     return group;
@@ -505,7 +511,10 @@ export class DrumCustomizationPanel {
    */
   createStrokeSection(drumId, settings) {
     const group = document.createElement('div');
-    group.style.cssText = `margin-bottom: 15px; padding: 15px; background: ${CUSTOMIZATION_PANEL.section.background}; border-radius: ${CUSTOMIZATION_PANEL.section.borderRadius};`;
+    group.id = `stroke-section-${drumId}`;
+    // Hide stroke section if brushstroke shape is selected
+    const shouldHide = settings.shape === 'brushstroke';
+    group.style.cssText = `margin-bottom: 15px; padding: 15px; background: ${CUSTOMIZATION_PANEL.section.background}; border-radius: ${CUSTOMIZATION_PANEL.section.borderRadius}; ${shouldHide ? 'display: none;' : ''}`;
 
     const header = document.createElement('div');
     header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;';
@@ -789,11 +798,16 @@ export class DrumCustomizationPanel {
     }
 
     // Draw shape
-    // Special handling for splatter and brushstroke (they use custom drawing functions)
+    // Special handling for splatter, inkblot, and brushstroke (they use custom drawing functions)
     if (settings.shape === 'splatter') {
       drawSplatterCanvas(ctx, 0, 0, size);
       if (settings.strokeEnabled) {
         // Note: splatter doesn't use stroke in the same way
+      }
+    } else if (settings.shape === 'inkblot') {
+      drawInkBlotCanvas(ctx, 0, 0, size);
+      if (settings.strokeEnabled) {
+        // Note: inkblot doesn't use stroke in the same way
       }
     } else if (settings.shape === 'brushstroke') {
       drawBrushStrokeCanvas(ctx, 0, 0, size, settings.rotation ? (settings.rotation * Math.PI) / 180 : 0);

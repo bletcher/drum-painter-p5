@@ -3,6 +3,27 @@
  * Functions for drawing shapes and dots on the canvas
  */
 
+import { getBrushTextureCache } from './BrushTextureCache.js';
+import {
+  INK_BLOT_CORE_RADIUS,
+  INK_BLOT_CORE_ALPHA,
+  INK_BLOT_CORE_VERTICES,
+  INK_BLOT_BLEED_LAYERS,
+  INK_BLOT_BLEED_SPREAD_MIN,
+  INK_BLOT_BLEED_SPREAD_MAX,
+  INK_BLOT_BLEED_ALPHA_START,
+  INK_BLOT_BLEED_ALPHA_DECAY,
+  INK_BLOT_EDGE_NOISE_SCALE,
+  INK_BLOT_EDGE_NOISE_AMOUNT,
+  INK_BLOT_FEATHER_COUNT_MIN,
+  INK_BLOT_FEATHER_COUNT_MAX,
+  INK_BLOT_FEATHER_LENGTH_MIN,
+  INK_BLOT_FEATHER_LENGTH_MAX,
+  INK_BLOT_FEATHER_WIDTH,
+  INK_BLOT_FEATHER_ALPHA_MIN,
+  INK_BLOT_FEATHER_ALPHA_MAX
+} from '../config/constants.js';
+
 /**
  * Paint a dot on the canvas with specified shape and style
  * @param {p5.Graphics} paintCanvas - The canvas to draw on
@@ -65,7 +86,10 @@ export function paintDot(paintCanvas, x, y, size, col, alpha, shape = 'circle', 
         drawHexagon(paintCanvas, 0, 0, size / 2);
         break;
       case 'splatter':
-        drawSplatter(paintCanvas, 0, 0, size);
+        drawSplatter(paintCanvas, 0, 0, size, col, alpha);
+        break;
+      case 'inkblot':
+        drawInkBlot(paintCanvas, 0, 0, size, col, alpha);
         break;
       case 'brushstroke':
         drawBrushStroke(paintCanvas, 0, 0, size, 0, col, alpha);
@@ -99,7 +123,10 @@ export function paintDot(paintCanvas, x, y, size, col, alpha, shape = 'circle', 
         drawHexagon(paintCanvas, x, y, size / 2);
         break;
       case 'splatter':
-        drawSplatter(paintCanvas, x, y, size);
+        drawSplatter(paintCanvas, x, y, size, col, alpha);
+        break;
+      case 'inkblot':
+        drawInkBlot(paintCanvas, x, y, size, col, alpha);
         break;
       case 'brushstroke':
         drawBrushStroke(paintCanvas, x, y, size, radians(rotation), col, alpha);
@@ -201,39 +228,86 @@ export function drawHexagonCanvas(ctx, x, y, radius) {
 }
 
 /**
- * Draw a splatter effect - burst of small dots radiating from center
+ * Draw a realistic paint splatter with organic core and connected droplets
  * @param {p5.Graphics} canvas - Canvas to draw on
  * @param {number} x - X coordinate
  * @param {number} y - Y coordinate
  * @param {number} size - Size of the splatter effect
+ * @param {p5.Color} col - Color object
+ * @param {number} alpha - Alpha/opacity value
  */
-export function drawSplatter(canvas, x, y, size) {
-  // Number of droplets based on size (more for larger splatters)
-  let dropletCount = Math.floor(size / 3) + 8;
-  let maxRadius = size / 2;
+export function drawSplatter(canvas, x, y, size, col, alpha) {
+  canvas.push();
+  canvas.translate(x, y);
 
-  for (let i = 0; i < dropletCount; i++) {
-    // Random angle and distance from center
-    let angle = random(TWO_PI);
-    let distance = random(maxRadius * 0.2, maxRadius);
+  // Get or generate splatter texture
+  const cache = getBrushTextureCache();
+  const seed = floor(random(1000)); // Random variation
+  const texture = cache.getSplatterTexture(size, seed);
 
-    // Calculate droplet position
-    let dx = x + cos(angle) * distance;
-    let dy = y + sin(angle) * distance;
+  // Apply color tint and alpha
+  canvas.tint(red(col), green(col), blue(col), alpha);
+  canvas.blendMode(BLEND);
 
-    // Droplet size decreases with distance from center
-    let dropletSize = random(size * 0.05, size * 0.15) * (1 - distance / maxRadius);
+  // Draw the texture centered
+  canvas.imageMode(CENTER);
+  canvas.image(texture, 0, 0);
 
-    // Draw individual droplet
-    canvas.circle(dx, dy, dropletSize);
-  }
-
-  // Add a larger central blob
-  canvas.circle(x, y, size * 0.25);
+  canvas.pop();
 }
 
 /**
- * Draw a high-quality custom brush stroke with realistic paint characteristics
+ * Draw an ink blot with organic bleeding edges
+ * @param {p5.Graphics} canvas - Canvas to draw on
+ * @param {number} x - X coordinate
+ * @param {number} y - Y coordinate
+ * @param {number} size - Size of the ink blot
+ * @param {p5.Color} col - Color object
+ * @param {number} alpha - Alpha/opacity value
+ */
+export function drawInkBlot(canvas, x, y, size, col, alpha) {
+  canvas.push();
+  canvas.translate(x, y);
+
+  // Get or generate ink blot texture
+  const cache = getBrushTextureCache();
+  const seed = floor(random(1000)); // Random variation
+  const texture = cache.getInkBlotTexture(size, seed);
+
+  // Apply color tint and alpha
+  canvas.tint(red(col), green(col), blue(col), alpha);
+  canvas.blendMode(BLEND);
+
+  // Draw the texture centered
+  canvas.imageMode(CENTER);
+  canvas.image(texture, 0, 0);
+
+  canvas.pop();
+}
+
+/**
+ * Draw a brush stroke using p5.brush technique: position-based stepping with pressure
+ * Places multiple "tips" along path with Gaussian pressure distribution
+ * @param {p5.Graphics} canvas - Canvas to draw on
+ * @param {number} x - X coordinate
+ * @param {number} y - Y coordinate
+ * @param {number} size - Size of the brush stroke
+ * @param {number} rotation - Rotation angle in radians
+ * @param {p5.Color} col - Color object
+ * @param {number} alpha - Alpha/opacity value
+ * @param {string} method - Rendering method: 'textured' (default) or 'procedural'
+ */
+export function drawBrushStroke(canvas, x, y, size, rotation, col, alpha, method = 'textured') {
+  if (method === 'textured') {
+    drawBrushStrokeTextured(canvas, x, y, size, rotation, col, alpha);
+  } else {
+    drawBrushStrokeProcedural(canvas, x, y, size, rotation, col, alpha);
+  }
+}
+
+/**
+ * Draw a brush stroke using cached texture approach
+ * Generates realistic brush texture with organic bristle patterns
  * @param {p5.Graphics} canvas - Canvas to draw on
  * @param {number} x - X coordinate
  * @param {number} y - Y coordinate
@@ -242,130 +316,437 @@ export function drawSplatter(canvas, x, y, size) {
  * @param {p5.Color} col - Color object
  * @param {number} alpha - Alpha/opacity value
  */
-export function drawBrushStroke(canvas, x, y, size, rotation, col, alpha) {
+function drawBrushStrokeTextured(canvas, x, y, size, rotation, col, alpha) {
+  canvas.push();
+  canvas.translate(x, y);
+  canvas.rotate(rotation);
+
+  let strokeLength = size * 2.5;
+  let strokeWidth = size * 0.8;
+
+  // Get or generate brush texture
+  const cache = getBrushTextureCache();
+  const seed = floor(random(1000)); // Random variation
+  const texture = cache.getTexture(strokeLength, strokeWidth, seed);
+
+  // Apply color tint and alpha
+  // Using BLEND mode with tint works better with white textures
+  canvas.push();
+  canvas.tint(red(col), green(col), blue(col), alpha);
+  canvas.blendMode(BLEND);
+
+  // Draw the texture centered
+  canvas.imageMode(CENTER);
+  canvas.image(texture, 0, 0);
+
+  canvas.pop();
+  canvas.pop();
+}
+
+/**
+ * Draw a brush stroke using procedural technique (original p5.brush-style)
+ * Places multiple "tips" along path with Gaussian pressure distribution
+ * @param {p5.Graphics} canvas - Canvas to draw on
+ * @param {number} x - X coordinate
+ * @param {number} y - Y coordinate
+ * @param {number} size - Size of the brush stroke
+ * @param {number} rotation - Rotation angle in radians
+ * @param {p5.Color} col - Color object
+ * @param {number} alpha - Alpha/opacity value
+ */
+function drawBrushStrokeProcedural(canvas, x, y, size, rotation, col, alpha) {
   canvas.push();
   canvas.translate(x, y);
   canvas.rotate(rotation);
 
   let r = red(col), g = green(col), b = blue(col);
-  let strokeLength = size * 2.0;
-  let baseWidth = size * 0.4;
+  let strokeLength = size * 2.5;
+  let tipSize = size * 0.45;
 
-  // Draw multiple layers for depth and texture (3 layers)
-  for (let layer = 0; layer < 3; layer++) {
-    // Slight random offset for each layer
-    let offsetX = random(-size * 0.04, size * 0.04);
-    let offsetY = random(-size * 0.04, size * 0.04);
+  canvas.noStroke();
 
-    // Layer opacity decreases for outer layers
-    let layerAlpha = alpha * (1 - layer * 0.15);
+  // Spacing between brush tip placements
+  let spacing = tipSize * 0.3;
+  let numSteps = Math.floor(strokeLength / spacing);
 
-    // Draw the main body using a soft gradient approach
-    canvas.noStroke();
+  // Multiple passes for texture buildup (like p5.brush marker blending)
+  let numPasses = 3;
 
-    // Number of segments for smooth taper
-    let segments = 25;
+  for (let pass = 0; pass < numPasses; pass++) {
+    // Each pass has different opacity
+    let passAlpha = alpha * (0.3 - pass * 0.08);
 
-    for (let i = 0; i < segments; i++) {
-      let t = i / segments; // 0 to 1
-      let nextT = (i + 1) / segments;
+    for (let i = 0; i < numSteps; i++) {
+      let t = i / (numSteps - 1); // 0 to 1 along stroke
+      let xPos = map(t, 0, 1, -strokeLength / 2, strokeLength / 2);
 
-      // Position along stroke
-      let x1 = map(t, 0, 1, -strokeLength / 2, strokeLength / 2) + offsetX;
-      let x2 = map(nextT, 0, 1, -strokeLength / 2, strokeLength / 2) + offsetX;
+      // Gaussian pressure distribution (bell curve - thick middle, thin ends)
+      // Using gaussian formula: e^(-(x-μ)²/(2σ²))
+      let center = 0.5;
+      let sigma = 0.25;
+      let pressure = exp(-pow(t - center, 2) / (2 * sigma * sigma));
+      pressure = constrain(pressure, 0.2, 1.0);
 
-      // Pressure curve: starts thick, tapers to thin
-      // Using power curve for natural taper
-      let pressure1 = pow(1 - t, 1.3) * 0.9 + 0.1;
-      let pressure2 = pow(1 - nextT, 1.3) * 0.9 + 0.1;
+      // Apply pressure to tip size
+      let currentTipSize = tipSize * pressure;
 
-      let width1 = baseWidth * pressure1;
-      let width2 = baseWidth * pressure2;
+      // Vibration/jitter - random offset for organic feel
+      let jitterX = randomGaussian() * tipSize * 0.08;
+      let jitterY = randomGaussian() * tipSize * 0.15;
 
-      // Opacity fades slightly toward the end
-      let segmentAlpha = layerAlpha * (0.7 + pressure1 * 0.3);
+      // Draw brush tip (circular)
+      let tipAlpha = passAlpha * random(0.8, 1.0);
+      canvas.fill(r, g, b, tipAlpha);
+      canvas.circle(xPos + jitterX, jitterY, currentTipSize);
 
-      // Draw segment as a quad with slight width variation
-      canvas.fill(r, g, b, segmentAlpha);
-      canvas.quad(
-        x1, -width1 / 2 + offsetY,
-        x2, -width2 / 2 + offsetY,
-        x2, width2 / 2 + offsetY,
-        x1, width1 / 2 + offsetY
-      );
+      // Add smaller "bristle" details around main tip
+      if (pass === 0 && random(1) < 0.3) {
+        let numBristles = floor(random(2, 5));
+        for (let b = 0; b < numBristles; b++) {
+          let bristleOffset = random(currentTipSize * 0.3, currentTipSize * 0.6);
+          let bristleAngle = random(TWO_PI);
+          let bx = xPos + jitterX + cos(bristleAngle) * bristleOffset;
+          let by = jitterY + sin(bristleAngle) * bristleOffset;
+
+          canvas.fill(r, g, b, alpha * random(0.15, 0.3));
+          canvas.circle(bx, by, currentTipSize * random(0.2, 0.4));
+        }
+      }
     }
-  }
-
-  // Add bristle texture marks for realism
-  let numBristles = Math.floor(size * 0.5);
-  canvas.strokeWeight(1);
-
-  for (let i = 0; i < numBristles; i++) {
-    // Focus bristles in the first 60% of stroke (where paint is thickest)
-    let t = random(0.05, 0.65);
-    let xPos = map(t, 0, 1, -strokeLength / 2, strokeLength / 2);
-
-    // Bristle position based on pressure curve
-    let pressure = pow(1 - t, 1.3) * 0.9 + 0.1;
-    let currentWidth = baseWidth * pressure;
-
-    // Random bristle within the stroke width
-    let yPos = random(-currentWidth / 2, currentWidth / 2);
-
-    // Bristle length and angle
-    let bristleLength = random(size * 0.15, size * 0.3);
-    let bristleAngle = random(-PI / 8, PI / 8);
-
-    let endX = xPos + cos(bristleAngle) * bristleLength;
-    let endY = yPos + sin(bristleAngle) * bristleLength;
-
-    // Bristle opacity (more subtle)
-    let bristleAlpha = alpha * random(0.2, 0.4);
-    canvas.stroke(r, g, b, bristleAlpha);
-    canvas.line(xPos, yPos, endX, endY);
   }
 
   canvas.pop();
 }
 
 /**
- * Draw a splatter on a 2D canvas context (for customization panel preview)
+ * Draw a realistic paint splatter (for customization panel preview)
+ * Organic core with connected droplets
  * @param {CanvasRenderingContext2D} ctx - 2D canvas context
  * @param {number} x - X coordinate
  * @param {number} y - Y coordinate
  * @param {number} size - Size of the splatter
  */
 export function drawSplatterCanvas(ctx, x, y, size) {
-  let dropletCount = Math.floor(size / 3) + 8;
-  let maxRadius = size / 2;
+  ctx.save();
 
-  // Check if stroke is enabled
-  const hasStroke = ctx.lineWidth > 0 && ctx.strokeStyle && ctx.strokeStyle !== 'transparent';
+  // Simple noise function using sine waves
+  const noise = (n) => {
+    return (Math.sin(n * 12.9898) * 43758.5453) % 1;
+  };
 
-  for (let i = 0; i < dropletCount; i++) {
-    let angle = Math.random() * Math.PI * 2;
-    let distance = Math.random() * (maxRadius - maxRadius * 0.2) + maxRadius * 0.2;
+  // Generate droplet data first
+  const numDroplets = Math.floor(size / 6) + 8;
+  const droplets = [];
+  for (let i = 0; i < numDroplets; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const distance = Math.random() * size * 0.4 + size * 0.25;
+    const dropletX = x + Math.cos(angle) * distance;
+    const dropletY = y + Math.sin(angle) * distance;
+    const dropletSize = (Math.random() * size * 0.08 + size * 0.05) * (1 - distance / (size * 0.8));
 
-    let dx = x + Math.cos(angle) * distance;
-    let dy = y + Math.sin(angle) * distance;
-
-    let dropletSize = (Math.random() * (size * 0.1) + size * 0.05) * (1 - distance / maxRadius);
-
-    ctx.beginPath();
-    ctx.arc(dx, dy, dropletSize / 2, 0, Math.PI * 2);
-    ctx.fill();
-    if (hasStroke) ctx.stroke();
+    droplets.push({ x: dropletX, y: dropletY, size: dropletSize, angle });
   }
 
-  // Central blob
+  // 1. Draw connection lines FIRST (behind everything)
+  const blobRadius = size * 0.2; // Match the core radius
+  for (let droplet of droplets) {
+    if (Math.random() < 0.7) {
+      // Calculate starting point slightly inside blob edge to ensure overlap (no gap)
+      const startRadius = blobRadius * 0.85;
+      const edgeX = x + Math.cos(droplet.angle) * startRadius;
+      const edgeY = y + Math.sin(droplet.angle) * startRadius;
+
+      // Base width proportional to blob, tapers to droplet size
+      const baseWidth = size * 0.15;
+
+      // Draw organic blob-like connection
+      const numSegments = 15;
+      const perpAngle = droplet.angle + Math.PI / 2;
+
+      ctx.globalAlpha = 0.5;
+      ctx.beginPath();
+
+      // Draw one side of the connection
+      for (let i = 0; i <= numSegments; i++) {
+        const t = i / numSegments;
+        const cx = edgeX + (droplet.x - edgeX) * t;
+        const cy = edgeY + (droplet.y - edgeY) * t;
+
+        // Create pinch in middle: wide at blob, narrow in middle, wider at droplet
+        const pinchPoint = 0.5;
+        const minPinchWidth = baseWidth * 0.25; // Minimum width at pinch point
+        const widthAtBlob = baseWidth;
+        const widthAtDroplet = droplet.size * 0.8;
+
+        // Distance from pinch point (0 at pinch, 0.5 at ends)
+        const distFromPinch = Math.abs(t - pinchPoint);
+        // Normalize to 0-1 (0 at pinch, 1 at ends)
+        const pinchFactor = distFromPinch / 0.5;
+
+        // Target width at the end we're approaching
+        const targetEndWidth = t < 0.5 ? widthAtBlob : widthAtDroplet;
+
+        // Width varies from narrow at pinch to wide at ends
+        const width = baseWidth * 0.25 + (targetEndWidth - baseWidth * 0.25) * pinchFactor;
+
+        const noiseOffset = noise(i * 0.4) * width * 0.3;
+        const edgeWidth = (width / 2) + noiseOffset;
+
+        const vx = cx + Math.cos(perpAngle) * edgeWidth;
+        const vy = cy + Math.sin(perpAngle) * edgeWidth;
+
+        if (i === 0) ctx.moveTo(vx, vy);
+        else ctx.lineTo(vx, vy);
+      }
+
+      // Draw back along the other side
+      for (let i = numSegments; i >= 0; i--) {
+        const t = i / numSegments;
+        const cx = edgeX + (droplet.x - edgeX) * t;
+        const cy = edgeY + (droplet.y - edgeY) * t;
+
+        // Same pinch calculation
+        const pinchPoint = 0.5;
+        const minPinchWidth = baseWidth * 0.25;
+        const widthAtBlob = baseWidth;
+        const widthAtDroplet = droplet.size * 0.8;
+
+        const distFromPinch = Math.abs(t - pinchPoint);
+        const pinchFactor = distFromPinch / 0.5;
+        const targetEndWidth = t < 0.5 ? widthAtBlob : widthAtDroplet;
+        const width = baseWidth * 0.25 + (targetEndWidth - baseWidth * 0.25) * pinchFactor;
+
+        const noiseOffset = noise(i * 0.4 + 100) * width * 0.3;
+        const edgeWidth = (width / 2) + noiseOffset;
+
+        const vx = cx - Math.cos(perpAngle) * edgeWidth;
+        const vy = cy - Math.sin(perpAngle) * edgeWidth;
+
+        ctx.lineTo(vx, vy);
+      }
+
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  // 2. Draw organic central core (on top of connections)
+  // First erase the blob area to mask connections
+  ctx.save();
+  ctx.globalCompositeOperation = 'destination-out';
+  ctx.globalAlpha = 1.0;
   ctx.beginPath();
-  ctx.arc(x, y, size * 0.125, 0, Math.PI * 2);
+  let numCorePoints = 20;
+  for (let i = 0; i < numCorePoints; i++) {
+    const angle = (i / numCorePoints) * Math.PI * 2;
+    const radiusVariation = noise(i * 0.5) * 0.4 + 0.8;
+    const r = size * 0.2 * radiusVariation;
+    const vx = x + Math.cos(angle) * r;
+    const vy = y + Math.sin(angle) * r;
+    if (i === 0) {
+      ctx.moveTo(vx, vy);
+    } else {
+      ctx.lineTo(vx, vy);
+    }
+  }
+  ctx.closePath();
   ctx.fill();
-  if (hasStroke) ctx.stroke();
+  ctx.restore();
+
+  // Now draw the actual visible blob
+  ctx.globalAlpha = 0.8;
+  ctx.beginPath();
+  numCorePoints = 20;
+  for (let i = 0; i < numCorePoints; i++) {
+    const angle = (i / numCorePoints) * Math.PI * 2;
+    const radiusVariation = noise(i * 0.5) * 0.4 + 0.8;
+    const r = size * 0.2 * radiusVariation;
+    const vx = x + Math.cos(angle) * r;
+    const vy = y + Math.sin(angle) * r;
+    if (i === 0) {
+      ctx.moveTo(vx, vy);
+    } else {
+      ctx.lineTo(vx, vy);
+    }
+  }
+  ctx.closePath();
+  ctx.fill();
+
+  // 3. Draw droplets and tails (on top of core)
+  for (let droplet of droplets) {
+    // Draw droplet
+    ctx.globalAlpha = 0.6;
+    ctx.beginPath();
+    ctx.arc(droplet.x, droplet.y, droplet.size / 2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Some droplets have tails (40% chance)
+    if (Math.random() < 0.4) {
+      const tailLength = droplet.size * (Math.random() + 1);
+      const tailAngle = droplet.angle + Math.PI;
+      const tailEndX = droplet.x + Math.cos(tailAngle) * tailLength;
+      const tailEndY = droplet.y + Math.sin(tailAngle) * tailLength;
+
+      ctx.globalAlpha = 0.3;
+      ctx.lineWidth = droplet.size * 0.3;
+      ctx.beginPath();
+      ctx.moveTo(droplet.x, droplet.y);
+      ctx.lineTo(tailEndX, tailEndY);
+      ctx.stroke();
+    }
+  }
+
+  // 3. Add small spray dots
+  const numSpray = Math.floor(size / 4) + 5;
+  for (let i = 0; i < numSpray; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const distance = Math.random() * size * 0.3 + size * 0.4;
+
+    const sprayX = x + Math.cos(angle) * distance;
+    const sprayY = y + Math.sin(angle) * distance;
+    const spraySize = Math.random() * size * 0.03 + size * 0.01;
+
+    ctx.globalAlpha = 0.5;
+    ctx.beginPath();
+    ctx.arc(sprayX, sprayY, spraySize / 2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.restore();
 }
 
 /**
- * Draw a high-quality custom brush stroke (for customization panel preview)
+ * Draw an ink blot with organic bleeding edges (for customization panel preview)
+ * @param {CanvasRenderingContext2D} ctx - 2D canvas context
+ * @param {number} x - X coordinate
+ * @param {number} y - Y coordinate
+ * @param {number} size - Size of the ink blot
+ */
+export function drawInkBlotCanvas(ctx, x, y, size) {
+  ctx.save();
+
+  // Simple noise function using sine waves
+  const noise = (n) => {
+    return (Math.sin(n * 12.9898) * 43758.5453) % 1;
+  };
+
+  const baseRadius = size * INK_BLOT_CORE_RADIUS;
+
+  // 1. Draw bleeding layers (from outermost to innermost)
+  let currentAlpha = INK_BLOT_BLEED_ALPHA_START / 255;
+
+  for (let layer = INK_BLOT_BLEED_LAYERS; layer > 0; layer--) {
+    const spreadAmount = INK_BLOT_BLEED_SPREAD_MIN + Math.random() * (INK_BLOT_BLEED_SPREAD_MAX - INK_BLOT_BLEED_SPREAD_MIN);
+    const layerRadius = baseRadius + (size * spreadAmount * layer);
+
+    ctx.globalAlpha = currentAlpha;
+    ctx.beginPath();
+
+    const numVertices = INK_BLOT_CORE_VERTICES;
+    for (let i = 0; i < numVertices; i++) {
+      const angle = (i / numVertices) * Math.PI * 2;
+      const noiseVal = noise(Math.cos(angle) * INK_BLOT_EDGE_NOISE_SCALE + layer * 10);
+      const radiusVariation = 1 + (noiseVal - 0.5) * INK_BLOT_EDGE_NOISE_AMOUNT;
+      const r = layerRadius * radiusVariation;
+
+      const vx = x + Math.cos(angle) * r;
+      const vy = y + Math.sin(angle) * r;
+
+      if (i === 0) ctx.moveTo(vx, vy);
+      else ctx.lineTo(vx, vy);
+    }
+
+    ctx.closePath();
+    ctx.fill();
+
+    currentAlpha *= INK_BLOT_BLEED_ALPHA_DECAY;
+  }
+
+  // 2. Draw core blob
+  ctx.globalAlpha = INK_BLOT_CORE_ALPHA / 255;
+  ctx.beginPath();
+
+  const numCoreVertices = INK_BLOT_CORE_VERTICES;
+  for (let i = 0; i < numCoreVertices; i++) {
+    const angle = (i / numCoreVertices) * Math.PI * 2;
+    const noiseVal = noise(Math.cos(angle) * INK_BLOT_EDGE_NOISE_SCALE);
+    const radiusVariation = 1 + (noiseVal - 0.5) * INK_BLOT_EDGE_NOISE_AMOUNT;
+    const r = baseRadius * radiusVariation;
+
+    const vx = x + Math.cos(angle) * r;
+    const vy = y + Math.sin(angle) * r;
+
+    if (i === 0) ctx.moveTo(vx, vy);
+    else ctx.lineTo(vx, vy);
+  }
+
+  ctx.closePath();
+  ctx.fill();
+
+  // 3. Draw feathering (organic tendrils) - ON TOP
+  const featherCount = Math.floor(INK_BLOT_FEATHER_COUNT_MIN + Math.random() * (INK_BLOT_FEATHER_COUNT_MAX - INK_BLOT_FEATHER_COUNT_MIN));
+  for (let i = 0; i < featherCount; i++) {
+    const angle = (i / featherCount) * Math.PI * 2 + Math.random() * 0.3;
+    const startDist = baseRadius * (0.6 + Math.random() * 0.3); // Start closer to center
+    const length = size * (INK_BLOT_FEATHER_LENGTH_MIN + Math.random() * (INK_BLOT_FEATHER_LENGTH_MAX - INK_BLOT_FEATHER_LENGTH_MIN));
+    const width = size * INK_BLOT_FEATHER_WIDTH * (0.8 + Math.random() * 0.4); // Vary width
+
+    const startX = x + Math.cos(angle) * startDist;
+    const startY = y + Math.sin(angle) * startDist;
+    const endX = x + Math.cos(angle) * (startDist + length);
+    const endY = y + Math.sin(angle) * (startDist + length);
+
+    const alpha = (INK_BLOT_FEATHER_ALPHA_MIN + Math.random() * (INK_BLOT_FEATHER_ALPHA_MAX - INK_BLOT_FEATHER_ALPHA_MIN)) / 255;
+    ctx.globalAlpha = alpha;
+
+    const perpAngle = angle + Math.PI / 2;
+    const numSegments = 8;
+
+    ctx.beginPath();
+
+    // Draw one side with tapering
+    for (let j = 0; j <= numSegments; j++) {
+      const t = j / numSegments;
+      const cx = startX + (endX - startX) * t;
+      const cy = startY + (endY - startY) * t;
+
+      const taper = 1 - t;
+      const noiseOffset = noise(j * 0.5 + i * 10) * width * 0.3;
+      const edgeWidth = (width / 2) * taper + noiseOffset;
+
+      const vx = cx + Math.cos(perpAngle) * edgeWidth;
+      const vy = cy + Math.sin(perpAngle) * edgeWidth;
+
+      if (j === 0) ctx.moveTo(vx, vy);
+      else ctx.lineTo(vx, vy);
+    }
+
+    // Draw back along other side
+    for (let j = numSegments; j >= 0; j--) {
+      const t = j / numSegments;
+      const cx = startX + (endX - startX) * t;
+      const cy = startY + (endY - startY) * t;
+
+      const taper = 1 - t;
+      const noiseOffset = noise(j * 0.5 + i * 10 + 100) * width * 0.3;
+      const edgeWidth = (width / 2) * taper + noiseOffset;
+
+      const vx = cx - Math.cos(perpAngle) * edgeWidth;
+      const vy = cy - Math.sin(perpAngle) * edgeWidth;
+
+      ctx.lineTo(vx, vy);
+    }
+
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+/**
+ * Draw a brush stroke with textured bristles (for customization panel preview)
+ * Matches the new textured brushstroke appearance
  * @param {CanvasRenderingContext2D} ctx - 2D canvas context
  * @param {number} x - X coordinate
  * @param {number} y - Y coordinate
@@ -377,70 +758,71 @@ export function drawBrushStrokeCanvas(ctx, x, y, size, rotation) {
   ctx.translate(x, y);
   ctx.rotate(rotation);
 
-  let strokeLength = size * 2.0;
-  let baseWidth = size * 0.4;
+  const strokeLength = size * 2.5;
+  const strokeWidth = size * 0.8;
 
-  // Get current fill style for color
-  const fillStyle = ctx.fillStyle;
+  // Simple gaussian function
+  const gaussianRandom = () => {
+    let u = 0, v = 0;
+    while(u === 0) u = Math.random();
+    while(v === 0) v = Math.random();
+    return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+  };
 
-  // Draw 3 layers for depth
-  for (let layer = 0; layer < 3; layer++) {
-    let offsetX = (Math.random() - 0.5) * size * 0.08;
-    let offsetY = (Math.random() - 0.5) * size * 0.08;
+  // Number of bristle clusters along the stroke
+  const numClusters = Math.floor(strokeLength / 6) + 8;
 
-    let segments = 25;
+  for (let i = 0; i < numClusters; i++) {
+    const xPos = -strokeLength / 2 + (i / (numClusters - 1)) * strokeLength;
 
-    for (let i = 0; i < segments; i++) {
-      let t = i / segments;
-      let nextT = (i + 1) / segments;
+    // Pressure variation (thicker in middle) - Gaussian distribution
+    const t = i / (numClusters - 1);
+    const center = 0.5;
+    const sigma = 0.3;
+    const pressure = Math.exp(-Math.pow(t - center, 2) / (2 * sigma * sigma));
+    const clusterPressure = Math.max(0.3, Math.min(1.0, pressure));
 
-      let x1 = (t - 0.5) * strokeLength + offsetX;
-      let x2 = (nextT - 0.5) * strokeLength + offsetX;
+    // Height variation based on pressure (organic edges)
+    const edgeHeight = strokeWidth * clusterPressure * (Math.random() * 0.2 + 0.8);
 
-      // Pressure taper
-      let pressure1 = Math.pow(1 - t, 1.3) * 0.9 + 0.1;
-      let pressure2 = Math.pow(1 - nextT, 1.3) * 0.9 + 0.1;
+    // Each cluster has multiple bristles
+    const bristlesInCluster = Math.floor(Math.random() * 6 + 4);
 
-      let width1 = baseWidth * pressure1;
-      let width2 = baseWidth * pressure2;
+    for (let b = 0; b < bristlesInCluster; b++) {
+      // Y position within the organic edge boundary
+      const yOffset = gaussianRandom() * edgeHeight * 0.35;
 
-      // Draw segment
-      ctx.fillStyle = fillStyle;
-      ctx.globalAlpha = ctx.globalAlpha * (1 - layer * 0.15) * (0.7 + pressure1 * 0.3);
+      // Bristle dimensions - running PARALLEL to stroke (horizontal)
+      const bristleThickness = clusterPressure * strokeWidth * (Math.random() * 0.07 + 0.08);
+      const bristleLength = strokeLength * (Math.random() * 0.2 + 0.15);
 
+      // Slight rotation variation
+      const bristleRotation = gaussianRandom() * 0.08;
+
+      // Draw bristle as elongated ellipse
+      ctx.save();
+      ctx.translate(xPos, yOffset);
+      ctx.rotate(bristleRotation);
+
+      // Semi-transparent for texture
+      ctx.globalAlpha = Math.random() * 0.25 + 0.25;
       ctx.beginPath();
-      ctx.moveTo(x1, -width1 / 2 + offsetY);
-      ctx.lineTo(x2, -width2 / 2 + offsetY);
-      ctx.lineTo(x2, width2 / 2 + offsetY);
-      ctx.lineTo(x1, width1 / 2 + offsetY);
-      ctx.closePath();
+      ctx.ellipse(0, 0, bristleLength / 2, bristleThickness / 2, 0, 0, Math.PI * 2);
       ctx.fill();
+
+      // Add some finer detail lines
+      if (Math.random() < 0.4) {
+        ctx.globalAlpha = Math.random() * 0.15 + 0.1;
+        const detailLength = bristleLength * (Math.random() * 0.3 + 0.4);
+        const detailThickness = bristleThickness * (Math.random() * 0.3 + 0.3);
+        const detailOffset = (Math.random() - 0.5) * detailLength * 0.5;
+        ctx.beginPath();
+        ctx.ellipse(detailOffset, 0, detailLength / 2, detailThickness / 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.restore();
     }
-  }
-
-  // Bristle marks
-  let numBristles = Math.floor(size * 0.5);
-  ctx.lineWidth = 1;
-
-  for (let i = 0; i < numBristles; i++) {
-    let t = Math.random() * 0.6 + 0.05;
-    let xPos = (t - 0.5) * strokeLength;
-
-    let pressure = Math.pow(1 - t, 1.3) * 0.9 + 0.1;
-    let currentWidth = baseWidth * pressure;
-
-    let yPos = (Math.random() - 0.5) * currentWidth;
-    let bristleLength = Math.random() * size * 0.15 + size * 0.15;
-    let bristleAngle = (Math.random() - 0.5) * Math.PI / 4;
-
-    let endX = xPos + Math.cos(bristleAngle) * bristleLength;
-    let endY = yPos + Math.sin(bristleAngle) * bristleLength;
-
-    ctx.globalAlpha = Math.random() * 0.2 + 0.2;
-    ctx.beginPath();
-    ctx.moveTo(xPos, yPos);
-    ctx.lineTo(endX, endY);
-    ctx.stroke();
   }
 
   ctx.restore();

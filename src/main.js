@@ -18,6 +18,8 @@ import { DebugPanel } from './ui/DebugPanel.js';
 import { findDrumByMidiNote } from './utils/drumHelpers.js';
 import { applyAllThemes } from './utils/applyTheme.js';
 import { projectorSimulator } from './display/ProjectorSimulator.js';
+import { visualStyleManager } from './canvas/VisualStyleManager.js';
+import { getBrushTextureCache } from './canvas/BrushTextureCache.js';
 
 // ===== GLOBAL STATE =====
 let paintCanvas;
@@ -100,6 +102,9 @@ window.setup = async function() {
   // Initialize system managers
   stateManager = new StateManager();
   notificationSystem = new NotificationSystem();
+
+  // Initialize visual style manager with brush texture cache reference
+  visualStyleManager.setBrushTextureCache(getBrushTextureCache());
 
   // Initialize MIDI manager with paint callback
   midiManager = new MidiManager((note, velocity, deviceId) => handlePaint(note, velocity, deviceId));
@@ -1780,9 +1785,26 @@ function handleDirectModeCC(ccNumber, ccValue) {
 
 /**
  * Handle Bank Mode CC messages
- * Applies CC to active drum's parameter
+ * Applies CC to active drum's parameter OR global visual style parameter
  */
 function handleBankModeCC(drumId, paramKey, normalizedValue, ccValue, ccNumber) {
+  // Check if this is a visual style parameter (global, affects brushstroke/splatter)
+  const isVisualStyleParam = paramKey.startsWith('splatter') || paramKey.startsWith('brush');
+
+  if (isVisualStyleParam) {
+    // Handle visual style parameter (affects all brushstrokes/splatters globally)
+    visualStyleManager.updateParameter(paramKey, normalizedValue);
+
+    // Show notification
+    const paramMapping = visualStyleManager.parameterMappings[paramKey];
+    if (paramMapping) {
+      const value = paramMapping.min + normalizedValue * (paramMapping.max - paramMapping.min);
+      notificationSystem.show(`${paramMapping.description}: ${value.toFixed(2)}`);
+    }
+    return;
+  }
+
+  // Handle per-drum parameter (existing functionality)
   if (!drumSettings[drumId]) return;
 
   // Get parameter configuration

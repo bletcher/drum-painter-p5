@@ -261,14 +261,51 @@ export class MidiMappingPanel {
     grid.style.cssText = 'display: grid; gap: 10px;';
 
     const variables = [
+      // Per-drum parameters
+      { type: 'header', label: 'Per-Drum Parameters' },
       { key: 'size', label: 'Size' },
       { key: 'opacity', label: 'Opacity' },
       { key: 'hueVariation', label: 'Hue Variation' },
       { key: 'rotation', label: 'Rotation' },
-      { key: 'strokeWeight', label: 'Stroke Weight' }
+      { key: 'strokeWeight', label: 'Stroke Weight' },
+
+      // Splatter parameters
+      { type: 'header', label: 'Splatter Parameters (Global)' },
+      { key: 'splatterDensity', label: 'Splatter Density' },
+      { key: 'splatterConnectionThickness', label: 'Connection Thickness' },
+      { key: 'splatterSprayIntensity', label: 'Spray Intensity' },
+      { key: 'splatterConnectionAmount', label: 'Connection Amount' },
+      { key: 'splatterCoreSize', label: 'Core Size' },
+      { key: 'splatterSpraySize', label: 'Spray Dot Size' },
+
+      // Brush parameters
+      { type: 'header', label: 'Brush Parameters (Global)' },
+      { key: 'brushDensity', label: 'Brush Density' },
+      { key: 'brushOpacity', label: 'Brush Opacity' },
+      { key: 'brushEdgeSoftness', label: 'Edge Softness' },
+      { key: 'brushStrokeVariation', label: 'Stroke Variation' }
     ];
 
     for (const variable of variables) {
+      // Handle section headers
+      if (variable.type === 'header') {
+        const header = document.createElement('div');
+        header.textContent = variable.label;
+        header.style.cssText = `
+          font-weight: bold;
+          font-size: ${TYPOGRAPHY.fontSize.sm};
+          color: ${COLORS.primary.main};
+          margin-top: 15px;
+          margin-bottom: 5px;
+          padding-bottom: 5px;
+          border-bottom: 1px solid ${COLORS.primary.main};
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        `;
+        grid.appendChild(header);
+        continue;
+      }
+
       const assignment = this.midiManager.globalVariableAssignments[variable.key];
 
       const row = document.createElement('div');

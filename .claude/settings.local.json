@@ -14,7 +14,9 @@
       "WebFetch(domain:www.gorillasun.de)",
       "WebFetch(domain:github.com)",
       "Bash(npm install:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "WebFetch(domain:www.nicepng.com)",
+      "WebFetch(domain:raw.githubusercontent.com)"
     ],
     "deny": [],
     "ask": []
