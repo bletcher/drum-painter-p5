@@ -97,6 +97,7 @@ This creates an optimized build in the `dist/` directory with:
 - ✅ Source maps disabled (smaller size)
 - ✅ Chunked bundles for better caching
 - ✅ Default settings included (if you added default-settings.json)
+- ✅ FFmpeg.wasm dependencies bundled (loaded on-demand for audio/video merging)
 
 ### Preview the build locally:
 ```bash
@@ -174,6 +175,14 @@ find dist -type f -exec chmod 644 {} \;
 - This ensures browsers fetch new versions after updates
 - No manual cache clearing needed for assets
 
+### Audio/Video Merge Feature
+- **FFmpeg.wasm** loads on-demand from unpkg.com CDN when user first merges audio/video
+- Requires internet connection for first-time FFmpeg load (~10MB download)
+- After initial load, FFmpeg is cached by the browser for subsequent merges
+- Processing happens entirely client-side—no server uploads required
+- Supports all common audio formats (MP3, WAV, OGG, M4A, etc.)
+- Output is MP4 format with AAC audio encoding
+
 ### Version Updates
 When releasing a new version:
 1. Update version in `package.json`
@@ -197,11 +206,22 @@ When releasing a new version:
 - Check browser console for permission errors
 - Ensure user granted MIDI access
 
+### Audio/Video Merge Not Working
+- Check browser console for FFmpeg loading errors
+- Verify internet connection (required for first-time FFmpeg download)
+- Ensure sufficient memory available (~100MB for processing)
+- Try with smaller video/audio files first
+- Check that audio file format is supported (MP3, WAV, OGG, M4A, etc.)
+- Clear browser cache and try again if FFmpeg fails to load
+
 ## File Size
 
 Typical build sizes:
-- **Uncompressed:** ~500KB
-- **Gzipped:** ~150KB (if server compression enabled)
+- **Main Bundle (Uncompressed):** ~500-600KB
+- **Main Bundle (Gzipped):** ~150-180KB (if server compression enabled)
+- **FFmpeg.wasm:** Loaded dynamically from CDN (~10MB, one-time download when user first merges audio/video)
+
+**Note:** The audio/video merge feature uses FFmpeg.wasm, which is loaded on-demand from unpkg.com CDN. This keeps the initial bundle size small while providing powerful browser-based video processing when needed.
 
 ## Clean Build
 
