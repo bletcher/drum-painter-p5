@@ -23,6 +23,8 @@
     "vite": "^7.2.2"
   },
   "dependencies": {
+    "@ffmpeg/ffmpeg": "^0.12.15",
+    "@ffmpeg/util": "^0.12.2",
     "p5.brush": "^1.1.4"
   }
 }

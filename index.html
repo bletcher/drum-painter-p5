@@ -919,6 +919,23 @@
         </div>
         <div id="video-recording-time" style="color: #7f1d1d;">00:00</div>
       </div>
+
+      <!-- Recent Recordings List -->
+      <div id="recordings-section" style="margin-top: 12px; border-top: 1px solid #ddd; padding-top: 12px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <label style="font-size: 11px; font-weight: bold;">Recent Recordings</label>
+          <button id="clear-recordings-btn"
+            style="padding: 2px 6px; font-size: 10px; background: #dc2626; color: white; border: none; border-radius: 3px; cursor: pointer; opacity: 0.8;"
+            title="Clear all recordings">
+            Clear All
+          </button>
+        </div>
+        <div id="recordings-list" style="max-height: 300px; overflow-y: auto;">
+          <div style="font-size: 10px; color: #999; text-align: center; padding: 20px;">
+            No recordings yet
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -1583,7 +1600,7 @@
           </ul>
 
           <div style="background: #fff3cd; padding: 12px; border-radius: 6px; margin-top: 20px; font-size: 13px;">
-            <strong>💡 Tip:</strong> Start with <em>Freeform → Classic Pointillism</em> mode and experiment with blend modes to see beautiful color interactions! Try <em>Dendritic Spreading</em> for river-like patterns or <em>Lightning</em> for electric discharge effects.
+            <strong>💡 Tip:</strong> Start with <em>Freeform → Classic Pointillism</em> mode and experiment with blend modes to see beautiful color interactions! Try <em>Dendritic Spreading</em> for river-like patterns, <em>Lightning</em> for electric discharge effects, or the <em>Ink Blot</em> shape for organic watercolor-style bleeding.
           </div>
         </div>
 
@@ -1649,7 +1666,7 @@
             <li><strong>Color:</strong> Base color for this drum</li>
             <li><strong>Size:</strong> Size multiplier (0.3x to 3.0x)</li>
             <li><strong>Opacity:</strong> Transparency (10% to 100%)</li>
-            <li><strong>Shape:</strong> Circle, square, triangle, or custom shapes</li>
+            <li><strong>Shape:</strong> Brushstroke, Splatter, Ink Blot, Circle, Square, Triangle, Hexagon, Star, Diamond</li>
             <li><strong>Hue Variation:</strong> Random color shift for organic feel</li>
             <li><strong>Rotation:</strong> Angle of shapes (0-360°)</li>
             <li><strong>Stroke:</strong> Add outline with custom weight and color</li>
@@ -1657,7 +1674,8 @@
 
           <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Recording & Export</h4>
           <ul style="line-height: 1.8; color: #444;">
-            <li><strong>Video Recording:</strong> Press SPACE or click recording button. Choose quality first. Saves as .webm</li>
+            <li><strong>Video Recording:</strong> Press SPACE or click recording button. Choose quality first. Recordings appear in "Recent Recordings" list where you can download, merge with audio, or delete them.</li>
+            <li><strong>Audio Merge:</strong> Click "Merge Audio" on any recording to upload an audio file (MP3, WAV, etc.). FFmpeg.wasm processes the merge entirely in your browser and downloads the combined MP4 automatically.</li>
             <li><strong>Image Save:</strong> Press S to save current canvas as PNG</li>
             <li><strong>Chronicle Recording:</strong> Use Chronicle mode (any layout) with Start button. Check "Record video with timeline" to capture session to file. Try different layouts for varied visual styles.</li>
           </ul>

@@ -179,16 +179,16 @@ export const SPLATTER_SPRAY_ALPHA_MAX = 120;
 
 // ===== INK BLOT SETTINGS =====
 // Core blob
-export const INK_BLOT_CORE_RADIUS = 0.3;          // Multiplied by size
+export const INK_BLOT_CORE_RADIUS = 0.25;          // Multiplied by size
 export const INK_BLOT_CORE_ALPHA = 120;
 export const INK_BLOT_CORE_VERTICES = 24;         // Number of vertices for organic shape
 
 // Bleeding layers (spreading outward from core)
-export const INK_BLOT_BLEED_LAYERS = 6;           // Number of spreading layers
-export const INK_BLOT_BLEED_SPREAD_MIN = 0.15;    // Min radius increase per layer (multiplied by size)
-export const INK_BLOT_BLEED_SPREAD_MAX = 0.25;    // Max radius increase per layer
-export const INK_BLOT_BLEED_ALPHA_START = 160;    // Alpha of first bleed layer
-export const INK_BLOT_BLEED_ALPHA_DECAY = 0.4;    // Multiplier for each successive layer
+export const INK_BLOT_BLEED_LAYERS = 5;           // Number of spreading layers
+export const INK_BLOT_BLEED_SPREAD_MIN = 0.1;    // Min radius increase per layer (multiplied by size)
+export const INK_BLOT_BLEED_SPREAD_MAX = 0.2;    // Max radius increase per layer
+export const INK_BLOT_BLEED_ALPHA_START = 100;    // Alpha of first bleed layer
+export const INK_BLOT_BLEED_ALPHA_DECAY = 0.8;    // Multiplier for each successive layer
 
 // Edge variation
 export const INK_BLOT_EDGE_NOISE_SCALE = 0.3;     // Perlin noise scale for edge variation

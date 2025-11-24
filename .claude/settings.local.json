@@ -16,7 +16,8 @@
       "Bash(npm install:*)",
       "Bash(cat:*)",
       "WebFetch(domain:www.nicepng.com)",
-      "WebFetch(domain:raw.githubusercontent.com)"
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(npm run build:*)"
     ],
     "deny": [],
     "ask": []

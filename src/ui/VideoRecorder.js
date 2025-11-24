@@ -31,6 +31,10 @@ export class VideoRecorder {
 
     this.currentQuality = 'medium';
     this.currentFormat = 'webm-vp9'; // Default to VP9
+
+    // Storage for recorded videos
+    this.recordings = [];
+    this.maxRecordings = 10; // Keep last 10 recordings
   }
 
   /**
@@ -206,27 +210,40 @@ export class VideoRecorder {
         return;
       }
 
-      const url = URL.createObjectURL(blob);
-
-      // Create download link
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `drum-painter-${Date.now()}.webm`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-
-      // Clean up URL after a delay
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-
       const durationSec = Math.floor((Date.now() - this.startTime) / 1000);
       const sizeMB = (blob.size / (1024 * 1024)).toFixed(2);
 
-      this.notificationSystem.show(`Video saved! (${durationSec}s, ${sizeMB}MB)`, 'success');
-      console.log('✓ Video saved');
+      // Store recording
+      const recording = {
+        id: Date.now(),
+        blob: blob,
+        timestamp: new Date(),
+        duration: durationSec,
+        size: sizeMB,
+        quality: this.currentQuality
+      };
+
+      this.recordings.unshift(recording); // Add to beginning
+
+      // Limit number of stored recordings
+      if (this.recordings.length > this.maxRecordings) {
+        const removed = this.recordings.pop();
+        // Revoke old blob URL if it exists
+        if (removed.url) {
+          URL.revokeObjectURL(removed.url);
+        }
+      }
+
+      this.notificationSystem.show(`Video recorded! (${durationSec}s, ${sizeMB}MB)`, 'success');
+      console.log('✓ Video recorded and stored');
       console.log(`  Duration: ${durationSec}s`);
       console.log(`  Size: ${sizeMB}MB`);
       console.log(`  Chunks: ${this.recordedChunks.length}`);
+
+      // Trigger UI update (will be handled by main.js)
+      window.dispatchEvent(new CustomEvent('recording-saved', {
+        detail: { recording }
+      }));
 
       // Clean up
       this.cleanup();
@@ -235,6 +252,75 @@ export class VideoRecorder {
       this.notificationSystem.show('Failed to save video', 'error');
       this.cleanup();
     }
+  }
+
+  /**
+   * Get all recordings
+   */
+  getRecordings() {
+    return this.recordings;
+  }
+
+  /**
+   * Download a specific recording
+   */
+  downloadRecording(id) {
+    const recording = this.recordings.find(r => r.id === id);
+    if (!recording) {
+      console.warn('Recording not found:', id);
+      return;
+    }
+
+    const url = URL.createObjectURL(recording.blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `drum-painter-${recording.id}.webm`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+    this.notificationSystem.show('Video downloaded!', 'success');
+  }
+
+  /**
+   * Delete a specific recording
+   */
+  deleteRecording(id) {
+    const index = this.recordings.findIndex(r => r.id === id);
+    if (index === -1) {
+      console.warn('Recording not found:', id);
+      return;
+    }
+
+    const recording = this.recordings[index];
+    if (recording.url) {
+      URL.revokeObjectURL(recording.url);
+    }
+
+    this.recordings.splice(index, 1);
+
+    // Trigger UI update
+    window.dispatchEvent(new CustomEvent('recording-deleted', {
+      detail: { id }
+    }));
+
+    this.notificationSystem.show('Recording deleted', 'info');
+  }
+
+  /**
+   * Clear all recordings
+   */
+  clearAllRecordings() {
+    this.recordings.forEach(recording => {
+      if (recording.url) {
+        URL.revokeObjectURL(recording.url);
+      }
+    });
+    this.recordings = [];
+
+    window.dispatchEvent(new CustomEvent('recordings-cleared'));
+    this.notificationSystem.show('All recordings cleared', 'info');
   }
 
   /**

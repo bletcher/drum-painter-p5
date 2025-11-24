@@ -187,7 +187,7 @@ Click "Customize Drums" to adjust:
 - **Color** - HSL color picker or hex input
 - **Size Multiplier** - 0.1x to 5x
 - **Opacity** - 0% to 100%
-- **Shape** - Circle, Square, Triangle, Hexagon, Star, Cross, Ring
+- **Shape** - Circle, Square, Triangle, Hexagon, Star, Diamond, Brushstroke, Splatter, Ink Blot
 - **Stroke** - None, Thin, Medium, Thick
 - **Rotation** - 0° to 360°
 
@@ -243,7 +243,16 @@ Press **?** to see all shortcuts, or **U** for the complete User Guide.
 1. Press **SPACE** to start recording
 2. Paint your session
 3. Press **SPACE** to stop
-4. Video downloads automatically as WebM
+4. Video appears in Recent Recordings list
+
+### Recording Management
+
+Each recording can be:
+- **Downloaded** - Save original video as WebM
+- **Merged with Audio** - Upload an audio file (MP3, WAV, etc.) to create a synchronized MP4 with sound
+- **Deleted** - Remove from the list
+
+The app stores up to 10 recent recordings. Use FFmpeg.wasm (loaded on first merge) to combine video and audio entirely in your browser—no server uploads required.
 
 ### Save Image
 
@@ -345,9 +354,10 @@ drum-painter-p5/
 │   │   ├── Particle.js    # Particle effects
 │   │   └── VideoRecorder.js
 │   └── utils/
-│       ├── drumHelpers.js # MIDI note lookups
-│       ├── scaling.js     # Velocity curves
-│       └── colorHelpers.js # Color utilities
+│       ├── drumHelpers.js    # MIDI note lookups
+│       ├── scaling.js        # Velocity curves
+│       ├── colorHelpers.js   # Color utilities
+│       └── AudioVideoMerger.js # FFmpeg.wasm integration
 └── dist/                  # Production build output
 ```
 
@@ -356,6 +366,7 @@ drum-painter-p5/
 - **p5.js** - Canvas rendering and creative coding framework
 - **Web MIDI API** - Real-time MIDI input from drum triggers
 - **MediaRecorder API** - Video capture of canvas
+- **FFmpeg.wasm** - Browser-based audio/video merging (WebAssembly)
 - **localStorage** - Project and settings persistence
 - **Vite** - Modern build tooling with optimizations
 

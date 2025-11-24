@@ -14,6 +14,7 @@ import { DrumCustomizationPanel } from './ui/DrumCustomizationPanel.js';
 import { MidiMappingPanel } from './ui/MidiMappingPanel.js';
 import { TimelineControls } from './ui/TimelineControls.js';
 import { VideoRecorder } from './ui/VideoRecorder.js';
+import { AudioVideoMerger } from './utils/AudioVideoMerger.js';
 import { DebugPanel } from './ui/DebugPanel.js';
 import { findDrumByMidiNote } from './utils/drumHelpers.js';
 import { applyAllThemes } from './utils/applyTheme.js';
@@ -49,6 +50,7 @@ let customizationPanel;
 let midiMappingPanel;
 let timelineControls;
 let videoRecorder;
+let audioVideoMerger;
 let debugPanel;
 
 // DOM elements
@@ -118,6 +120,10 @@ window.setup = async function() {
   // Initialize video recorder first (needed by timeline controls)
   videoRecorder = new VideoRecorder(paintCanvas, notificationSystem);
   setupVideoRecorderUI();
+
+  // Initialize audio/video merger
+  audioVideoMerger = new AudioVideoMerger(notificationSystem);
+  setupRecordingsUI();
 
   // Initialize timeline controls (pass videoRecorder for integration)
   timelineControls = new TimelineControls(chronicleMode, notificationSystem, videoRecorder);
@@ -1312,6 +1318,193 @@ function updateVideoRecordingUI(isRecording) {
       recordingStatus.style.display = 'none';
     }
   }
+}
+
+/**
+ * Setup Recordings UI and event listeners
+ */
+function setupRecordingsUI() {
+  // Event listeners for recording events
+  window.addEventListener('recording-saved', () => {
+    updateRecordingsList();
+  });
+
+  window.addEventListener('recording-deleted', () => {
+    updateRecordingsList();
+  });
+
+  window.addEventListener('recordings-cleared', () => {
+    updateRecordingsList();
+  });
+
+  // Clear all recordings button
+  const clearAllBtn = document.getElementById('clear-recordings-btn');
+  if (clearAllBtn) {
+    clearAllBtn.addEventListener('click', () => {
+      if (confirm('Are you sure you want to clear all recordings?')) {
+        videoRecorder.clearAllRecordings();
+      }
+    });
+  }
+
+  // Initial update
+  updateRecordingsList();
+}
+
+/**
+ * Update the recordings list UI
+ */
+function updateRecordingsList() {
+  const recordingsList = document.getElementById('recordings-list');
+  if (!recordingsList) return;
+
+  const recordings = videoRecorder.getRecordings();
+
+  if (recordings.length === 0) {
+    recordingsList.innerHTML = `
+      <div style="font-size: 10px; color: #999; text-align: center; padding: 20px;">
+        No recordings yet
+      </div>
+    `;
+    return;
+  }
+
+  recordingsList.innerHTML = recordings.map((recording, index) => `
+    <div class="recording-item" data-recording-id="${recording.id}" style="
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 6px;
+      padding: 10px;
+      margin-bottom: ${index < recordings.length - 1 ? '8px' : '0'};
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    ">
+      <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+        <div style="flex: 1;">
+          <div style="font-size: 11px; font-weight: bold; margin-bottom: 4px;">
+            Recording #${recordings.length - index}
+          </div>
+          <div style="font-size: 10px; opacity: 0.7; display: flex; flex-direction: column; gap: 2px;">
+            <div>${recording.timestamp.toLocaleTimeString()}</div>
+            <div>${recording.duration}s • ${recording.size}MB • ${recording.quality}</div>
+          </div>
+        </div>
+        <button class="delete-recording-btn" data-recording-id="${recording.id}"
+          style="padding: 4px 8px; font-size: 10px; background: #dc2626; color: white; border: none; border-radius: 3px; cursor: pointer; opacity: 0.8;"
+          title="Delete recording">
+          Delete
+        </button>
+      </div>
+      <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+        <button class="download-recording-btn" data-recording-id="${recording.id}"
+          style="padding: 6px 10px; font-size: 10px; background: #059669; color: white; border: none; border-radius: 3px; cursor: pointer; flex: 1; min-width: 80px;">
+          Download Video
+        </button>
+        <label class="merge-audio-btn"
+          style="padding: 6px 10px; font-size: 10px; background: #2563eb; color: white; border: none; border-radius: 3px; cursor: pointer; flex: 1; min-width: 80px; text-align: center; display: inline-block;">
+          Merge Audio
+          <input type="file" class="audio-file-input" data-recording-id="${recording.id}"
+            accept="audio/*" style="display: none;">
+        </label>
+      </div>
+      <div id="merge-progress-${recording.id}" style="display: none; margin-top: 8px;">
+        <div style="font-size: 10px; margin-bottom: 4px; color: #3b82f6;">
+          <span id="merge-status-${recording.id}">Merging...</span>
+          <span id="merge-percent-${recording.id}"></span>
+        </div>
+        <div style="background: rgba(255, 255, 255, 0.1); height: 4px; border-radius: 2px; overflow: hidden;">
+          <div id="merge-progress-bar-${recording.id}" style="background: #3b82f6; height: 100%; width: 0%; transition: width 0.3s;"></div>
+        </div>
+      </div>
+    </div>
+  `).join('');
+
+  // Attach event listeners to buttons
+  recordingsList.querySelectorAll('.download-recording-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = parseInt(btn.dataset.recordingId);
+      videoRecorder.downloadRecording(id);
+    });
+  });
+
+  recordingsList.querySelectorAll('.delete-recording-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = parseInt(btn.dataset.recordingId);
+      if (confirm('Delete this recording?')) {
+        videoRecorder.deleteRecording(id);
+      }
+    });
+  });
+
+  recordingsList.querySelectorAll('.audio-file-input').forEach(input => {
+    input.addEventListener('change', async (e) => {
+      const id = parseInt(input.dataset.recordingId);
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const recording = recordings.find(r => r.id === id);
+      if (!recording) return;
+
+      // Show progress UI
+      const progressDiv = document.getElementById(`merge-progress-${id}`);
+      const statusSpan = document.getElementById(`merge-status-${id}`);
+      const percentSpan = document.getElementById(`merge-percent-${id}`);
+      const progressBar = document.getElementById(`merge-progress-bar-${id}`);
+
+      if (progressDiv) progressDiv.style.display = 'block';
+
+      try {
+        // Merge audio and video
+        const mergedBlob = await audioVideoMerger.merge(
+          recording.blob,
+          file,
+          (progress) => {
+            // Update progress
+            if (percentSpan) percentSpan.textContent = ` ${progress}%`;
+            if (progressBar) progressBar.style.width = `${progress}%`;
+          }
+        );
+
+        // Update status
+        if (statusSpan) statusSpan.textContent = 'Complete!';
+        if (percentSpan) percentSpan.textContent = '';
+        if (progressBar) progressBar.style.width = '100%';
+
+        // Auto-download merged file
+        setTimeout(() => {
+          const url = URL.createObjectURL(mergedBlob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `drum-painter-merged-${id}.mp4`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+          // Hide progress after download
+          setTimeout(() => {
+            if (progressDiv) progressDiv.style.display = 'none';
+            if (progressBar) progressBar.style.width = '0%';
+          }, 2000);
+        }, 500);
+      } catch (error) {
+        console.error('Merge failed:', error);
+        if (statusSpan) statusSpan.textContent = 'Merge failed';
+        if (statusSpan) statusSpan.style.color = '#dc2626';
+
+        // Hide progress after a delay
+        setTimeout(() => {
+          if (progressDiv) progressDiv.style.display = 'none';
+          if (progressBar) progressBar.style.width = '0%';
+          if (statusSpan) {
+            statusSpan.textContent = 'Merging...';
+            statusSpan.style.color = '#3b82f6';
+          }
+        }, 3000);
+      }
+
+      // Reset file input
+      input.value = '';
+    });
+  });
 }
 
 /**
