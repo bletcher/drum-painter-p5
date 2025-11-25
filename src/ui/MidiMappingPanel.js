@@ -1,6 +1,6 @@
 /**
  * MIDI Mapping Panel
- * Configures Bank Mode (Alesis pads) and Direct Mode mappings
+ * Configures Bank Mode MIDI mappings (Alesis workflow)
  */
 
 import { DRUM_KIT_CONFIG } from '../config/drumKit.js';
@@ -13,6 +13,14 @@ export class MidiMappingPanel {
     this.notificationSystem = notificationSystem;
     this.updateIndicatorCallback = updateIndicatorCallback;
     this.isVisible = false;
+
+    // Track open/closed state of collapsible sections
+    this.sectionStates = {
+      'Pad Assignments (Select Drum)': true,
+      'Per-Drum Parameters': true,
+      'Splatter Parameters (Global)': false,
+      'Brush Parameters (Global)': false
+    };
   }
 
   /**
@@ -40,6 +48,9 @@ export class MidiMappingPanel {
     const container = document.getElementById('midi-mapping-container');
     if (!container) return;
 
+    // Save current section states before rebuilding (except on first build)
+    this.saveSectionStates();
+
     container.innerHTML = '';
 
     // Clean up bank pad assignments - remove drums that no longer exist
@@ -50,105 +61,122 @@ export class MidiMappingPanel {
       }
     }
 
-    // Mode selector section
-    container.appendChild(this.createModeSelector());
+    // Enable bank mode
+    this.midiManager.bankModeEnabled = true;
 
-    // Bank mode assignments (only show if bank mode enabled)
-    if (this.midiManager.bankModeEnabled) {
-      container.appendChild(this.createPadAssignments());
-      container.appendChild(this.createVariableAssignments());
-    } else {
-      container.appendChild(this.createDirectModeMessage());
-    }
+    // Info section
+    container.appendChild(this.createInfoSection());
+
+    // Bank mode sections
+    container.appendChild(this.createPadAssignments());
+    container.appendChild(this.createVariableAssignments());
   }
 
   /**
-   * Create mode selector (Bank Mode vs Direct Mode)
+   * Create info section explaining Bank Mode
    */
-  createModeSelector() {
+  createInfoSection() {
     const section = document.createElement('div');
     section.style.cssText = `margin-bottom: 25px; padding: 15px; background: ${COLORS.background.secondary}; border-radius: ${RADIUS.xl};`;
 
     const title = document.createElement('h3');
-    title.textContent = 'Control Mode';
-    title.style.cssText = `margin: 0 0 15px 0; font-size: ${TYPOGRAPHY.fontSize.lg}; color: ${COLORS.text.primary};`;
+    title.textContent = 'Bank Mode - Alesis Workflow';
+    title.style.cssText = `margin: 0 0 10px 0; font-size: ${TYPOGRAPHY.fontSize.lg}; color: ${COLORS.text.primary};`;
     section.appendChild(title);
 
-    // Direct Mode option
-    const directLabel = document.createElement('label');
-    directLabel.style.cssText = `
-      display: block;
-      cursor: pointer;
-      margin-bottom: 10px;
-      padding: 10px;
-      background: ${COLORS.background.primary};
-      border-radius: ${RADIUS.md};
-      border: 2px solid ${this.midiManager.bankModeEnabled ? COLORS.border.medium : COLORS.primary.main};
+    const description = document.createElement('p');
+    description.style.cssText = `margin: 0; font-size: ${TYPOGRAPHY.fontSize.base}; color: ${COLORS.text.secondary}; line-height: 1.5;`;
+    description.innerHTML = `
+      <strong>How it works:</strong><br>
+      1. Hit a pad to select which drum you want to control<br>
+      2. Use faders/dials to adjust parameters for the selected drum<br>
+      3. Direct drum-to-MIDI note mappings are configured in the <strong>Customize Drums</strong> panel (🎹 buttons)
     `;
-
-    const directRadio = document.createElement('input');
-    directRadio.type = 'radio';
-    directRadio.name = 'control-mode';
-    directRadio.checked = !this.midiManager.bankModeEnabled;
-    directRadio.onchange = () => {
-      this.midiManager.bankModeEnabled = false;
-      this.notificationSystem.show('Direct Mode ON');
-      if (this.updateIndicatorCallback) this.updateIndicatorCallback();
-      this.build();
-    };
-
-    const directText = document.createElement('span');
-    directText.innerHTML = `<strong>Direct Mode</strong><br><span style="font-size: ${TYPOGRAPHY.fontSize.base}; color: ${COLORS.text.secondary};">Each fader/dial controls a specific drum + variable (use 🎛 buttons in Drum Customization)</span>`;
-    directText.style.marginLeft = '8px';
-
-    directLabel.appendChild(directRadio);
-    directLabel.appendChild(directText);
-    section.appendChild(directLabel);
-
-    // Bank Mode option
-    const bankLabel = document.createElement('label');
-    bankLabel.style.cssText = `
-      display: block;
-      cursor: pointer;
-      padding: 10px;
-      background: ${COLORS.background.primary};
-      border-radius: ${RADIUS.md};
-      border: 2px solid ${this.midiManager.bankModeEnabled ? COLORS.primary.main : COLORS.border.medium};
-    `;
-
-    const bankRadio = document.createElement('input');
-    bankRadio.type = 'radio';
-    bankRadio.name = 'control-mode';
-    bankRadio.checked = this.midiManager.bankModeEnabled;
-    bankRadio.onchange = () => {
-      this.midiManager.bankModeEnabled = true;
-      this.notificationSystem.show('Bank Mode ON');
-      if (this.updateIndicatorCallback) this.updateIndicatorCallback();
-      this.build();
-    };
-
-    const bankText = document.createElement('span');
-    bankText.innerHTML = `<strong>Bank Mode</strong><br><span style="font-size: ${TYPOGRAPHY.fontSize.base}; color: ${COLORS.text.secondary};">Hit pad to select drum, faders control selected drum's variables (Alesis workflow)</span>`;
-    bankText.style.marginLeft = '8px';
-
-    bankLabel.appendChild(bankRadio);
-    bankLabel.appendChild(bankText);
-    section.appendChild(bankLabel);
+    section.appendChild(description);
 
     return section;
+  }
+
+  /**
+   * Save current open/closed state of sections before rebuild
+   */
+  saveSectionStates() {
+    const container = document.getElementById('midi-mapping-container');
+    if (!container) return;
+
+    // Find all section headers and save their state
+    const headers = container.querySelectorAll('[data-section-title]');
+    headers.forEach(header => {
+      const titleText = header.getAttribute('data-section-title');
+      const content = header.nextElementSibling;
+      if (content && titleText) {
+        this.sectionStates[titleText] = content.style.display !== 'none';
+      }
+    });
+  }
+
+  /**
+   * Create collapsible section wrapper
+   */
+  createCollapsibleSection(titleText, defaultOpen = true) {
+    // Use saved state if available, otherwise use default
+    const isOpen = this.sectionStates.hasOwnProperty(titleText)
+      ? this.sectionStates[titleText]
+      : defaultOpen;
+
+    const section = document.createElement('div');
+    section.style.cssText = 'margin-bottom: 25px;';
+
+    const header = document.createElement('div');
+    header.setAttribute('data-section-title', titleText); // Mark for state tracking
+    header.style.cssText = `
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      padding: 12px;
+      background: ${COLORS.background.secondary};
+      border-radius: ${RADIUS.md};
+      margin-bottom: 15px;
+      transition: background 0.2s;
+    `;
+    header.onmouseover = () => header.style.background = COLORS.background.tertiary;
+    header.onmouseout = () => header.style.background = COLORS.background.secondary;
+
+    const title = document.createElement('h3');
+    title.textContent = titleText;
+    title.style.cssText = `margin: 0; font-size: ${TYPOGRAPHY.fontSize.lg}; color: ${COLORS.text.primary};`;
+
+    const icon = document.createElement('span');
+    icon.textContent = isOpen ? '▼' : '▶';
+    icon.style.cssText = `font-size: ${TYPOGRAPHY.fontSize.sm}; color: ${COLORS.text.secondary}; transition: transform 0.2s;`;
+
+    header.appendChild(title);
+    header.appendChild(icon);
+
+    const content = document.createElement('div');
+    content.style.display = isOpen ? 'block' : 'none';
+    content.style.cssText += ' transition: all 0.3s ease;';
+
+    header.onclick = () => {
+      const isOpen = content.style.display !== 'none';
+      content.style.display = isOpen ? 'none' : 'block';
+      icon.textContent = isOpen ? '▶' : '▼';
+      // Save state when manually toggled
+      this.sectionStates[titleText] = !isOpen;
+    };
+
+    section.appendChild(header);
+    section.appendChild(content);
+
+    return { section, content };
   }
 
   /**
    * Create pad assignments section (Bank Mode pads)
    */
   createPadAssignments() {
-    const section = document.createElement('div');
-    section.style.cssText = 'margin-bottom: 25px;';
-
-    const title = document.createElement('h3');
-    title.textContent = 'Pad Assignments (Select Drum)';
-    title.style.cssText = `margin: 0 0 15px 0; font-size: ${TYPOGRAPHY.fontSize.lg}; color: ${COLORS.text.primary};`;
-    section.appendChild(title);
+    const { section, content } = this.createCollapsibleSection('Pad Assignments (Select Drum)', true);
 
     const grid = document.createElement('div');
     grid.style.cssText = 'display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px;';
@@ -236,7 +264,7 @@ export class MidiMappingPanel {
       grid.appendChild(row);
     }
 
-    section.appendChild(grid);
+    content.appendChild(grid);
     return section;
   }
 
@@ -247,64 +275,54 @@ export class MidiMappingPanel {
     const section = document.createElement('div');
     section.style.cssText = 'margin-bottom: 25px;';
 
-    const title = document.createElement('h3');
-    title.textContent = 'Global Variable Assignments';
-    title.style.cssText = `margin: 0 0 10px 0; font-size: ${TYPOGRAPHY.fontSize.lg}; color: ${COLORS.text.primary};`;
-    section.appendChild(title);
-
     const note = document.createElement('div');
-    note.textContent = 'These faders/dials will control the selected drum\'s parameters';
+    note.textContent = 'Faders/dials control the selected drum\'s parameters';
     note.style.cssText = `font-size: ${TYPOGRAPHY.fontSize.base}; color: ${COLORS.text.secondary}; margin-bottom: 15px; font-style: italic;`;
     section.appendChild(note);
 
-    const grid = document.createElement('div');
-    grid.style.cssText = 'display: grid; gap: 10px;';
-
-    const variables = [
-      // Per-drum parameters
-      { type: 'header', label: 'Per-Drum Parameters' },
+    // Per-Drum Parameters
+    const perDrumVars = [
       { key: 'size', label: 'Size' },
       { key: 'opacity', label: 'Opacity' },
       { key: 'hueVariation', label: 'Hue Variation' },
       { key: 'rotation', label: 'Rotation' },
-      { key: 'strokeWeight', label: 'Stroke Weight' },
+      { key: 'strokeWeight', label: 'Stroke Weight' }
+    ];
+    section.appendChild(this.createVariableSubsection('Per-Drum Parameters', perDrumVars, true));
 
-      // Splatter parameters
-      { type: 'header', label: 'Splatter Parameters (Global)' },
+    // Splatter Parameters
+    const splatterVars = [
       { key: 'splatterDensity', label: 'Splatter Density' },
       { key: 'splatterConnectionThickness', label: 'Connection Thickness' },
       { key: 'splatterSprayIntensity', label: 'Spray Intensity' },
       { key: 'splatterConnectionAmount', label: 'Connection Amount' },
       { key: 'splatterCoreSize', label: 'Core Size' },
-      { key: 'splatterSpraySize', label: 'Spray Dot Size' },
+      { key: 'splatterSpraySize', label: 'Spray Dot Size' }
+    ];
+    section.appendChild(this.createVariableSubsection('Splatter Parameters (Global)', splatterVars, false));
 
-      // Brush parameters
-      { type: 'header', label: 'Brush Parameters (Global)' },
+    // Brush Parameters
+    const brushVars = [
       { key: 'brushDensity', label: 'Brush Density' },
       { key: 'brushOpacity', label: 'Brush Opacity' },
       { key: 'brushEdgeSoftness', label: 'Edge Softness' },
       { key: 'brushStrokeVariation', label: 'Stroke Variation' }
     ];
+    section.appendChild(this.createVariableSubsection('Brush Parameters (Global)', brushVars, false));
+
+    return section;
+  }
+
+  /**
+   * Create a collapsible subsection for a group of variables
+   */
+  createVariableSubsection(title, variables, defaultOpen) {
+    const { section: subsection, content } = this.createCollapsibleSection(title, defaultOpen);
+
+    const grid = document.createElement('div');
+    grid.style.cssText = 'display: grid; gap: 10px;';
 
     for (const variable of variables) {
-      // Handle section headers
-      if (variable.type === 'header') {
-        const header = document.createElement('div');
-        header.textContent = variable.label;
-        header.style.cssText = `
-          font-weight: bold;
-          font-size: ${TYPOGRAPHY.fontSize.sm};
-          color: ${COLORS.primary.main};
-          margin-top: 15px;
-          margin-bottom: 5px;
-          padding-bottom: 5px;
-          border-bottom: 1px solid ${COLORS.primary.main};
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-        `;
-        grid.appendChild(header);
-        continue;
-      }
 
       const assignment = this.midiManager.globalVariableAssignments[variable.key];
 
@@ -381,102 +399,8 @@ export class MidiMappingPanel {
       grid.appendChild(row);
     }
 
-    section.appendChild(grid);
-    return section;
-  }
-
-  /**
-   * Create direct mode message with drum mappings display
-   */
-  createDirectModeMessage() {
-    const section = document.createElement('div');
-    section.style.cssText = `padding: 15px; background: ${COLORS.background.secondary}; border-radius: ${RADIUS.xl};`;
-
-    const title = document.createElement('h3');
-    title.textContent = 'Direct Mode - Drum Mappings';
-    title.style.cssText = `margin: 0 0 15px 0; font-size: ${TYPOGRAPHY.fontSize.lg}; color: ${COLORS.text.primary};`;
-    section.appendChild(title);
-
-    const info = document.createElement('p');
-    info.style.cssText = `margin: 0 0 15px 0; font-size: ${TYPOGRAPHY.fontSize.base}; color: ${COLORS.text.secondary};`;
-    info.textContent = 'Each drum can be mapped to a specific MIDI device + note. Use 🎹 buttons in Drum Customization to learn mappings.';
-    section.appendChild(info);
-
-    // Create table of drum mappings
-    const table = document.createElement('div');
-    table.style.cssText = 'display: grid; gap: 8px;';
-
-    for (const drum of DRUM_KIT_CONFIG) {
-      const drumId = drum.id;
-      const settings = this.drumSettings[drumId];
-      const midiNote = settings?.midiNote;
-      const midiDevice = settings?.midiDevice;
-
-      const row = document.createElement('div');
-      row.style.cssText = `
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        padding: 10px;
-        background: ${COLORS.background.primary};
-        border-radius: ${RADIUS.md};
-        border-left: 4px solid ${settings?.color || COLORS.text.secondary};
-      `;
-
-      const drumName = document.createElement('span');
-      drumName.textContent = settings?.name || drumId;
-      drumName.style.cssText = `font-weight: bold; font-size: ${TYPOGRAPHY.fontSize.md}; flex: 1;`;
-
-      const mappingInfo = document.createElement('div');
-      mappingInfo.style.cssText = 'display: flex; flex-direction: column; gap: 2px; font-size: 10px;';
-
-      if (midiNote !== undefined && midiNote !== null) {
-        const noteSpan = document.createElement('span');
-        noteSpan.textContent = `Note: ${midiNote}`;
-        noteSpan.style.cssText = `color: ${COLORS.primary.main}; font-weight: bold;`;
-        mappingInfo.appendChild(noteSpan);
-
-        if (midiDevice) {
-          // Find device name
-          const device = this.midiManager.connectedDevices.find(d => d.id === midiDevice);
-          const deviceName = device ? device.name : midiDevice.substring(0, 20);
-          const deviceSpan = document.createElement('span');
-          deviceSpan.textContent = `Device: ${deviceName}`;
-          deviceSpan.style.cssText = `color: ${COLORS.success.light};`;
-          mappingInfo.appendChild(deviceSpan);
-        } else {
-          const anyDeviceSpan = document.createElement('span');
-          anyDeviceSpan.textContent = 'Device: Any';
-          anyDeviceSpan.style.cssText = `color: ${COLORS.warning.main};`;
-          mappingInfo.appendChild(anyDeviceSpan);
-        }
-      } else {
-        const notMappedSpan = document.createElement('span');
-        notMappedSpan.textContent = 'Not mapped';
-        notMappedSpan.style.cssText = `color: ${COLORS.text.muted};`;
-        mappingInfo.appendChild(notMappedSpan);
-      }
-
-      const clearBtn = document.createElement('button');
-      clearBtn.textContent = '×';
-      clearBtn.title = 'Clear mapping';
-      clearBtn.style.cssText = `padding: 4px 8px; font-size: ${TYPOGRAPHY.fontSize.md}; background: ${COLORS.error.main}; color: white; border: none; border-radius: ${RADIUS.sm}; cursor: pointer;`;
-      clearBtn.style.display = midiNote !== undefined && midiNote !== null ? 'block' : 'none';
-      clearBtn.onclick = () => {
-        settings.midiNote = null;
-        settings.midiDevice = null;
-        this.notificationSystem.show(`Cleared ${settings.name} mapping`);
-        this.build();
-      };
-
-      row.appendChild(drumName);
-      row.appendChild(mappingInfo);
-      row.appendChild(clearBtn);
-      table.appendChild(row);
-    }
-
-    section.appendChild(table);
-    return section;
+    content.appendChild(grid);
+    return subsection;
   }
 
   /**

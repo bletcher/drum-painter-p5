@@ -1,8 +1,11 @@
 /**
  * Timeline/Sequencer Mode
- * DAW-style sequencer with musical grid, staffs, BPM, time signatures
- * Records MIDI hits with precise timing on drum lanes
+ * Time-based/sequential paint modes with deterministic positioning
+ * Includes Staff, Spiral, Fibonacci, Radial layouts
  */
+
+import { FibonacciMode } from './FibonacciMode.js';
+import { RadialMode } from './RadialMode.js';
 
 export class TimelineMode {
   constructor(drumKitConfig) {
@@ -22,8 +25,14 @@ export class TimelineMode {
     this.midiLatencyMs = 70; // MIDI latency compensation in milliseconds
     this.warmupMeasures = 0; // Number of measures to wait before painting (0-4)
 
-    // Layout selection: 'staff', 'rings', 'radial', 'flower', 'polygon'
+    // Layout selection: 'staff', 'spiral', 'fibonacci', 'radial'
     this.layout = 'staff';
+
+    // Initialize layout delegates for non-staff modes
+    this.layoutModes = {
+      fibonacci: new FibonacciMode(),
+      radial: new RadialMode()
+    };
 
     // Metronome position (draggable)
     this.metronomeX = null; // null = use default position
@@ -87,8 +96,13 @@ export class TimelineMode {
    */
   onActivate({ paintCanvas }) {
     console.log('Timeline Mode activated');
+    console.log('🎵 Metronome enabled:', this.metronomeEnabled);
+    console.log('🎵 Audio context exists:', !!this.audioContext);
     // Ensure timeline lanes match current drum configuration
     this.regenerateLanes();
+
+    // Note: Audio context initialization moved to startRecording()
+    // because browser autoplay policy requires user interaction
   }
 
   /**
@@ -242,6 +256,17 @@ export class TimelineMode {
    * Paint method - draws notes on timeline lanes
    */
   paint(note, velocity, context) {
+    // Delegate to layout-specific modes (Fibonacci, Radial)
+    if (this.layout === 'fibonacci' && this.layoutModes.fibonacci) {
+      this.layoutModes.fibonacci.paint(note, velocity, context);
+      return;
+    }
+    if (this.layout === 'radial' && this.layoutModes.radial) {
+      this.layoutModes.radial.paint(note, velocity, context);
+      return;
+    }
+
+    // Staff and Spiral layouts use timeline recording logic
     const { paintCanvas, drumSettings, midiDeviceId, debugPanel, drumId: contextDrumId } = context;
 
     // Find which drum this is (use contextDrumId if available, otherwise find it)
@@ -354,8 +379,8 @@ export class TimelineMode {
    * Handles metronome updates
    */
   update(context) {
-    // Update metronome if enabled and recording
-    if (this.metronomeEnabled && this.recording) {
+    // Update metronome if enabled AND actively recording
+    if (this.metronomeEnabled && this.startTime && this.recording) {
       this.updateMetronome();
     }
   }
@@ -367,7 +392,7 @@ export class TimelineMode {
   drawCircularMetronome(p5Instance, canvasWidth, canvasHeight) {
     if (!this.metronomeEnabled) return;
     if (!this.startTime) return;
-    if (!this.recording) return; // Stop when recording stops
+    // Metronome displays even when not recording
 
     const currentTime = Date.now();
     const timeElapsed = (currentTime - this.startTime - this.pausedTime) / 1000.0;
@@ -488,7 +513,7 @@ export class TimelineMode {
    * Returns true if metronome was clicked (to prevent other interactions)
    */
   handleMetronomeMousePressed(mouseX, mouseY) {
-    if (!this.metronomeEnabled || !this.recording) return false;
+    if (!this.metronomeEnabled) return false;
 
     // Use default position if not set
     const centerX = this.metronomeX !== null ? this.metronomeX : (window.width - 100);
@@ -549,7 +574,24 @@ export class TimelineMode {
    * Start recording
    */
   startRecording(startOver = false) {
+    console.log('⏯️ Start button clicked - startRecording() called');
+    console.log('  metronomeEnabled:', this.metronomeEnabled);
+    console.log('  audioContext exists:', !!this.audioContext);
+
     this.recording = true;
+
+    // Initialize audio context for metronome (user interaction = browser allows audio)
+    if (this.metronomeEnabled) {
+      if (!this.audioContext) {
+        console.log('  → Initializing audio context...');
+        this.initializeAudioContext();
+        console.log('  → Audio context state after init:', this.audioContext?.state);
+      } else {
+        console.log('  → Audio context already exists, state:', this.audioContext.state);
+      }
+    } else {
+      console.log('  → Metronome is disabled, skipping audio init');
+    }
 
     if (startOver) {
       // Start from beginning
@@ -625,7 +667,14 @@ export class TimelineMode {
    * Update metronome - play click sounds based on BPM and subdivision
    */
   updateMetronome() {
-    if (!this.startTime || !this.audioContext) return;
+    if (!this.startTime) {
+      console.warn('⚠️ No startTime for metronome');
+      return;
+    }
+    if (!this.audioContext) {
+      console.warn('⚠️ No audioContext for metronome');
+      return;
+    }
 
     // Reset if BPM or subdivision changed
     if (this.lastMetronomeBPM !== this.bpm || this.lastMetronomeSubdivision !== this.subdivision) {
@@ -654,6 +703,7 @@ export class TimelineMode {
       const isBeat = (currentSubdivision % subdivisionsPerQuarter) === 0;
 
       // Play click
+      console.log(`🎵 Metronome click: subdivision ${currentSubdivision}, firstBeat=${isFirstBeat}, beat=${isBeat}`);
       this.playMetronomeClick(isFirstBeat, isBeat);
     }
   }
@@ -662,7 +712,15 @@ export class TimelineMode {
    * Play metronome click sound
    */
   playMetronomeClick(isFirstBeat, isBeat) {
-    if (!this.audioContext) return;
+    if (!this.audioContext) {
+      console.warn('⚠️ No audio context for metronome');
+      return;
+    }
+
+    // Ensure audio context is running
+    if (this.audioContext.state === 'suspended') {
+      this.audioContext.resume();
+    }
 
     const oscillator = this.audioContext.createOscillator();
     const gainNode = this.audioContext.createGain();
@@ -692,6 +750,14 @@ export class TimelineMode {
   initializeAudioContext() {
     if (!this.audioContext) {
       this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      console.log('🎵 Audio context created for metronome');
+    }
+
+    // Resume audio context if suspended (browser autoplay policy)
+    if (this.audioContext.state === 'suspended') {
+      this.audioContext.resume().then(() => {
+        console.log('🎵 Audio context resumed');
+      });
     }
   }
 
@@ -876,13 +942,38 @@ export class TimelineMode {
       const xInStaff = totalX % this.staffWidth;
       const staffY = staffIndex * (this.staffHeight + this.rowSpacing);
 
+      // Calculate beat pulse for visual effect
+      let pulseAmount = 0;
+      if (this.recording && this.metronomeEnabled) {
+        const currentTime = Date.now();
+        const timeElapsed = (currentTime - this.startTime - this.pausedTime) / 1000.0;
+        const secondsPerBeat = 60 / this.bpm;
+        const beatProgress = (timeElapsed % secondsPerBeat) / secondsPerBeat;
+
+        // Create a sharp pulse at the start of each beat that decays quickly
+        // Pulse is strongest at beat (0) and decays over first 20% of the beat
+        if (beatProgress < 0.2) {
+          pulseAmount = 1 - (beatProgress / 0.2); // 1.0 at beat start, 0.0 at 20%
+        }
+      }
+
       // Red when recording, grey when stopped
+      // Add pulse effect to brightness and alpha
       if (this.recording) {
-        p5Instance.stroke(255, 50, 50, 200);
+        const baseBrightness = 50;
+        const pulseBrightness = baseBrightness + (pulseAmount * 205); // Pulses from 50 to 255
+        const baseAlpha = 200;
+        const pulseAlpha = baseAlpha + (pulseAmount * 55); // Pulses from 200 to 255
+        p5Instance.stroke(255, pulseBrightness, pulseBrightness, pulseAlpha);
       } else {
         p5Instance.stroke(100, 100, 100, 150);
       }
-      p5Instance.strokeWeight(3);
+
+      // Add pulse effect to line thickness
+      const baseWeight = 3;
+      const pulseWeight = baseWeight + (pulseAmount * 4); // Pulses from 3 to 7
+      p5Instance.strokeWeight(pulseWeight);
+
       const x = offsetX + xInStaff * scale;
       const y1 = offsetY + staffY * scale;
       const y2 = offsetY + (staffY + this.staffHeight) * scale;

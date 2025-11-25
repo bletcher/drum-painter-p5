@@ -58,6 +58,13 @@ export class GravityMode extends ModeBase {
     if (!col) return; // Safety check - should not happen but handle gracefully
 
     let shape = getDrumShape(note, midiDeviceId, drumSettings);
+
+    // Block complex shapes for performance (multi-stroke mode)
+    const FORBIDDEN_SHAPES = ['brushstroke', 'splatter', 'inkblot'];
+    if (FORBIDDEN_SHAPES.includes(shape)) {
+      shape = 'circle';
+    }
+
     let opacityMult = getDrumOpacity(note, midiDeviceId, drumSettings);
     let stroke = getDrumStroke(note, midiDeviceId, drumSettings);
     let rotation = getDrumRotation(note, midiDeviceId, drumSettings);

@@ -234,8 +234,23 @@ export class VideoRecorder {
         }
       }
 
-      this.notificationSystem.show(`Video recorded! (${durationSec}s, ${sizeMB}MB)`, 'success');
-      console.log('✓ Video recorded and stored');
+      // Automatically download the video file
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = url;
+      a.download = `drum-painter-${new Date().toISOString().replace(/[:.]/g, '-')}.webm`;
+      document.body.appendChild(a);
+      a.click();
+
+      // Clean up the temporary elements after a short delay
+      setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }, 100);
+
+      this.notificationSystem.show(`Video saved! (${durationSec}s, ${sizeMB}MB)`, 'success');
+      console.log('✓ Video recorded and downloaded');
       console.log(`  Duration: ${durationSec}s`);
       console.log(`  Size: ${sizeMB}MB`);
       console.log(`  Chunks: ${this.recordedChunks.length}`);

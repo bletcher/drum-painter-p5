@@ -70,7 +70,9 @@ export class TimelineControls {
     const metronomeCheckbox = document.getElementById('metronome-enabled');
     if (metronomeCheckbox) {
       metronomeCheckbox.addEventListener('change', (e) => {
+        console.log('🔘 Metronome checkbox changed to:', e.target.checked);
         this.timelineMode.metronomeEnabled = e.target.checked;
+        console.log('🔘 timelineMode.metronomeEnabled is now:', this.timelineMode.metronomeEnabled);
         if (e.target.checked) {
           this.timelineMode.initializeAudioContext();
           this.notificationSystem.show('Metronome enabled');
@@ -78,6 +80,8 @@ export class TimelineControls {
           this.notificationSystem.show('Metronome disabled');
         }
       });
+    } else {
+      console.warn('⚠️ Metronome checkbox element not found!');
     }
 
     // MIDI latency input
@@ -307,18 +311,30 @@ export class TimelineControls {
   }
 
   /**
-   * Handle end button click - show save/discard modal
+   * Handle end button click - show save/discard modal only if video is recording
    */
   handleEnd() {
-    // Pause the recording (don't stop yet)
-    if (this.timelineMode.recording) {
-      this.timelineMode.stopRecording();
-    }
+    // If video recording is active, show modal to save/discard video
+    if (this.videoRecorder && this.videoRecorder.isRecording) {
+      // Pause the recording (don't stop yet)
+      if (this.timelineMode.recording) {
+        this.timelineMode.stopRecording();
+      }
 
-    // Show the save/discard modal
-    const modal = document.getElementById('save-recording-backdrop');
-    if (modal) {
-      modal.style.display = 'flex';
+      // Show the save/discard modal
+      const modal = document.getElementById('save-recording-backdrop');
+      if (modal) {
+        modal.style.display = 'flex';
+      }
+    } else {
+      // No video recording - just end the session directly
+      if (this.timelineMode.recording) {
+        this.timelineMode.stopRecording();
+      }
+
+      this.notificationSystem.show('Recording ended');
+      this.updateButtonsUI();
+      this.updateStatusText();
     }
   }
 

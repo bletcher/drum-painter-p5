@@ -50,15 +50,32 @@ export class FibonacciMode extends ModeBase {
     let scaledVelSize = applyScalingCurve(velocity, settings?.sizeScaling || 'linear');
     let scaledVelOpacity = applyScalingCurve(velocity, settings?.opacityScaling || 'linear');
 
-    // Calculate position in spiral
-    let radius = Math.sqrt(strokeCount) * FIBONACCI_RADIUS_MULT;
+    // Calculate position in spiral with infinite looping
+    // Max radius based on shortest screen dimension to keep spiral on canvas
+    // Use 85% to add padding and prevent edge clipping
+    const maxRadius = Math.min(paintCanvas.width, paintCanvas.height) / 2 * 0.85;
+
+    // Calculate base radius that grows infinitely
+    // Reduced multiplier to make spiral start smaller and grow more gradually
+    const baseRadius = Math.sqrt(strokeCount) * (FIBONACCI_RADIUS_MULT * 0.7);
+
+    // Create triangle wave: spiral goes out, then reverses and comes back in
+    // This creates smooth in-out breathing motion instead of instant reset
+    const cycle = baseRadius / maxRadius; // How many full out-and-back cycles
+    const moduloCycle = cycle % 2;        // Value between 0-2 (repeating)
+
+    // Triangle wave: 0→1 (going out), 1→0 (coming back in)
+    let radius = moduloCycle <= 1
+      ? moduloCycle * maxRadius           // Going out: 0 → maxRadius
+      : (2 - moduloCycle) * maxRadius;    // Coming back: maxRadius → 0
+
     let x = paintCanvas.width / 2 + Math.cos(this.spiralAngle) * radius;
     let y = paintCanvas.height / 2 + Math.sin(this.spiralAngle) * radius;
     let size = (this.baseSize + scaledVelSize * this.velocityMult) * globalSizeMultiplier * getDrumSize(note, midiDeviceId, drumSettings);
 
-    // Keep within bounds
-    x = constrain(x, 0, paintCanvas.width);
-    y = constrain(y, 0, paintCanvas.height);
+    // No need to constrain - spiral now stays within bounds naturally
+    // x = constrain(x, 0, paintCanvas.width);
+    // y = constrain(y, 0, paintCanvas.height);
 
     // Get visual properties
     let col = getDrumColor(note, midiDeviceId, scaledVelOpacity, drumSettings);

@@ -18,7 +18,6 @@ import { AudioVideoMerger } from './utils/AudioVideoMerger.js';
 import { DebugPanel } from './ui/DebugPanel.js';
 import { findDrumByMidiNote } from './utils/drumHelpers.js';
 import { applyAllThemes } from './utils/applyTheme.js';
-import { projectorSimulator } from './display/ProjectorSimulator.js';
 import { visualStyleManager } from './canvas/VisualStyleManager.js';
 import { getBrushTextureCache } from './canvas/BrushTextureCache.js';
 
@@ -82,7 +81,8 @@ window.setup = async function() {
   paintCanvas.background(BG_COLORS[currentBgColor]);
   paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
 
-  // Expose paintCanvas globally
+  // Expose canvases globally
+  window.displayCanvas = canvas;
   window.paintCanvas = paintCanvas;
   window.currentBgColor = currentBgColor;
   window.BLEND_MODES = BLEND_MODES;
@@ -117,8 +117,8 @@ window.setup = async function() {
   // Initialize MIDI mapping panel
   midiMappingPanel = new MidiMappingPanel(drumSettings, midiManager, notificationSystem, updateActiveDrumIndicator);
 
-  // Initialize video recorder first (needed by timeline controls)
-  videoRecorder = new VideoRecorder(paintCanvas, notificationSystem);
+  // Initialize video recorder with display canvas (captures grid/overlays)
+  videoRecorder = new VideoRecorder(window.displayCanvas, notificationSystem);
   setupVideoRecorderUI();
 
   // Initialize audio/video merger
@@ -266,15 +266,23 @@ window.setup = async function() {
   console.log('🔄 Attempting to load saved settings...');
   await loadSavedSettings();
   console.log('Current drumSettings after initialization:', drumSettings);
+  console.log('🔍 After loadSavedSettings - chronicleMode.metronomeEnabled:', chronicleMode.metronomeEnabled);
 
   // Initialize UI controls
   initializeUI();
+  console.log('🔍 After initializeUI - chronicleMode.metronomeEnabled:', chronicleMode.metronomeEnabled);
 
   // Activate the current mode (important for initializing mode-specific state)
   getCurrentMode().onActivate({ paintCanvas });
 
   // Rebuild customization panel to reflect loaded settings (including custom drums)
   customizationPanel.build();
+
+  // Sync timeline controls UI with loaded settings (including metronome checkbox)
+  if (timelineControls) {
+    console.log('🔄 Syncing timeline controls UI with loaded settings...');
+    timelineControls.syncUI();
+  }
 
   console.log('🎨 Drum Painter - Modular Version');
   console.log('📦 Current mode:', currentModeType, '- Style/Layout:', currentModeType === 'freeform' ? freeformMode.style : chronicleMode.layout);
@@ -481,81 +489,6 @@ function initializeUI() {
     });
   }
 
-  // ===== PROJECTOR MODE CONTROLS =====
-  const projectorEnabled = document.getElementById('projector-enabled');
-  const projectorProfile = document.getElementById('projector-profile');
-  const projectorPerformance = document.getElementById('projector-performance');
-  const projectorAmbient = document.getElementById('projector-ambient');
-  const projectorAmbientVal = document.getElementById('projector-ambient-val');
-  const projectorShowFPS = document.getElementById('projector-show-fps');
-  const projectorOpenBtn = document.getElementById('projector-open-btn');
-
-  // Initialize projector simulator
-  projectorSimulator.init();
-
-  // Enable/Disable projector mode
-  if (projectorEnabled) {
-    projectorEnabled.addEventListener('change', (e) => {
-      const enabled = e.target.checked;
-      projectorSimulator.updateConfig({ enabled });
-
-      // Enable/disable the open button
-      if (projectorOpenBtn) {
-        projectorOpenBtn.disabled = !enabled;
-        projectorOpenBtn.style.opacity = enabled ? '1' : '0.5';
-        projectorOpenBtn.style.cursor = enabled ? 'pointer' : 'not-allowed';
-      }
-
-      notificationSystem.show(enabled ? '🎥 Projector mode enabled' : 'Projector mode disabled');
-    });
-  }
-
-  // Projector profile selector
-  if (projectorProfile) {
-    projectorProfile.addEventListener('change', (e) => {
-      const profile = e.target.value;
-      projectorSimulator.updateConfig({ profile });
-      notificationSystem.show(`Projector: ${e.target.options[e.target.selectedIndex].text}`);
-    });
-  }
-
-  // Performance tier selector
-  if (projectorPerformance) {
-    projectorPerformance.addEventListener('change', (e) => {
-      const performanceTier = e.target.value;
-      projectorSimulator.updateConfig({ performanceTier });
-      notificationSystem.show(`Performance: ${e.target.options[e.target.selectedIndex].text}`);
-    });
-  }
-
-  // Ambient light slider
-  if (projectorAmbient && projectorAmbientVal) {
-    projectorAmbient.addEventListener('input', (e) => {
-      const level = parseInt(e.target.value);
-      projectorAmbientVal.textContent = `${level}%`;
-      projectorSimulator.updateConfig({ ambientLightLevel: level });
-    });
-  }
-
-  // FPS counter toggle
-  if (projectorShowFPS) {
-    projectorShowFPS.addEventListener('change', (e) => {
-      const show = e.target.checked;
-      projectorSimulator.updateConfig({ showFPSCounter: show });
-    });
-  }
-
-  // Open projector window button
-  if (projectorOpenBtn) {
-    projectorOpenBtn.addEventListener('click', () => {
-      if (projectorSimulator.isEnabled()) {
-        projectorSimulator.openPopupWindow();
-      } else {
-        notificationSystem.show('⚠️ Enable projector mode first');
-      }
-    });
-  }
-
   // Customize button
   const customizeBtn = document.getElementById('customize-btn');
   if (customizeBtn) {
@@ -587,6 +520,62 @@ function initializeUI() {
   if (debugBtn) {
     debugBtn.addEventListener('click', () => {
       debugPanel.toggle();
+    });
+  }
+
+  // Quick Action buttons
+  const shortcutToggleUI = document.getElementById('shortcut-toggle-ui');
+  if (shortcutToggleUI) {
+    shortcutToggleUI.addEventListener('click', () => {
+      showUI = !showUI;
+      controlsEl.style.display = showUI ? 'block' : 'none';
+    });
+  }
+
+  const shortcutFullscreen = document.getElementById('shortcut-fullscreen');
+  if (shortcutFullscreen) {
+    shortcutFullscreen.addEventListener('click', () => {
+      let fs = fullscreen();
+      fullscreen(!fs);
+    });
+  }
+
+  const shortcutClear = document.getElementById('shortcut-clear');
+  if (shortcutClear) {
+    shortcutClear.addEventListener('click', () => {
+      if (confirm('Clear the entire canvas?')) {
+        paintCanvas.background(BG_COLORS[currentBgColor]);
+        getCurrentMode().clear();
+        notificationSystem.show('Canvas cleared');
+      }
+    });
+  }
+
+  const shortcutSaveImage = document.getElementById('shortcut-save-image');
+  if (shortcutSaveImage) {
+    shortcutSaveImage.addEventListener('click', () => {
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+      const filename = `drum-painter-${timestamp}.png`;
+      paintCanvas.save(filename);
+      notificationSystem.show(`Image saved: ${filename}`);
+    });
+  }
+
+  const shortcutUndo = document.getElementById('shortcut-undo');
+  if (shortcutUndo) {
+    shortcutUndo.addEventListener('click', () => {
+      if (window.historyManager && window.historyManager.undo()) {
+        notificationSystem.show('Undo');
+      }
+    });
+  }
+
+  const shortcutRedo = document.getElementById('shortcut-redo');
+  if (shortcutRedo) {
+    shortcutRedo.addEventListener('click', () => {
+      if (window.historyManager && window.historyManager.redo()) {
+        notificationSystem.show('Redo');
+      }
     });
   }
 
@@ -652,8 +641,7 @@ function initializeUI() {
           warmupMeasures: chronicleMode.warmupMeasures,
           measuresPerStaffPreference: chronicleMode.measuresPerStaffPreference
         },
-        bankModeSettings: midiManager.getState(),
-        projectorSettings: projectorSimulator.getState()
+        bankModeSettings: midiManager.getState()
       };
 
       console.log('Saving settings:', JSON.stringify(appState.drumSettings, null, 2));
@@ -727,8 +715,7 @@ function initializeUI() {
           warmupMeasures: chronicleMode.warmupMeasures,
           measuresPerStaffPreference: chronicleMode.measuresPerStaffPreference
         },
-        bankModeSettings: midiManager.getState(),
-        projectorSettings: projectorSimulator.getState()
+        bankModeSettings: midiManager.getState()
       };
       if (stateManager.exportToFile(appState)) {
         notificationSystem.show('Settings exported!');
@@ -1814,6 +1801,13 @@ window.keyPressed = function() {
     // Ensure window.drumSettings is synced before saving
     window.drumSettings = drumSettings;
 
+    // Debug: Check checkbox state vs chronicleMode value
+    const metronomeCheckbox = document.getElementById('metronome-enabled');
+    console.log('💾 === SAVE DEBUG ===');
+    console.log('💾 Checkbox checked:', metronomeCheckbox?.checked);
+    console.log('💾 chronicleMode.metronomeEnabled:', chronicleMode.metronomeEnabled);
+    console.log('💾 Are they the same?', metronomeCheckbox?.checked === chronicleMode.metronomeEnabled);
+
     const appState = {
       drumSettings,
       globalSizeMultiplier,
@@ -1841,6 +1835,7 @@ window.keyPressed = function() {
       },
       bankModeSettings: midiManager.getState()
     };
+    console.log('💾 Saving metronomeEnabled value:', appState.timelineSettings.metronomeEnabled);
     if (stateManager.saveAsDefault(appState)) {
       console.log('✓ Settings saved as default');
       notificationSystem.show('Settings saved');
@@ -2127,6 +2122,12 @@ async function loadSavedSettings() {
     console.log(`✓ Loaded drum kit config: ${DRUM_KIT_CONFIG.length} drums`);
   }
 
+  // Apply bank mode settings FIRST (before orphan cleanup that might auto-save)
+  if (savedState.bankModeSettings && midiManager) {
+    midiManager.loadState(savedState.bankModeSettings);
+    console.log('✓ Loaded bank mode settings (early)');
+  }
+
   // Apply drum settings (merge instead of replace to maintain references)
   if (savedState.drumSettings) {
     console.log('Loading drum settings from storage:', JSON.stringify(savedState.drumSettings, null, 2));
@@ -2152,6 +2153,65 @@ async function loadSavedSettings() {
     window.drumSettings = drumSettings;
     console.log('✓ Loaded drum settings');
     console.log('Current drum settings after load:', JSON.stringify(drumSettings, null, 2));
+  }
+
+  // Load spiral settings BEFORE orphan cleanup (so auto-save has correct values)
+  if (savedState.spiralSettings && chronicleMode) {
+    if (savedState.spiralSettings.tightness !== undefined) {
+      chronicleMode.spiralSettings.tightness = savedState.spiralSettings.tightness;
+    }
+    if (savedState.spiralSettings.rotationsPerMinute !== undefined) {
+      chronicleMode.spiralSettings.rotationsPerMinute = savedState.spiralSettings.rotationsPerMinute;
+    }
+    if (savedState.spiralSettings.startRadius !== undefined) {
+      chronicleMode.spiralSettings.startRadius = savedState.spiralSettings.startRadius;
+    }
+    if (savedState.spiralSettings.syncToBPM !== undefined) {
+      chronicleMode.spiralSettings.syncToBPM = savedState.spiralSettings.syncToBPM;
+    }
+    if (savedState.spiralSettings.pattern !== undefined) {
+      chronicleMode.spiralSettings.pattern = savedState.spiralSettings.pattern;
+    }
+    console.log('✓ Loaded spiral settings (early)');
+  }
+
+  // Load timeline settings BEFORE orphan cleanup (so auto-save has correct values)
+  if (savedState.timelineSettings && chronicleMode) {
+    if (savedState.timelineSettings.bpm !== undefined) {
+      chronicleMode.bpm = savedState.timelineSettings.bpm;
+    }
+    if (savedState.timelineSettings.subdivision !== undefined) {
+      chronicleMode.subdivision = savedState.timelineSettings.subdivision;
+    }
+    if (savedState.timelineSettings.beatsPerMeasure !== undefined) {
+      chronicleMode.beatsPerMeasure = savedState.timelineSettings.beatsPerMeasure;
+    }
+    if (savedState.timelineSettings.metronomeEnabled !== undefined) {
+      console.log('📦 Loading metronomeEnabled from savedState:', savedState.timelineSettings.metronomeEnabled);
+      chronicleMode.metronomeEnabled = savedState.timelineSettings.metronomeEnabled;
+      console.log('📦 chronicleMode.metronomeEnabled is now:', chronicleMode.metronomeEnabled);
+    } else {
+      console.log('⚠️ No metronomeEnabled in savedState.timelineSettings');
+    }
+    if (savedState.timelineSettings.midiLatencyMs !== undefined) {
+      chronicleMode.midiLatencyMs = savedState.timelineSettings.midiLatencyMs;
+    }
+    if (savedState.timelineSettings.showGrid !== undefined) {
+      chronicleMode.showGrid = savedState.timelineSettings.showGrid;
+    }
+    if (savedState.timelineSettings.rowSpacing !== undefined) {
+      chronicleMode.rowSpacing = savedState.timelineSettings.rowSpacing;
+    }
+    if (savedState.timelineSettings.warmupMeasures !== undefined) {
+      chronicleMode.warmupMeasures = savedState.timelineSettings.warmupMeasures;
+    }
+    if (savedState.timelineSettings.measuresPerStaffPreference !== undefined) {
+      chronicleMode.measuresPerStaffPreference = savedState.timelineSettings.measuresPerStaffPreference;
+    }
+    if (savedState.timelineSettings.layout !== undefined) {
+      chronicleMode.layout = savedState.timelineSettings.layout;
+    }
+    console.log('✓ Loaded timeline settings (early)');
   }
 
   // Clean up orphaned drums (two-way cleanup)
@@ -2243,42 +2303,9 @@ async function loadSavedSettings() {
     console.log('✓ Loaded global settings');
   }
 
-  // Apply bank mode settings
+  // Update active drum indicator (bank mode settings already loaded earlier)
   if (savedState.bankModeSettings && midiManager) {
-    midiManager.loadState(savedState.bankModeSettings);
-    console.log('✓ Loaded bank mode settings');
     updateActiveDrumIndicator(); // Update indicator if bank mode was saved as enabled
-  }
-
-  // Load projector settings (optional, v2.1+)
-  if (savedState.projectorSettings && projectorSimulator) {
-    projectorSimulator.loadState(savedState.projectorSettings);
-
-    // Update UI controls to match loaded state
-    const projectorEnabled = document.getElementById('projector-enabled');
-    const projectorProfile = document.getElementById('projector-profile');
-    const projectorPerformance = document.getElementById('projector-performance');
-    const projectorAmbient = document.getElementById('projector-ambient');
-    const projectorAmbientVal = document.getElementById('projector-ambient-val');
-    const projectorShowFPS = document.getElementById('projector-show-fps');
-    const projectorOpenBtn = document.getElementById('projector-open-btn');
-
-    if (projectorEnabled) projectorEnabled.checked = savedState.projectorSettings.enabled || false;
-    if (projectorProfile) projectorProfile.value = savedState.projectorSettings.profile || 'medium-lumens';
-    if (projectorPerformance) projectorPerformance.value = savedState.projectorSettings.performanceTier || 'balanced';
-    if (projectorAmbient) projectorAmbient.value = savedState.projectorSettings.ambientLightLevel || 0;
-    if (projectorAmbientVal) projectorAmbientVal.textContent = `${savedState.projectorSettings.ambientLightLevel || 0}%`;
-    if (projectorShowFPS) projectorShowFPS.checked = savedState.projectorSettings.showFPSCounter || false;
-
-    // Update open button state
-    if (projectorOpenBtn) {
-      const enabled = savedState.projectorSettings.enabled || false;
-      projectorOpenBtn.disabled = !enabled;
-      projectorOpenBtn.style.opacity = enabled ? '1' : '0.5';
-      projectorOpenBtn.style.cursor = enabled ? 'pointer' : 'not-allowed';
-    }
-
-    console.log('✓ Loaded projector settings');
   }
 
   // Load paint mode (new two-tier structure)
@@ -2305,71 +2332,32 @@ async function loadSavedSettings() {
     console.log('✓ Loaded paint mode (legacy):', savedState.currentMode);
   }
 
-  // Load spiral settings
+  // Update spiral UI sliders/dropdowns (settings already loaded earlier)
   if (savedState.spiralSettings && chronicleMode) {
     if (savedState.spiralSettings.tightness !== undefined) {
-      chronicleMode.spiralSettings.tightness = savedState.spiralSettings.tightness;
       const spiralTightnessSlider = document.getElementById('spiral-tightness');
       const spiralTightnessVal = document.getElementById('spiral-tightness-val');
       if (spiralTightnessSlider) spiralTightnessSlider.value = savedState.spiralSettings.tightness;
       if (spiralTightnessVal) spiralTightnessVal.textContent = savedState.spiralSettings.tightness;
     }
     if (savedState.spiralSettings.rotationsPerMinute !== undefined) {
-      chronicleMode.spiralSettings.rotationsPerMinute = savedState.spiralSettings.rotationsPerMinute;
       const spiralSpeedSlider = document.getElementById('spiral-speed');
       const spiralSpeedVal = document.getElementById('spiral-speed-val');
       if (spiralSpeedSlider) spiralSpeedSlider.value = savedState.spiralSettings.rotationsPerMinute;
       if (spiralSpeedVal) spiralSpeedVal.textContent = savedState.spiralSettings.rotationsPerMinute;
     }
-    if (savedState.spiralSettings.startRadius !== undefined) {
-      chronicleMode.spiralSettings.startRadius = savedState.spiralSettings.startRadius;
-    }
-    if (savedState.spiralSettings.syncToBPM !== undefined) {
-      chronicleMode.spiralSettings.syncToBPM = savedState.spiralSettings.syncToBPM;
-    }
     if (savedState.spiralSettings.pattern !== undefined) {
-      chronicleMode.spiralSettings.pattern = savedState.spiralSettings.pattern;
       const spiralPatternSelect = document.getElementById('spiral-pattern');
       if (spiralPatternSelect) spiralPatternSelect.value = savedState.spiralSettings.pattern;
     }
-    console.log('✓ Loaded spiral settings');
   }
 
-  // Load timeline settings
+  // Update timeline UI dropdowns (settings already loaded earlier)
   if (savedState.timelineSettings && chronicleMode) {
-    if (savedState.timelineSettings.bpm !== undefined) {
-      chronicleMode.bpm = savedState.timelineSettings.bpm;
-    }
-    if (savedState.timelineSettings.subdivision !== undefined) {
-      chronicleMode.subdivision = savedState.timelineSettings.subdivision;
-    }
-    if (savedState.timelineSettings.beatsPerMeasure !== undefined) {
-      chronicleMode.beatsPerMeasure = savedState.timelineSettings.beatsPerMeasure;
-    }
-    if (savedState.timelineSettings.metronomeEnabled !== undefined) {
-      chronicleMode.metronomeEnabled = savedState.timelineSettings.metronomeEnabled;
-    }
-    if (savedState.timelineSettings.midiLatencyMs !== undefined) {
-      chronicleMode.midiLatencyMs = savedState.timelineSettings.midiLatencyMs;
-    }
-    if (savedState.timelineSettings.showGrid !== undefined) {
-      chronicleMode.showGrid = savedState.timelineSettings.showGrid;
-    }
-    if (savedState.timelineSettings.rowSpacing !== undefined) {
-      chronicleMode.rowSpacing = savedState.timelineSettings.rowSpacing;
-    }
-    if (savedState.timelineSettings.warmupMeasures !== undefined) {
-      chronicleMode.warmupMeasures = savedState.timelineSettings.warmupMeasures;
-    }
-    if (savedState.timelineSettings.measuresPerStaffPreference !== undefined) {
-      chronicleMode.measuresPerStaffPreference = savedState.timelineSettings.measuresPerStaffPreference;
-    }
     if (savedState.timelineSettings.layout !== undefined) {
-      chronicleMode.layout = savedState.timelineSettings.layout;
       const timelineLayoutSelect = document.getElementById('timeline-layout');
       if (timelineLayoutSelect) timelineLayoutSelect.value = savedState.timelineSettings.layout;
     }
-    console.log('✓ Loaded timeline settings');
   }
 
   console.log(`📁 Loaded settings from ${savedState.timestamp}`);

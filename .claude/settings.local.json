@@ -17,7 +17,14 @@
       "Bash(cat:*)",
       "WebFetch(domain:www.nicepng.com)",
       "WebFetch(domain:raw.githubusercontent.com)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(nul)",
+      "Bash(if [ -f nul ])",
+      "Bash(then echo \"nul is a file\")",
+      "Bash(elif [ -d nul ])",
+      "Bash(then echo \"nul is a directory\")",
+      "Bash(else echo \"nul does not exist\")",
+      "Bash(fi)"
     ],
     "deny": [],
     "ask": []

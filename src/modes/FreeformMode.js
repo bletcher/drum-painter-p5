@@ -1,13 +1,11 @@
 /**
  * Freeform Mode
- * Container for various visual/artistic paint styles
- * Delegates to selected style: Classic, Fibonacci, Radial, Gravity, Organic, Dendritic, Lightning
+ * Container for random/unpredictable paint styles
+ * Delegates to selected style: Classic (Random), Gravity, Organic, Dendritic, Lightning
  */
 
 import { ModeBase } from './ModeBase.js';
 import { ClassicMode } from './ClassicMode.js';
-import { FibonacciMode } from './FibonacciMode.js';
-import { RadialMode } from './RadialMode.js';
 import { GravityMode } from './GravityMode.js';
 import { OrganicMode } from './OrganicMode.js';
 import { DendriticMode } from './DendriticMode.js';
@@ -18,13 +16,11 @@ export class FreeformMode extends ModeBase {
     super('Freeform', 40, 80);
 
     // Current style selection
-    this.style = 'classic'; // classic, fibonacci, radial, gravity, organic, dendritic, lightning
+    this.style = 'classic'; // classic, gravity, organic, dendritic, lightning
 
-    // Initialize all style modes
+    // Initialize all style modes (random/unpredictable patterns)
     this.styles = {
       classic: new ClassicMode(),
-      fibonacci: new FibonacciMode(),
-      radial: new RadialMode(),
       gravity: new GravityMode(),
       organic: new OrganicMode(),
       dendritic: new DendriticMode(),
