@@ -343,7 +343,7 @@ export class MidiMappingPanel {
       const assignmentDisplay = document.createElement('div');
       assignmentDisplay.style.cssText = 'display: flex; flex-direction: column; gap: 2px; font-size: 10px; margin-right: 5px;';
 
-      if (assignment.cc !== null) {
+      if (assignment && assignment.cc !== null) {
         const rangeInfo = (assignment.ccMin === 0 && assignment.ccMax === 127) ? '' : ` (${assignment.ccMin}-${assignment.ccMax})`;
         const ccSpan = document.createElement('span');
         ccSpan.textContent = `CC${assignment.cc}${rangeInfo}`;
@@ -383,13 +383,15 @@ export class MidiMappingPanel {
       removeBtn.textContent = '×';
       removeBtn.title = 'Remove';
       removeBtn.style.cssText = `padding: 2px 6px; font-size: ${TYPOGRAPHY.fontSize.sm}; background: ${COLORS.error.main}; color: white; border: none; border-radius: ${RADIUS.sm}; cursor: pointer;`;
-      removeBtn.style.display = assignment.cc !== null ? 'inline-block' : 'none';
+      removeBtn.style.display = (assignment && assignment.cc !== null) ? 'inline-block' : 'none';
       removeBtn.onclick = () => {
-        this.midiManager.globalVariableAssignments[variable.key].cc = null;
-        this.midiManager.globalVariableAssignments[variable.key].ccMin = 0;
-        this.midiManager.globalVariableAssignments[variable.key].ccMax = 127;
-        this.midiManager.globalVariableAssignments[variable.key].deviceId = null;
-        this.build();
+        if (this.midiManager.globalVariableAssignments[variable.key]) {
+          this.midiManager.globalVariableAssignments[variable.key].cc = null;
+          this.midiManager.globalVariableAssignments[variable.key].ccMin = 0;
+          this.midiManager.globalVariableAssignments[variable.key].ccMax = 127;
+          this.midiManager.globalVariableAssignments[variable.key].deviceId = null;
+          this.build();
+        }
       };
 
       row.appendChild(label);

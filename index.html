@@ -194,10 +194,14 @@
     <div style="margin: 10px 0;">
       <label style="display: block; margin-bottom: 8px; font-weight: bold; font-size: 11px;">Paint Mode:</label>
 
-      <!-- Mode Type Selection (Freeform / Chronicle) -->
-      <div style="display: flex; gap: 15px; margin-bottom: 8px;">
+      <!-- Mode Type Selection (Staff / Freeform / Chronicle) -->
+      <div style="display: flex; gap: 12px; margin-bottom: 8px;">
         <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; font-size: 11px;">
-          <input type="radio" name="mode-type" id="mode-type-freeform" value="freeform" checked>
+          <input type="radio" name="mode-type" id="mode-type-staff" value="staff" checked>
+          <span>Staff</span>
+        </label>
+        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; font-size: 11px;">
+          <input type="radio" name="mode-type" id="mode-type-freeform" value="freeform">
           <span>Freeform</span>
         </label>
         <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; font-size: 11px;">
@@ -206,8 +210,23 @@
         </label>
       </div>
 
+      <!-- Staff Layout Selector (shown when Staff is selected) -->
+      <div id="staff-layout-selector" data-tooltip="Time-based recording modes with timeline" style="display: block;">
+        <select id="staff-layout-select" style="
+          width: 100%;
+          padding: 6px;
+          border: 1px solid #ddd;
+          border-radius: 4px;
+          font-size: 11px;
+          background: white;
+        ">
+          <option value="staff" selected>Staff Notation — Musical staff timeline</option>
+          <option value="spiral">Spiral Timeline — Rotating outward</option>
+        </select>
+      </div>
+
       <!-- Freeform Style Selector (shown when Freeform is selected) -->
-      <div id="freeform-style-selector" data-tooltip="Random/unpredictable paint styles" style="display: block;">
+      <div id="freeform-style-selector" data-tooltip="Random/unpredictable paint styles" style="display: none;">
         <select id="freeform-style-select" style="
           width: 100%;
           padding: 6px;
@@ -216,7 +235,7 @@
           font-size: 11px;
           background: white;
         ">
-          <option value="classic">Random — Classic pointillism</option>
+          <option value="classic">Classic — Random pointillism</option>
           <option value="gravity">Gravity — Falling physics simulation</option>
           <option value="organic">Organic — Clumped growth patterns</option>
           <option value="dendritic">Dendritic — River-like spreading</option>
@@ -225,7 +244,7 @@
       </div>
 
       <!-- Chronicle Layout Selector (shown when Chronicle is selected) -->
-      <div id="chronicle-layout-selector" data-tooltip="Time-based/sequential paint modes" style="display: none;">
+      <div id="chronicle-layout-selector" data-tooltip="Point-based sequential patterns" style="display: none;">
         <select id="chronicle-layout-select" style="
           width: 100%;
           padding: 6px;
@@ -234,13 +253,11 @@
           font-size: 11px;
           background: white;
         ">
-          <option value="staff" selected>Staff — Musical notation timeline</option>
-          <option value="spiral">Spiral — Rotating timeline</option>
-          <option value="fibonacci">Fibonacci — Golden ratio spiral</option>
+          <option value="fibonacci" selected>Fibonacci — Golden ratio spiral</option>
           <option value="radial">Radial — Radiating from center</option>
-          <option value="rings">Rings/Radial Spokes</option>
-          <option value="petals">Flower Petals</option>
-          <option value="polygon">Polygon</option>
+          <option value="rings">Rings — Radial spokes pattern</option>
+          <option value="petals">Petals — Flower arrangement</option>
+          <option value="polygon">Polygon — Geometric shapes</option>
         </select>
       </div>
     </div>
@@ -1520,14 +1537,14 @@
           <h4 style="color: #333; margin-top: 20px;">3️⃣ Start Playing!</h4>
           <ul style="line-height: 1.8; color: #444;">
             <li><strong>Play your drums</strong> - each hit paints on the canvas</li>
-            <li><strong>Try different paint modes</strong> - Choose Freeform or Chronicle, then select a style/layout</li>
+            <li><strong>Try different paint modes</strong> - Choose Staff (time-based), Freeform (random), or Chronicle (point-based), then select a style/layout</li>
             <li><strong>Press SPACE</strong> to start/stop video recording</li>
             <li><strong>Press S</strong> to save an image</li>
             <li><strong>Press BACKSPACE</strong> to clear and start fresh</li>
           </ul>
 
           <div style="background: #fff3cd; padding: 12px; border-radius: 6px; margin-top: 20px; font-size: 13px;">
-            <strong>💡 Tip:</strong> Start with <em>Freeform → Classic Pointillism</em> mode and experiment with blend modes to see beautiful color interactions! Try <em>Dendritic Spreading</em> for river-like patterns, <em>Lightning</em> for electric discharge effects, or the <em>Ink Blot</em> shape for organic watercolor-style bleeding.
+            <strong>💡 Tip:</strong> Start with <em>Freeform → Classic Pointillism</em> mode and experiment with blend modes to see beautiful color interactions! Try <em>Dendritic Spreading</em> for river-like patterns, <em>Lightning</em> for electric discharge effects, or <em>Chronicle → Fibonacci Spiral</em> for geometric growth patterns.
           </div>
         </div>
 
@@ -1546,28 +1563,31 @@
 
           <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Paint Modes</h4>
           <p style="color: #444; line-height: 1.7;">
-            <strong>Two-Tier System:</strong> Choose main mode type (Freeform or Chronicle) with radio buttons, then select style/layout from dropdown.
+            <strong>Three-Group System:</strong> Choose main mode type (Staff, Freeform, or Chronicle) with radio buttons, then select style/layout from dropdown.
           </p>
 
-          <p style="color: #667eea; margin-top: 16px; margin-bottom: 8px;"><strong>Freeform Mode (Immediate visual response):</strong></p>
+          <p style="color: #667eea; margin-top: 16px; margin-bottom: 8px;"><strong>Staff Mode (Time-based recording):</strong></p>
           <ul style="line-height: 1.8; color: #444;">
-            <li><strong>Classic Pointillism:</strong> Random placement, pointillist style</li>
-            <li><strong>Fibonacci Spiral:</strong> Golden ratio spiral emanating from center</li>
-            <li><strong>Radial Symmetry:</strong> 8-fold mirrored radial patterns</li>
-            <li><strong>Gravity Field:</strong> Falling dots with velocity-dependent drift and fading strokes</li>
-            <li><strong>Organic Growth:</strong> Natural clustering around migrating seed points</li>
-            <li><strong>Dendritic Spreading:</strong> Realistic river drainage networks with hierarchical branching, meandering, and convergent flow based on Horton's Laws</li>
-            <li><strong>Lightning:</strong> Cloud-to-ground electrical discharge with fractal branching, stepped leader physics, and electric corona glow</li>
+            <li><strong>Staff Notation:</strong> Traditional horizontal DAW-style sequencer with musical grid. Requires pressing Start button.</li>
+            <li><strong>Spiral Timeline:</strong> Archimedean spiral synchronized to beats. One rotation per measure, matching visual metronome.</li>
           </ul>
 
-          <p style="color: #667eea; margin-top: 16px; margin-bottom: 8px;"><strong>Chronicle Mode (Time-based recording):</strong></p>
+          <p style="color: #667eea; margin-top: 16px; margin-bottom: 8px;"><strong>Freeform Mode (Random placement):</strong></p>
           <ul style="line-height: 1.8; color: #444;">
-            <li><strong>Staff Notation:</strong> Traditional horizontal DAW-style sequencer with musical grid</li>
-            <li><strong>Concentric Rings:</strong> Time flows in circles, each drum on its own ring</li>
-            <li><strong>Spiral:</strong> Archimedean spiral expanding from center, adjustable tightness and rotation speed</li>
-            <li><strong>Radial Spokes:</strong> Drums on spokes radiating from center, distance = time</li>
-            <li><strong>Flower Petals:</strong> Organic petal curves with sinusoidal oscillation</li>
-            <li><strong>Expanding Polygon:</strong> Geometric polygon growth with drums at vertices</li>
+            <li><strong>Classic Pointillism:</strong> Random placement, pointillist style. Supports all shapes.</li>
+            <li><strong>Gravity Field:</strong> Falling dots with velocity-dependent drift and fading strokes. Complex shapes auto-convert to circles for performance.</li>
+            <li><strong>Organic Growth:</strong> Natural clustering around migrating seed points. Supports all shapes.</li>
+            <li><strong>Dendritic Spreading:</strong> Realistic river drainage networks with hierarchical branching. Complex shapes auto-convert to circles.</li>
+            <li><strong>Lightning:</strong> Cloud-to-ground electrical discharge with fractal branching. Complex shapes auto-convert to circles.</li>
+          </ul>
+
+          <p style="color: #667eea; margin-top: 16px; margin-bottom: 8px;"><strong>Chronicle Mode (Point-based sequential):</strong></p>
+          <ul style="line-height: 1.8; color: #444;">
+            <li><strong>Fibonacci Spiral:</strong> Golden ratio spiral emanating from center, expanding with each hit</li>
+            <li><strong>Radial Symmetry:</strong> 8-fold mirrored radial patterns, perfect for mandalas</li>
+            <li><strong>Rings:</strong> Drums on spokes radiating from center, distance increases with each hit</li>
+            <li><strong>Petals:</strong> Organic petal curves with sinusoidal oscillation</li>
+            <li><strong>Polygon:</strong> Spiraling geometric pattern - polygon vertices rotate and pulse as they expand, creating hypnotic spiral-polygon hybrid</li>
           </ul>
 
           <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Blend Modes</h4>
@@ -1590,13 +1610,13 @@
             Click <strong>Customize Drums</strong> to access per-drum settings:
           </p>
           <ul style="line-height: 1.8; color: #444;">
-            <li><strong>Color:</strong> Base color for this drum</li>
-            <li><strong>Size:</strong> Size multiplier (0.3x to 3.0x)</li>
+            <li><strong>Color:</strong> Base color for this drum (HSL or hex)</li>
+            <li><strong>Size:</strong> Size multiplier (30% to 300%)</li>
             <li><strong>Opacity:</strong> Transparency (10% to 100%)</li>
             <li><strong>Shape:</strong> Brushstroke, Splatter, Ink Blot, Circle, Square, Triangle, Hexagon, Star, Diamond</li>
-            <li><strong>Hue Variation:</strong> Random color shift for organic feel</li>
+            <li><strong>Hue Variation:</strong> Directional color shift (0° to 60°) - harder hits shift more toward max with velocity scaling</li>
             <li><strong>Rotation:</strong> Angle of shapes (0-360°)</li>
-            <li><strong>Stroke:</strong> Add outline with custom weight and color</li>
+            <li><strong>Stroke:</strong> Enable/disable outline with custom weight (1-10px) and color</li>
           </ul>
 
           <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Recording & Export</h4>
@@ -1604,7 +1624,8 @@
             <li><strong>Video Recording:</strong> Press SPACE or click recording button. Choose quality first. Recordings appear in "Recent Recordings" list where you can download, merge with audio, or delete them.</li>
             <li><strong>Audio Merge:</strong> Click "Merge Audio" on any recording to upload an audio file (MP3, WAV, etc.). FFmpeg.wasm processes the merge entirely in your browser and downloads the combined MP4 automatically.</li>
             <li><strong>Image Save:</strong> Press S to save current canvas as PNG</li>
-            <li><strong>Chronicle Recording:</strong> Use Chronicle mode (any layout) with Start button. Check "Record video with timeline" to capture session to file. Try different layouts for varied visual styles.</li>
+            <li><strong>Staff Mode Recording:</strong> Press Start button to begin timeline. Check "Record video with timeline" to capture session. Staff and Spiral layouts are time-based and require active recording.</li>
+            <li><strong>Chronicle Mode:</strong> Point-based layouts (Fibonacci, Radial, Rings, Petals, Polygon) paint immediately without needing to start timeline - perfect for testing in debug panel.</li>
           </ul>
 
           <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Projects & Settings Export</h4>
@@ -1661,21 +1682,21 @@
             <li><strong>Pitch Bend Support:</strong> Pitch wheel mapped as pseudo-CC (1001-1016 for channels 1-16)</li>
           </ul>
 
-          <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Chronicle Mode Advanced</h4>
+          <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Staff Mode Advanced (Time-Based Recording)</h4>
           <p style="color: #444; line-height: 1.7; font-size: 14px;">
-            Time-based recording mode with 6 different layout options. All layouts share these features:
+            Staff mode has 2 time-based layouts (Staff Notation and Spiral Timeline). Both require pressing Start button and share these features:
           </p>
           <ul style="line-height: 1.8; color: #444; font-size: 14px;">
             <li><strong>BPM Sync:</strong> Grid aligns to beats per minute (40-240 BPM)</li>
             <li><strong>Time Signatures:</strong> Support for 2/4 through 12/4</li>
             <li><strong>Subdivisions:</strong> Quarter notes, eighth notes, triplets, sixteenths</li>
             <li><strong>MIDI Latency Compensation:</strong> Adjust 0-200ms to align visual to audio</li>
-            <li><strong>Metronome:</strong> Audio click track with measure emphasis</li>
+            <li><strong>Metronome:</strong> Audio click track with measure emphasis and visual spinning indicator</li>
             <li><strong>Video Recording Toggle:</strong> Check "Record video with timeline" to capture sessions to file, or uncheck for practice mode</li>
             <li><strong>Warmup Measures:</strong> 0-4 silent measures before painting begins</li>
           </ul>
 
-          <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Chronicle Layout-Specific Settings</h4>
+          <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Staff Layout-Specific Settings</h4>
           <p style="color: #444; line-height: 1.7; font-size: 14px;"><strong>Staff Notation Layout:</strong></p>
           <ul style="line-height: 1.8; color: #444; font-size: 14px;">
             <li><strong>Grid Toggle:</strong> Hide/show staff lines</li>
@@ -1683,15 +1704,18 @@
             <li><strong>Measures Per Staff:</strong> Auto or fixed number (1-8)</li>
           </ul>
 
-          <p style="color: #444; line-height: 1.7; font-size: 14px; margin-top: 16px;"><strong>Spiral Layout:</strong></p>
+          <p style="color: #444; line-height: 1.7; font-size: 14px; margin-top: 16px;"><strong>Spiral Timeline Layout:</strong></p>
           <ul style="line-height: 1.8; color: #444; font-size: 14px;">
+            <li><strong>Beat Synchronization:</strong> Rotation quantized to beat positions - completes one full rotation per measure</li>
             <li><strong>Tightness (5-40):</strong> Space between spiral rotations in pixels</li>
-            <li><strong>Speed (1-12 RPM):</strong> How fast spiral rotates outward</li>
-            <li><strong>BPM Sync:</strong> Optional - link rotation speed to BPM</li>
             <li><strong>Start Radius:</strong> Initial radius at center (adjustable)</li>
+            <li><strong>Time Signature Matching:</strong> Automatically adjusts to match beatsPerMeasure (e.g., 4 positions in 4/4 time)</li>
           </ul>
 
-          <p style="color: #444; line-height: 1.7; font-size: 14px; margin-top: 16px;"><strong>Other Layouts:</strong> Rings, Radial Spokes, Flower Petals, and Expanding Polygon use automatic positioning based on drum count and time elapsed.</p>
+          <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Chronicle Mode Advanced (Point-Based Sequential)</h4>
+          <p style="color: #444; line-height: 1.7; font-size: 14px;">
+            Chronicle mode has 5 point-based layouts (Fibonacci, Radial, Rings, Petals, Polygon) where position depends on note count, not time. Paint immediately without starting timeline - perfect for debug panel testing.
+          </p>
 
           <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Keyboard Shortcuts Reference</h4>
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 13px;">
@@ -1706,7 +1730,7 @@
             <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">U</kbd> User guide</div>
           </div>
           <p style="color: #666; font-size: 12px; margin-top: 12px; font-style: italic;">
-            Note: Mode switching is done via UI radio buttons and dropdowns (two-tier selection system).
+            Note: Mode switching is done via UI radio buttons (Staff/Freeform/Chronicle) and dropdowns for specific styles/layouts.
           </p>
 
           <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Data Persistence</h4>

@@ -4,15 +4,15 @@ Create stunning generative art with your MIDI drums! A browser-based painting ap
 
 ## Features
 
-- **Two-Tier Mode System** - Freeform (7 styles) and Chronicle (6 layouts)
+- **Three-Group Mode System** - Staff (time-based), Freeform (random), Chronicle (point-based sequential)
 - **Device-Specific MIDI Mapping** - Use multiple MIDI devices simultaneously
 - **Bank Mode** - Map global parameters to MIDI CC controls
-- **Timeline Mode** - Record and playback drum patterns with staff notation
+- **Staff & Chronicle Modes** - Record and playback drum patterns with multiple visual layouts
 - **Video Recording** - Capture your creative sessions
-- **Velocity Curves** - Customize response to drum dynamics
+- **Velocity Curves** - Customize response to drum dynamics with 5 scaling options
 - **Project System** - Save and load complete setups
 - **Blend Modes** - 8 layering effects including Add, Difference, Multiply, Screen
-- **Comprehensive Customization** - Color, size, shape, opacity per drum
+- **Comprehensive Customization** - Color, size, shape, opacity, hue variation per drum
 
 ## Quick Start
 
@@ -70,38 +70,42 @@ The script will:
 
 ## Paint Modes
 
-The application uses a **two-tier mode system**:
+The application uses a **three-group mode system**:
 
-1. **Main Mode Type** (Freeform or Chronicle) - Radio buttons
-2. **Style/Layout Selection** - Dropdown menu for specific variations
+1. **Main Mode Type** (Staff, Freeform, or Chronicle) - Radio buttons
+2. **Style/Layout Selection** - Dropdown menu for specific variations within each mode
 
-### Freeform Mode
+### Staff Mode (Time-Based Recording)
 
-Immediate visual response - each drum hit creates instant patterns. Choose from 7 styles:
+Timeline-based recording where position depends on elapsed time. Requires pressing Start button. Choose from 2 layouts:
+
+#### Staff Notation
+Traditional horizontal DAW-style sequencer with musical grid. Each drum on its own horizontal lane, time flows left to right with BPM sync and metronome.
+
+#### Spiral Timeline
+Archimedean spiral pattern expanding from center. Time flows outward with rotation synchronized to beats. Completes one full rotation per measure, matching the visual metronome. Drums are offset radially for clarity.
+
+### Freeform Mode (Random Placement)
+
+Immediate visual response - each drum hit creates instant random patterns. Choose from 5 styles:
 
 #### Classic Pointillism
-Random placement across canvas. Each drum has unique color, size controlled by velocity.
-
-#### Fibonacci Spiral
-Dots arranged in golden ratio spiral, building outward from center. Creates organic growth patterns.
-
-#### Radial Symmetry
-8-fold symmetrical patterns - perfect for mandalas. Each hit creates 8 mirrored dots.
+Random placement across canvas. Each drum has unique color, size controlled by velocity. Supports all shapes including complex brushstrokes, splatter, and ink blot effects.
 
 #### Gravity Field
-Dots fall downward creating flowing organic trails. Velocity controls trail length and horizontal drift. Features fading stroke effects.
+Dots fall downward creating flowing organic trails. Velocity controls trail length and horizontal drift. Features fading multi-stroke effects. Complex shapes (brushstroke/splatter/inkblot) automatically convert to circles for performance optimization.
 
 #### Organic Growth
-Cluster-based growth around "seed" points. Seeds migrate slowly creating natural clustering patterns.
+Cluster-based growth around "seed" points. Seeds migrate slowly creating natural clustering patterns. Supports all shapes.
 
 #### Dendritic Spreading
-Realistic river drainage networks based on Horton's Laws of stream networks:
+Realistic river drainage networks based on Horton's Laws:
 - Hierarchical tributary branching (convergent)
 - Width increases downstream (stream order)
 - Natural meandering with sinusoidal curves
 - Flows away from canvas edges
 - Velocity controls length and branching complexity
-- Random branch variation for organic appearance
+- Complex shapes auto-convert to circles for performance
 
 #### Lightning
 Realistic electrical discharge with fractal branching:
@@ -112,32 +116,26 @@ Realistic electrical discharge with fractal branching:
 - Width decreases along branches (energy dissipation)
 - Bright core with electric corona glow
 - Velocity controls complexity and branch count
+- Complex shapes auto-convert to circles for performance
 
-### Chronicle Mode
+### Chronicle Mode (Point-Based Sequential)
 
-Time-based recording with musical notation. Each drum has a fixed position, hits recorded along timeline. Choose from 6 layouts:
+Sequential visual patterns where position is based on note count, not time. Paint immediately without starting timeline. Choose from 5 layouts:
 
-#### Staff Notation
-Traditional horizontal DAW-style sequencer with musical grid. Each drum on its own horizontal lane, time flows left to right.
+#### Fibonacci Spiral
+Dots arranged in golden ratio spiral, building outward from center. Creates organic growth patterns expanding with each hit.
 
-#### Concentric Rings
-Time flows in circular patterns. Each drum assigned to a concentric ring, angle represents time through the measure.
+#### Radial Symmetry
+8-fold symmetrical patterns radiating from center - perfect for mandalas. Each hit creates 8 mirrored dots simultaneously.
 
-#### Spiral
-Archimedean spiral pattern expanding from center. Time flows outward:
-- Adjustable tightness (space between rotations)
-- Adjustable rotation speed (1-12 RPM)
-- Can sync to BPM
-- Drums offset radially for clarity
+#### Rings (Radial Spokes)
+Drums positioned on spokes radiating from center. Distance from center increases with each hit, creating star/burst patterns.
 
-#### Radial Spokes
-Drums positioned on spokes radiating from center. Distance from center represents time, creating star/burst patterns.
+#### Petals (Flower Petals)
+Organic flower-like curves. Each drum traces a petal path with sinusoidal oscillation for natural flowing patterns.
 
-#### Flower Petals
-Organic flower-like curves. Each drum traces a petal with sinusoidal oscillation for natural flowing patterns.
-
-#### Expanding Polygon
-Geometric polygon growth. Drums at polygon vertices, polygon expands outward with time. Number of vertices equals number of drums.
+#### Polygon (Rotating Expanding Polygon)
+Spiraling geometric pattern with breathing effect. Drums positioned at polygon vertices that rotate and pulse as they expand outward. Creates a hypnotic spiral-polygon hybrid - one full rotation every 60 hits with subtle pulsing. Number of vertices equals number of drums.
 
 ## MIDI Setup
 
@@ -185,11 +183,12 @@ Use multiple MIDI devices without conflicts:
 Click "Customize Drums" to adjust:
 
 - **Color** - HSL color picker or hex input
-- **Size Multiplier** - 0.1x to 5x
-- **Opacity** - 0% to 100%
+- **Size Multiplier** - 30% to 300%
+- **Opacity** - 10% to 100%
 - **Shape** - Circle, Square, Triangle, Hexagon, Star, Diamond, Brushstroke, Splatter, Ink Blot
-- **Stroke** - None, Thin, Medium, Thick
+- **Hue Variation** - 0° to 60° directional shift (harder hits shift more, with velocity scaling curves)
 - **Rotation** - 0° to 360°
+- **Stroke** - Enable/disable with custom weight (1-10px) and color
 
 ### Velocity Curves
 
@@ -229,9 +228,9 @@ Press **?** to see all shortcuts, or **U** for the complete User Guide.
 - **U** - Show user guide
 
 ### Paint Modes
-- **1-8** - Switch between paint modes
+Mode switching is done via UI radio buttons (Staff/Freeform/Chronicle) and dropdown menus for specific styles/layouts.
 
-### Timeline Mode (when active)
+### Staff Mode (when active)
 - **P** - Start/pause playback
 - **R** - Toggle recording
 - **C** - Clear timeline
@@ -463,7 +462,7 @@ Map any CC parameter in Bank Mode:
 
 ### Creating Animations
 
-Use Timeline Mode to record rhythmic patterns, then export as video for looping animations.
+Use Staff Mode (Staff Notation or Spiral layouts) to record rhythmic patterns with precise timing, then export as video for looping animations. Chronicle Mode layouts (Fibonacci, Radial, Rings, Petals, Polygon) create sequential point-based patterns perfect for geometric animations.
 
 ### Color Palettes
 

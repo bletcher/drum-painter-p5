@@ -174,24 +174,50 @@ export class TimelineMode {
         return { x: petalX, y: petalY };
 
       case 'polygon':
-        // Expanding polygons - drums at vertices, polygon expands with time
-        const vertexAngle = (laneIndex / this.timelineLaneCount) * Math.PI * 2;
-        const polygonRadius = 80 + (beatCount * 25);
+        // Rotating, pulsing polygon - drums at vertices
+        // Creates a spiraling geometric pattern with organic breathing effect
+
+        // Base vertex angle (evenly distributed around circle)
+        const baseVertexAngle = (laneIndex / this.timelineLaneCount) * Math.PI * 2;
+
+        // Add rotation that increases with each beat (creates spiral effect)
+        // Rotation speed: complete one full rotation every ~60 beats
+        const rotationOffset = (beatCount * Math.PI * 2) / 60;
+        const rotatedVertexAngle = baseVertexAngle + rotationOffset;
+
+        // Base radius expands more slowly than before (15px per beat instead of 25px)
+        const baseRadius = 80 + (beatCount * 15);
+
+        // Add subtle pulsing effect (breathing)
+        // Slower oscillation than flower mode for more geometric feel
+        const pulseAmount = Math.sin(beatCount * 0.25) * 20;
+        const polygonRadius = baseRadius + pulseAmount;
+
         return {
-          x: centerX + polygonRadius * Math.cos(vertexAngle),
-          y: centerY + polygonRadius * Math.sin(vertexAngle)
+          x: centerX + polygonRadius * Math.cos(rotatedVertexAngle),
+          y: centerY + polygonRadius * Math.sin(rotatedVertexAngle)
         };
 
       case 'spiral':
-        // Archimedean spiral - all drums follow same spiral, position based on beats
-        // Each drum gets a slight offset based on its lane
-        const beatsPerRotation = this.spiralSettings.rotationsPerMinute / (this.bpm / 60);
-        const theta = (beatCount / beatsPerRotation) * Math.PI * 2;
+        // Archimedean spiral - synchronized with metronome
+        // One full rotation per measure, quantized to beat positions
+        const quantizedBeatCount = Math.floor(beatCount); // Snap to nearest beat
+
+        // Complete one rotation per measure to match metronome pattern
+        const measurePosition = quantizedBeatCount % this.beatsPerMeasure;
+        const measureNumber = Math.floor(quantizedBeatCount / this.beatsPerMeasure);
+
+        // Angle within current measure (0 to 2π per measure)
+        const theta = (measurePosition / this.beatsPerMeasure) * Math.PI * 2;
+
+        // Radius increases with each complete measure
         const spiralRadius = this.spiralSettings.startRadius +
-                           (this.spiralSettings.tightness * theta / (Math.PI * 2));
+                           (measureNumber * this.spiralSettings.tightness);
+
         // Offset each drum slightly radially based on lane
         const laneOffset = (laneIndex - this.timelineLaneCount / 2) * 8;
         const finalRadius = spiralRadius + laneOffset;
+
         return {
           x: centerX + finalRadius * Math.cos(theta),
           y: centerY + finalRadius * Math.sin(theta)
@@ -276,8 +302,10 @@ export class TimelineMode {
       return;
     }
 
-    // Don't paint if timeline is not recording
-    if (!this.recording) {
+    // Only require recording for time-based layouts (Staff, Spiral)
+    // Point-based layouts (Rings, Petals, Polygon) can paint anytime
+    const isTimeBased = (this.layout === 'staff' || this.layout === 'spiral');
+    if (isTimeBased && !this.recording) {
       console.log('Timeline not recording - press Start button first');
       return;
     }
@@ -392,7 +420,7 @@ export class TimelineMode {
   drawCircularMetronome(p5Instance, canvasWidth, canvasHeight) {
     if (!this.metronomeEnabled) return;
     if (!this.startTime) return;
-    // Metronome displays even when not recording
+    if (!this.recording) return; // Stop visual metronome when recording ends
 
     const currentTime = Date.now();
     const timeElapsed = (currentTime - this.startTime - this.pausedTime) / 1000.0;

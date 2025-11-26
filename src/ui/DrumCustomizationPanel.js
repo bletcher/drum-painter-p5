@@ -499,7 +499,7 @@ export class DrumCustomizationPanel {
       'Hue Variation',
       settings.hueVariation || 0,
       0,
-      30,
+      60,
       1,
       '°',
       settings.hueScaling || SCALING_CURVES.ONE_TO_ONE
@@ -907,7 +907,7 @@ export class DrumCustomizationPanel {
       midiCC: {
         size: { cc: null, min: 30, max: 300, ccMin: 0, ccMax: 127 },
         opacity: { cc: null, min: 10, max: 100, ccMin: 0, ccMax: 127 },
-        hueVariation: { cc: null, min: 0, max: 30, ccMin: 0, ccMax: 127 },
+        hueVariation: { cc: null, min: 0, max: 60, ccMin: 0, ccMax: 127 },
         rotation: { cc: null, min: 0, max: 360, ccMin: 0, ccMax: 127 },
         strokeWeight: { cc: null, min: 1, max: 10, ccMin: 0, ccMax: 127 }
       }

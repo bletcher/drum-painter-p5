@@ -117,13 +117,13 @@ export function getDrumColor(note, deviceId, velocityNorm = 1.0, drumSettings) {
       let s = saturation(col);
       let b = brightness(col);
 
-      // Apply scaling curve to hue variation based on velocity
-      let scaledVariation = applyScalingCurve(velocityNorm, settings.hueScaling || SCALING_CURVES.LINEAR);
+      // Apply scaling curve to velocity (same as size/opacity scaling)
+      let scaledVelocity = applyScalingCurve(velocityNorm, settings.hueScaling || SCALING_CURVES.ONE_TO_ONE);
 
-      // Add random hue shift (scaled by velocity)
-      let maxShift = settings.hueVariation * scaledVariation;
-      let hueShift = random(-maxShift, maxShift);
-      h = (h + hueShift + 360) % 360;
+      // Directional hue shift: harder hits shift more (0 to +maxVariation)
+      // Soft hits stay closer to base color, hard hits shift toward max
+      let hueShift = settings.hueVariation * scaledVelocity;
+      h = (h + hueShift) % 360;
 
       col = color(h, s, b);
       pop();
