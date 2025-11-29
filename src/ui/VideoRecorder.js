@@ -3,6 +3,8 @@
  * Records canvas content to video file using MediaRecorder API
  */
 
+import { debugLog, debugWarn, debugError, infoLog } from '../utils/debug.js';
+
 export class VideoRecorder {
   constructor(canvas, notificationSystem) {
     this.canvas = canvas;
@@ -60,7 +62,7 @@ export class VideoRecorder {
    */
   async startRecording() {
     if (this.isRecording) {
-      console.warn('Already recording');
+      debugWarn('Already recording');
       return false;
     }
 
@@ -73,9 +75,9 @@ export class VideoRecorder {
         throw new Error('Canvas does not support captureStream');
       }
 
-      console.log('Starting canvas capture...');
-      console.log('Canvas element:', htmlCanvas);
-      console.log('Canvas size:', htmlCanvas.width, 'x', htmlCanvas.height);
+      debugLog('Starting canvas capture...');
+      debugLog('Canvas element:', htmlCanvas);
+      debugLog('Canvas size:', htmlCanvas.width, 'x', htmlCanvas.height);
 
       // Get canvas stream at 60fps
       this.stream = htmlCanvas.captureStream(60);
@@ -84,8 +86,8 @@ export class VideoRecorder {
         throw new Error('Failed to capture canvas stream');
       }
 
-      console.log('Stream created:', this.stream);
-      console.log('Stream tracks:', this.stream.getTracks().length);
+      debugLog('Stream created:', this.stream);
+      debugLog('Stream tracks:', this.stream.getTracks().length);
 
       // Configure MediaRecorder with quality and format settings
       const options = {
@@ -95,17 +97,17 @@ export class VideoRecorder {
 
       // Fallback if selected format not supported
       if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-        console.warn(`Format ${this.currentFormat} not supported, trying fallbacks...`);
+        debugWarn(`Format ${this.currentFormat} not supported, trying fallbacks...`);
 
         // Try VP8 if VP9 was selected
         if (this.currentFormat === 'webm-vp9' && MediaRecorder.isTypeSupported(this.formatPresets['webm-vp8'])) {
           options.mimeType = this.formatPresets['webm-vp8'];
-          console.log('Falling back to VP8');
+          debugLog('Falling back to VP8');
         }
         // Try plain webm
         else if (MediaRecorder.isTypeSupported(this.formatPresets['webm'])) {
           options.mimeType = this.formatPresets['webm'];
-          console.log('Falling back to plain WebM');
+          debugLog('Falling back to plain WebM');
         }
         else {
           throw new Error('No supported video format found');
@@ -118,20 +120,20 @@ export class VideoRecorder {
       // Collect data chunks
       this.mediaRecorder.ondataavailable = (event) => {
         if (event.data && event.data.size > 0) {
-          console.log('Data chunk received:', event.data.size, 'bytes');
+          debugLog('Data chunk received:', event.data.size, 'bytes');
           this.recordedChunks.push(event.data);
         }
       };
 
       // Handle recording stop
       this.mediaRecorder.onstop = () => {
-        console.log('MediaRecorder stopped, total chunks:', this.recordedChunks.length);
+        debugLog('MediaRecorder stopped, total chunks:', this.recordedChunks.length);
         this.saveRecording();
       };
 
       // Handle errors
       this.mediaRecorder.onerror = (error) => {
-        console.error('MediaRecorder error:', error);
+        debugError('MediaRecorder error:', error);
         this.notificationSystem.show('Recording error occurred', 'error');
         this.stopRecording();
       };
@@ -143,13 +145,13 @@ export class VideoRecorder {
       this.startTimer();
 
       this.notificationSystem.show('Video recording started', 'success');
-      console.log('✓ Video recording started');
-      console.log(`  Quality: ${this.currentQuality} (${this.qualityPresets[this.currentQuality] / 1000000} Mbps)`);
-      console.log(`  MIME type: ${options.mimeType}`);
+      infoLog('✓ Video recording started');
+      debugLog(`  Quality: ${this.currentQuality} (${this.qualityPresets[this.currentQuality] / 1000000} Mbps)`);
+      debugLog(`  MIME type: ${options.mimeType}`);
 
       return true;
     } catch (error) {
-      console.error('Failed to start recording:', error);
+      debugError('Failed to start recording:', error);
       this.notificationSystem.show('Failed to start recording', 'error');
       return false;
     }
@@ -160,7 +162,7 @@ export class VideoRecorder {
    */
   stopRecording() {
     if (!this.isRecording) {
-      console.warn('Not currently recording');
+      debugWarn('Not currently recording');
       return false;
     }
 
@@ -176,10 +178,10 @@ export class VideoRecorder {
         this.saveRecording();
       }
 
-      console.log('✓ Video recording stopped');
+      debugLog('✓ Video recording stopped');
       return true;
     } catch (error) {
-      console.error('Failed to stop recording:', error);
+      debugError('Failed to stop recording:', error);
       this.notificationSystem.show('Failed to stop recording', 'error');
       return false;
     }
@@ -189,10 +191,10 @@ export class VideoRecorder {
    * Save recording to file
    */
   saveRecording() {
-    console.log('saveRecording called, chunks:', this.recordedChunks.length);
+    debugLog('saveRecording called, chunks:', this.recordedChunks.length);
 
     if (this.recordedChunks.length === 0) {
-      console.warn('⚠️ No recorded data to save');
+      debugWarn('⚠️ No recorded data to save');
       this.notificationSystem.show('No video data to save', 'warning');
       this.cleanup();
       return;
@@ -201,10 +203,10 @@ export class VideoRecorder {
     try {
       // Create blob from chunks
       const blob = new Blob(this.recordedChunks, { type: 'video/webm' });
-      console.log('Blob created, size:', blob.size, 'bytes');
+      debugLog('Blob created, size:', blob.size, 'bytes');
 
       if (blob.size === 0) {
-        console.warn('⚠️ Blob is empty');
+        debugWarn('⚠️ Blob is empty');
         this.notificationSystem.show('Video file is empty', 'warning');
         this.cleanup();
         return;
@@ -250,10 +252,10 @@ export class VideoRecorder {
       }, 100);
 
       this.notificationSystem.show(`Video saved! (${durationSec}s, ${sizeMB}MB)`, 'success');
-      console.log('✓ Video recorded and downloaded');
-      console.log(`  Duration: ${durationSec}s`);
-      console.log(`  Size: ${sizeMB}MB`);
-      console.log(`  Chunks: ${this.recordedChunks.length}`);
+      infoLog('✓ Video recorded and downloaded');
+      debugLog(`  Duration: ${durationSec}s`);
+      debugLog(`  Size: ${sizeMB}MB`);
+      debugLog(`  Chunks: ${this.recordedChunks.length}`);
 
       // Trigger UI update (will be handled by main.js)
       window.dispatchEvent(new CustomEvent('recording-saved', {
@@ -263,7 +265,7 @@ export class VideoRecorder {
       // Clean up
       this.cleanup();
     } catch (error) {
-      console.error('Failed to save recording:', error);
+      debugError('Failed to save recording:', error);
       this.notificationSystem.show('Failed to save video', 'error');
       this.cleanup();
     }
@@ -282,7 +284,7 @@ export class VideoRecorder {
   downloadRecording(id) {
     const recording = this.recordings.find(r => r.id === id);
     if (!recording) {
-      console.warn('Recording not found:', id);
+      debugWarn('Recording not found:', id);
       return;
     }
 
@@ -304,7 +306,7 @@ export class VideoRecorder {
   deleteRecording(id) {
     const index = this.recordings.findIndex(r => r.id === id);
     if (index === -1) {
-      console.warn('Recording not found:', id);
+      debugWarn('Recording not found:', id);
       return;
     }
 

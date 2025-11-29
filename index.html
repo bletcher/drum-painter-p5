@@ -280,12 +280,15 @@
       <div id="shortcut-toggle-ui" data-tooltip="Click to toggle UI" style="cursor: pointer; display: inline-block; padding: 2px 0;"><span class="key">H</span> Hide/show UI</div><br>
       <div id="shortcut-fullscreen" data-tooltip="Click for fullscreen" style="cursor: pointer; display: inline-block; padding: 2px 0;"><span class="key">F</span> Fullscreen</div><br>
       <div id="shortcut-clear" data-tooltip="Click to clear canvas" style="cursor: pointer; display: inline-block; padding: 2px 0;"><span class="key">BKSP</span> Clear canvas</div><br>
-      <span class="key">SPACE</span> Record video<br>
+      <div id="shortcut-record" data-tooltip="Click to start/stop recording" style="cursor: pointer; display: inline-block; padding: 2px 0;"><span class="key">SPACE</span> Record video</div><br>
       <div id="shortcut-save-image" data-tooltip="Click to save image" style="cursor: pointer; display: inline-block; padding: 2px 0;"><span class="key">S</span> Save image</div><br>
-      <span class="key">D</span> Save settings<br>
+      <div id="shortcut-save-settings" data-tooltip="Click to save settings" style="cursor: pointer; display: inline-block; padding: 2px 0;"><span class="key">D</span> Save settings</div><br>
       <div id="shortcut-undo" data-tooltip="Click to undo" style="cursor: pointer; display: inline-block; padding: 2px 0;"><span class="key">Z</span> Undo</div><br>
       <div id="shortcut-redo" data-tooltip="Click to redo" style="cursor: pointer; display: inline-block; padding: 2px 0;"><span class="key">Y</span> Redo</div><br>
-      <span class="key">?</span> Keyboard shortcuts<br>
+      <div id="shortcut-blend-mode" data-tooltip="Click to cycle blend modes" style="cursor: pointer; display: inline-block; padding: 2px 0;"><span class="key">B</span> Cycle blend</div><br>
+      <div id="shortcut-arrows" data-tooltip="Click to see all shortcuts" style="cursor: pointer; display: inline-block; padding: 2px 0;"><span class="key">← → ↑ ↓</span> Navigate</div><br>
+      <div id="shortcut-drums" data-tooltip="Click to see all shortcuts" style="cursor: pointer; display: inline-block; padding: 2px 0;"><span class="key">1-9</span> Select drum</div><br>
+      <div id="shortcut-help" data-tooltip="Click to show keyboard shortcuts" style="cursor: pointer; display: inline-block; padding: 2px 0;"><span class="key">?</span> All shortcuts</div><br>
       <span class="key">Click</span> Test paint
     </div>
     </div>
@@ -1331,45 +1334,40 @@
         </div>
       </div>
 
-      <!-- Mode Switching -->
+      <!-- Mode Navigation -->
       <div style="margin-bottom: 20px;">
-        <h3 style="margin: 0 0 12px 0; font-size: 14px; color: #667eea; text-transform: uppercase; letter-spacing: 0.5px;">Paint Modes</h3>
+        <h3 style="margin: 0 0 12px 0; font-size: 14px; color: #667eea; text-transform: uppercase; letter-spacing: 0.5px;">Navigation</h3>
         <div style="display: grid; gap: 8px;">
           <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
-            <span style="font-size: 13px;">Classic Pointillism</span>
-            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">1</kbd>
+            <span style="font-size: 13px;">Switch Freeform ↔ Timeline</span>
+            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">← →</kbd>
           </div>
           <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
-            <span style="font-size: 13px;">Fibonacci Spiral</span>
-            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">2</kbd>
+            <span style="font-size: 13px;">Cycle styles/layouts</span>
+            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">↑ ↓</kbd>
           </div>
           <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
-            <span style="font-size: 13px;">Radial Symmetry</span>
-            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">3</kbd>
+            <span style="font-size: 13px;">Cycle blend modes</span>
+            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">B</kbd>
           </div>
           <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
-            <span style="font-size: 13px;">Gravity Field</span>
-            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">4</kbd>
+            <span style="font-size: 13px;">Select drum (1-9)</span>
+            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">1-9</kbd>
+          </div>
+        </div>
+      </div>
+
+      <!-- Timeline Mode -->
+      <div style="margin-bottom: 20px;">
+        <h3 style="margin: 0 0 12px 0; font-size: 14px; color: #667eea; text-transform: uppercase; letter-spacing: 0.5px;">Timeline Mode</h3>
+        <div style="display: grid; gap: 8px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
+            <span style="font-size: 13px;">Start/Pause (Staff/Spiral only)</span>
+            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">P</kbd>
           </div>
           <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
-            <span style="font-size: 13px;">Organic Growth</span>
-            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">5</kbd>
-          </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
-            <span style="font-size: 13px;">Dendritic Spreading</span>
-            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">6</kbd>
-          </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
-            <span style="font-size: 13px;">Lightning</span>
-            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">7</kbd>
-          </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
-            <span style="font-size: 13px;">Spiral Chronicle</span>
-            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">8</kbd>
-          </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
-            <span style="font-size: 13px;">Timeline</span>
-            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">9</kbd>
+            <span style="font-size: 13px;">Clear timeline</span>
+            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">C</kbd>
           </div>
         </div>
       </div>
@@ -1383,7 +1381,7 @@
             <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">Click / Drag</kbd>
           </div>
           <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
-            <span style="font-size: 13px;">Scroll timeline (mode 8)</span>
+            <span style="font-size: 13px;">Scroll timeline (time-based layouts)</span>
             <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">Mouse Wheel</kbd>
           </div>
         </div>
@@ -1506,6 +1504,10 @@
             <strong style="color: #667eea;">Drum Painter</strong> turns your MIDI drums into a generative art tool. Paint visual patterns by playing your drums!
           </div>
 
+          <div style="background: #fff3cd; padding: 12px; border-radius: 6px; margin-bottom: 20px; font-size: 13px; border-left: 4px solid #f59e0b;">
+            <strong>⚠️ Desktop Only:</strong> This app requires a desktop computer with Chrome, Edge, or Opera browser. Mobile devices and Firefox/Safari are not supported (Web MIDI API required).
+          </div>
+
           <h4 style="color: #333; margin-top: 20px;">1️⃣ Connect Your MIDI Device</h4>
           <ul style="line-height: 1.8; color: #444;">
             <li>Plug in your MIDI drums/controller via USB</li>
@@ -1550,31 +1552,31 @@
 
           <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Paint Modes</h4>
           <p style="color: #444; line-height: 1.7;">
-            <strong>Three-Group System:</strong> Choose main mode type (Staff, Freeform, or Chronicle) with radio buttons, then select style/layout from dropdown.
+            <strong>Two-Mode System:</strong> Choose mode type (Freeform or Timeline) with radio buttons, then select style/layout from dropdown.
           </p>
 
-          <p style="color: #667eea; margin-top: 16px; margin-bottom: 8px;"><strong>Staff Mode (Time-based recording):</strong></p>
+          <p style="color: #667eea; margin-top: 16px; margin-bottom: 8px;"><strong>Timeline Mode - Time-Based Layouts (Require Start Button):</strong></p>
           <ul style="line-height: 1.8; color: #444;">
-            <li><strong>Staff Notation:</strong> Traditional horizontal DAW-style sequencer with musical grid. Requires pressing Start button.</li>
-            <li><strong>Spiral Timeline:</strong> Archimedean spiral synchronized to beats. One rotation per measure, matching visual metronome.</li>
+            <li><strong>Staff Notation:</strong> Traditional horizontal DAW-style sequencer with musical grid. Eighth triplet subdivisions by default.</li>
+            <li><strong>Spiral:</strong> Notes appear exactly where/when played along an expanding spiral. One rotation per measure, smooth continuous flow.</li>
           </ul>
 
-          <p style="color: #667eea; margin-top: 16px; margin-bottom: 8px;"><strong>Freeform Mode (Random placement):</strong></p>
+          <p style="color: #667eea; margin-top: 16px; margin-bottom: 8px;"><strong>Timeline Mode - Point-Based Layouts (Paint Immediately):</strong></p>
+          <ul style="line-height: 1.8; color: #444;">
+            <li><strong>Fibonacci:</strong> Golden ratio spiral emanating from center, expanding with each hit</li>
+            <li><strong>Radial:</strong> 8-fold mirrored radial patterns, perfect for mandalas</li>
+            <li><strong>Rings:</strong> Drums on spokes radiating from center, distance increases with each hit</li>
+            <li><strong>Petals:</strong> Organic petal curves with sinusoidal oscillation</li>
+            <li><strong>Polygon:</strong> Spiraling geometric pattern - polygon vertices rotate and pulse as they expand</li>
+          </ul>
+
+          <p style="color: #667eea; margin-top: 16px; margin-bottom: 8px;"><strong>Freeform Mode (Random Placement):</strong></p>
           <ul style="line-height: 1.8; color: #444;">
             <li><strong>Classic Pointillism:</strong> Random placement, pointillist style. Supports all shapes.</li>
-            <li><strong>Gravity Field:</strong> Falling dots with velocity-dependent drift and fading strokes. Complex shapes auto-convert to circles for performance.</li>
+            <li><strong>Gravity Field:</strong> Falling dots with velocity-dependent drift and fading strokes. Complex shapes auto-convert to circles.</li>
             <li><strong>Organic Growth:</strong> Natural clustering around migrating seed points. Supports all shapes.</li>
             <li><strong>Dendritic Spreading:</strong> Realistic river drainage networks with hierarchical branching. Complex shapes auto-convert to circles.</li>
             <li><strong>Lightning:</strong> Cloud-to-ground electrical discharge with fractal branching. Complex shapes auto-convert to circles.</li>
-          </ul>
-
-          <p style="color: #667eea; margin-top: 16px; margin-bottom: 8px;"><strong>Chronicle Mode (Point-based sequential):</strong></p>
-          <ul style="line-height: 1.8; color: #444;">
-            <li><strong>Fibonacci Spiral:</strong> Golden ratio spiral emanating from center, expanding with each hit</li>
-            <li><strong>Radial Symmetry:</strong> 8-fold mirrored radial patterns, perfect for mandalas</li>
-            <li><strong>Rings:</strong> Drums on spokes radiating from center, distance increases with each hit</li>
-            <li><strong>Petals:</strong> Organic petal curves with sinusoidal oscillation</li>
-            <li><strong>Polygon:</strong> Spiraling geometric pattern - polygon vertices rotate and pulse as they expand, creating hypnotic spiral-polygon hybrid</li>
           </ul>
 
           <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Blend Modes</h4>
@@ -1611,8 +1613,8 @@
             <li><strong>Video Recording:</strong> Press SPACE or click recording button. Choose quality first. Recordings appear in "Recent Recordings" list where you can download, merge with audio, or delete them.</li>
             <li><strong>Audio Merge:</strong> Click "Merge Audio" on any recording to upload an audio file (MP3, WAV, etc.). FFmpeg.wasm processes the merge entirely in your browser and downloads the combined MP4 automatically.</li>
             <li><strong>Image Save:</strong> Press S to save current canvas as PNG</li>
-            <li><strong>Staff Mode Recording:</strong> Press Start button to begin timeline. Check "Record video with timeline" to capture session. Staff and Spiral layouts are time-based and require active recording.</li>
-            <li><strong>Chronicle Mode:</strong> Point-based layouts (Fibonacci, Radial, Rings, Petals, Polygon) paint immediately without needing to start timeline - perfect for testing in debug panel.</li>
+            <li><strong>Time-Based Recording:</strong> Press Start button to begin timeline. Check "Record video with timeline" to capture session. Staff and Spiral layouts require active recording.</li>
+            <li><strong>Point-Based Layouts:</strong> Fibonacci, Radial, Rings, Petals, Polygon paint immediately without needing to start timeline - perfect for live performance and testing in debug panel.</li>
           </ul>
 
           <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Projects & Settings Export</h4>
@@ -1713,11 +1715,18 @@
             <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">S</kbd> Save image</div>
             <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">D</kbd> Save settings</div>
             <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">Z</kbd> Undo</div>
+            <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">Y</kbd> Redo</div>
+            <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">← →</kbd> Switch Freeform ↔ Timeline</div>
+            <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">↑ ↓</kbd> Cycle styles/layouts</div>
+            <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">B</kbd> Cycle blend modes</div>
+            <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">1-9</kbd> Select drum</div>
+            <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">P</kbd> Start/pause (Timeline)</div>
+            <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">C</kbd> Clear (Timeline)</div>
             <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">?</kbd> Keyboard shortcuts</div>
             <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">U</kbd> User guide</div>
           </div>
           <p style="color: #666; font-size: 12px; margin-top: 12px; font-style: italic;">
-            Note: Mode switching is done via UI radio buttons (Staff/Freeform/Chronicle) and dropdowns for specific styles/layouts.
+            Press <strong>?</strong> for complete keyboard shortcuts reference.
           </p>
 
           <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Data Persistence</h4>
@@ -1744,6 +1753,35 @@
           </ol>
           <p style="color: #444; line-height: 1.7; font-size: 14px;">
             <strong>How it works:</strong> App checks localStorage first, then falls back to <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">default-settings.json</code> if no saved settings exist. Perfect for deploying with pre-configured setups!
+          </p>
+
+          <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Debug Mode</h4>
+          <p style="color: #444; line-height: 1.7; font-size: 14px;">
+            Enable verbose console logging for development and troubleshooting:
+          </p>
+          <ol style="line-height: 1.8; color: #444; font-size: 14px;">
+            <li>Open <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">src/config/constants.js</code></li>
+            <li>Change <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">DEBUG_MODE</code> from <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">false</code> to <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">true</code></li>
+            <li>Rebuild/refresh the app</li>
+          </ol>
+          <p style="color: #444; line-height: 1.7; font-size: 14px;">
+            <strong>Enables:</strong> Detailed console logging (211+ debug statements) showing MIDI events, mode switches, state changes, file operations. Errors and important status messages always shown regardless of DEBUG_MODE.
+          </p>
+          <p style="color: #444; line-height: 1.7; font-size: 14px;">
+            <strong>Production:</strong> Keep DEBUG_MODE = false (default) for cleaner console and better performance.
+          </p>
+
+          <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Browser & Device Requirements</h4>
+          <p style="color: #444; line-height: 1.7; font-size: 14px;">
+            <strong>Desktop Only:</strong> This app is designed for desktop computers with MIDI hardware. The app automatically detects and warns users on incompatible platforms:
+          </p>
+          <ul style="line-height: 1.8; color: #444; font-size: 14px;">
+            <li><strong>Mobile Devices:</strong> Shows warning that desktop is required (phones/tablets cannot connect to MIDI hardware)</li>
+            <li><strong>Unsupported Browsers:</strong> Firefox and Safari show MIDI compatibility warning with recommended browsers (Chrome, Edge, Opera)</li>
+            <li><strong>Web MIDI API Required:</strong> Only Chromium-based browsers support the Web MIDI API needed for drum communication</li>
+          </ul>
+          <p style="color: #444; line-height: 1.7; font-size: 14px;">
+            You can still explore the UI with mouse/keyboard on incompatible setups, but MIDI functionality won't work.
           </p>
 
           <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin-top: 24px; font-size: 13px;">

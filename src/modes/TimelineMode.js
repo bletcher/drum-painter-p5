@@ -7,6 +7,7 @@
 import { FibonacciMode } from './FibonacciMode.js';
 import { RadialMode } from './RadialMode.js';
 import { DEFAULT_TIMELINE_SUBDIVISION } from '../config/constants.js';
+import { debugLog, debugWarn, debugError, infoLog } from '../utils/debug.js';
 
 export class TimelineMode {
   constructor(drumKitConfig) {
@@ -98,16 +99,16 @@ export class TimelineMode {
       });
       this.timelineLaneCount = drumIds.length;
 
-      console.log(`📋 Timeline lanes regenerated: ${this.timelineLaneCount} drums`);
-      console.log('   Drum order:', drumIds);
-      console.log('   Lane mapping:', this.timelineLanes);
+      debugLog(`📋 Timeline lanes regenerated: ${this.timelineLaneCount} drums`);
+      debugLog('   Drum order:', drumIds);
+      debugLog('   Lane mapping:', this.timelineLanes);
     } else {
       // Fallback to drum kit config (only used during initial constructor call)
       this.drumKitConfig.forEach((drum, index) => {
         this.timelineLanes[drum.id] = index;
       });
       this.timelineLaneCount = this.drumKitConfig.length;
-      console.log(`📋 Timeline lanes initialized from config: ${this.timelineLaneCount} drums`);
+      debugLog(`📋 Timeline lanes initialized from config: ${this.timelineLaneCount} drums`);
     }
 
     // Update staff height based on number of drums
@@ -120,9 +121,9 @@ export class TimelineMode {
    * @param {Object} context - Context object with paintCanvas and drumSettings
    */
   onActivate({ paintCanvas, drumSettings }) {
-    console.log('Timeline Mode activated');
-    console.log('🎵 Metronome enabled:', this.metronomeEnabled);
-    console.log('🎵 Audio context exists:', !!this.audioContext);
+    debugLog('Timeline Mode activated');
+    debugLog('🎵 Metronome enabled:', this.metronomeEnabled);
+    debugLog('🎵 Audio context exists:', !!this.audioContext);
     // Ensure timeline lanes match current drum configuration
     this.regenerateLanes(drumSettings);
 
@@ -323,14 +324,14 @@ export class TimelineMode {
     // Find which drum this is (use contextDrumId if available, otherwise find it)
     const drumId = contextDrumId || this.findDrumIdByNote(note, midiDeviceId, drumSettings);
     if (!drumId) {
-      console.warn(`⚠️ Note ${note} - No drum ID found in drumSettings`);
-      console.warn(`   Available drums:`, Object.keys(drumSettings));
+      debugWarn(`⚠️ Note ${note} - No drum ID found in drumSettings`);
+      debugWarn(`   Available drums:`, Object.keys(drumSettings));
       return;
     }
     if (!(drumId in this.timelineLanes)) {
-      console.warn(`⚠️ Note ${note} (${drumId}) - Drum ID not in timeline lanes`);
-      console.warn(`   Timeline lanes:`, this.timelineLanes);
-      console.warn(`   This drum exists in settings but was not added to timeline lanes!`);
+      debugWarn(`⚠️ Note ${note} (${drumId}) - Drum ID not in timeline lanes`);
+      debugWarn(`   Timeline lanes:`, this.timelineLanes);
+      debugWarn(`   This drum exists in settings but was not added to timeline lanes!`);
       return;
     }
 
@@ -342,7 +343,7 @@ export class TimelineMode {
     // Only require recording for time-based layouts (Staff, Spiral)
     // Point-based layouts (Rings, Petals, Polygon) can paint anytime
     if (isTimeBased && !this.recording) {
-      console.log('Timeline not recording - press Start button first');
+      debugLog('Timeline not recording - press Start button first');
       return;
     }
 
@@ -657,9 +658,9 @@ export class TimelineMode {
    * Start recording
    */
   startRecording(startOver = false) {
-    console.log('⏯️ Start button clicked - startRecording() called');
-    console.log('  metronomeEnabled:', this.metronomeEnabled);
-    console.log('  audioContext exists:', !!this.audioContext);
+    debugLog('⏯️ Start button clicked - startRecording() called');
+    debugLog('  metronomeEnabled:', this.metronomeEnabled);
+    debugLog('  audioContext exists:', !!this.audioContext);
 
     this.recording = true;
 
@@ -672,14 +673,14 @@ export class TimelineMode {
     // Initialize audio context for metronome (user interaction = browser allows audio)
     if (this.metronomeEnabled) {
       if (!this.audioContext) {
-        console.log('  → Initializing audio context...');
+        debugLog('  → Initializing audio context...');
         this.initializeAudioContext();
-        console.log('  → Audio context state after init:', this.audioContext?.state);
+        debugLog('  → Audio context state after init:', this.audioContext?.state);
       } else {
-        console.log('  → Audio context already exists, state:', this.audioContext.state);
+        debugLog('  → Audio context already exists, state:', this.audioContext.state);
       }
     } else {
-      console.log('  → Metronome is disabled, skipping audio init');
+      debugLog('  → Metronome is disabled, skipping audio init');
     }
 
     if (startOver) {
@@ -688,7 +689,7 @@ export class TimelineMode {
       this.pausedTime = 0;
       this.stopTime = null;
       this.lastMetronomeClick = -1;
-      console.log('Timeline recording started (from beginning)');
+      debugLog('Timeline recording started (from beginning)');
     } else {
       // Continue recording
       if (this.startTime !== null && this.stopTime !== null) {
@@ -705,14 +706,14 @@ export class TimelineMode {
         const exactSubdivision = timeElapsed / secondsPerSubdivision;
         this.lastMetronomeClick = Math.round(exactSubdivision) - 1;
 
-        console.log(`Timeline recording continued (paused for ${pauseDuration}ms)`);
+        debugLog(`Timeline recording continued (paused for ${pauseDuration}ms)`);
       } else {
         // First time starting
         this.startTime = Date.now();
         this.pausedTime = 0;
         this.stopTime = null;
         this.lastMetronomeClick = -1;
-        console.log('Timeline recording started');
+        debugLog('Timeline recording started');
       }
     }
   }
@@ -725,7 +726,7 @@ export class TimelineMode {
 
     this.recording = false;
     this.stopTime = Date.now();
-    console.log('Timeline recording stopped');
+    debugLog('Timeline recording stopped');
 
     // Show quick settings panel when recording stops
     const quickSettingsPanel = document.getElementById('drum-settings');
@@ -759,7 +760,7 @@ export class TimelineMode {
     paintCanvas.background(BG_COLORS[bgColor]);
     paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
 
-    console.log('Timeline cleared');
+    debugLog('Timeline cleared');
   }
 
   /**
@@ -777,7 +778,7 @@ export class TimelineMode {
     this.globalHitCount = 0;
     this.perDrumHitCount = {};
 
-    console.log('Timeline state cleared');
+    debugLog('Timeline state cleared');
   }
 
   /**
@@ -785,11 +786,11 @@ export class TimelineMode {
    */
   updateMetronome() {
     if (!this.startTime) {
-      console.warn('⚠️ No startTime for metronome');
+      debugWarn('⚠️ No startTime for metronome');
       return;
     }
     if (!this.audioContext) {
-      console.warn('⚠️ No audioContext for metronome');
+      debugWarn('⚠️ No audioContext for metronome');
       return;
     }
 
@@ -820,7 +821,7 @@ export class TimelineMode {
       const isBeat = (currentSubdivision % subdivisionsPerQuarter) === 0;
 
       // Play click
-      console.log(`🎵 Metronome click: subdivision ${currentSubdivision}, firstBeat=${isFirstBeat}, beat=${isBeat}`);
+      debugLog(`🎵 Metronome click: subdivision ${currentSubdivision}, firstBeat=${isFirstBeat}, beat=${isBeat}`);
       this.playMetronomeClick(isFirstBeat, isBeat);
     }
   }
@@ -830,7 +831,7 @@ export class TimelineMode {
    */
   playMetronomeClick(isFirstBeat, isBeat) {
     if (!this.audioContext) {
-      console.warn('⚠️ No audio context for metronome');
+      debugWarn('⚠️ No audio context for metronome');
       return;
     }
 
@@ -867,13 +868,13 @@ export class TimelineMode {
   initializeAudioContext() {
     if (!this.audioContext) {
       this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      console.log('🎵 Audio context created for metronome');
+      infoLog('🎵 Audio context created for metronome');
     }
 
     // Resume audio context if suspended (browser autoplay policy)
     if (this.audioContext.state === 'suspended') {
       this.audioContext.resume().then(() => {
-        console.log('🎵 Audio context resumed');
+        infoLog('🎵 Audio context resumed');
       });
     }
   }

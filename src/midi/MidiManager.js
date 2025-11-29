@@ -5,6 +5,7 @@
 
 import { DRUM_KIT_CONFIG } from '../config/drumKit.js';
 import { DeviceRegistry } from './DeviceRegistry.js';
+import { debugLog, debugWarn, debugError, infoLog } from '../utils/debug.js';
 
 export class MidiManager {
   constructor(onPaintCallback) {
@@ -75,7 +76,7 @@ export class MidiManager {
    */
   async setup() {
     if (!navigator.requestMIDIAccess) {
-      console.warn('WebMIDI not supported');
+      debugWarn('WebMIDI not supported');
       return false;
     }
 
@@ -93,14 +94,14 @@ export class MidiManager {
    * Handle successful MIDI access
    */
   async onMIDISuccess(midi) {
-    console.log('✓ MIDI Access granted');
-    console.log('🔍 Raw MIDI object:', midi);
-    console.log('🔍 MIDI inputs map:', midi.inputs);
-    console.log('🔍 MIDI outputs map:', midi.outputs);
+    infoLog('✓ MIDI Access granted');
+    debugLog('🔍 Raw MIDI object:', midi);
+    debugLog('🔍 MIDI inputs map:', midi.inputs);
+    debugLog('🔍 MIDI outputs map:', midi.outputs);
 
     const inputs = Array.from(midi.inputs.values());
-    console.log('📥 Available MIDI inputs:', inputs.map(i => i.name));
-    console.log('📥 Full input details:', inputs.map(i => ({
+    debugLog('📥 Available MIDI inputs:', inputs.map(i => i.name));
+    debugLog('📥 Full input details:', inputs.map(i => ({
       name: i.name,
       id: i.id,
       manufacturer: i.manufacturer,
@@ -109,7 +110,7 @@ export class MidiManager {
     })));
 
     if (inputs.length === 0) {
-      console.warn('No MIDI devices found');
+      debugWarn('No MIDI devices found');
       this.connectedDevices = [];
       if (this.onMidiStatusChange) {
         this.onMidiStatusChange(false, 'No MIDI devices found', '', []);
@@ -131,7 +132,7 @@ export class MidiManager {
       };
     });
 
-    console.log('📱 Connected devices:', this.connectedDevices);
+    debugLog('📱 Connected devices:', this.connectedDevices);
 
     // Connect to all inputs - pass device ID with message
     for (const input of inputs) {
@@ -141,9 +142,9 @@ export class MidiManager {
           await input.open();
         }
         input.onmidimessage = (message) => this.handleMIDIMessage(message, input.id);
-        console.log(`✅ Connected to: ${input.name} (ID: ${input.id}, state: ${input.connection})`);
+        infoLog(`✅ Connected to: ${input.name} (ID: ${input.id}, state: ${input.connection})`);
       } catch (error) {
-        console.warn(`⚠️ Failed to open ${input.name}:`, error);
+        debugWarn(`⚠️ Failed to open ${input.name}:`, error);
         // Still set up the handler in case the port is already open
         input.onmidimessage = (message) => this.handleMIDIMessage(message, input.id);
       }
@@ -151,7 +152,7 @@ export class MidiManager {
 
     // Listen for device state changes (connect/disconnect)
     midi.onstatechange = async (e) => {
-      console.log('🔄 MIDI device state changed:', e.port.name, e.port.state);
+      debugLog('🔄 MIDI device state changed:', e.port.name, e.port.state);
 
       if (e.port.type === 'input') {
         if (e.port.state === 'connected') {
@@ -163,11 +164,11 @@ export class MidiManager {
             await e.port.open();
           }
           e.port.onmidimessage = (message) => this.handleMIDIMessage(message, e.port.id);
-          console.log(`🔌 Newly connected: ${e.port.name} (${stableKey}, state: ${e.port.connection})`);
+          infoLog(`🔌 Newly connected: ${e.port.name} (${stableKey}, state: ${e.port.connection})`);
         } else if (e.port.state === 'disconnected') {
           // Mark device as disconnected in registry
           this.deviceRegistry.markDisconnected(e.port.id);
-          console.log(`📴 Disconnected: ${e.port.name}`);
+          debugLog(`📴 Disconnected: ${e.port.name}`);
         }
       }
 
@@ -183,7 +184,7 @@ export class MidiManager {
           stableKey: stableKey
         };
       });
-      console.log('📱 Updated connected devices:', this.connectedDevices);
+      debugLog('📱 Updated connected devices:', this.connectedDevices);
 
       // Update status callback
       if (this.onMidiStatusChange) {
@@ -204,7 +205,7 @@ export class MidiManager {
    * Handle MIDI access failure
    */
   onMIDIFailure(error) {
-    console.error('MIDI Access failed:', error);
+    debugError('MIDI Access failed:', error);
     if (this.onMidiStatusChange) {
       this.onMidiStatusChange(false, 'MIDI: Access failed');
     }
@@ -249,7 +250,7 @@ export class MidiManager {
         }
       }
     } catch (error) {
-      console.error('Error handling MIDI message:', error);
+      debugError('Error handling MIDI message:', error);
     }
   }
 
@@ -263,7 +264,7 @@ export class MidiManager {
       this.bankPadAssignments[this.bankLearnTarget].deviceId = deviceId;
       const device = this.connectedDevices.find(d => d.id === deviceId);
       const deviceName = device ? device.name : deviceId;
-      console.log(`Bank Pad Learn: Assigned note ${note} from ${deviceName} to ${this.bankLearnTarget}`);
+      debugLog(`Bank Pad Learn: Assigned note ${note} from ${deviceName} to ${this.bankLearnTarget}`);
       this.exitLearnMode();
       return;
     }
@@ -275,7 +276,7 @@ export class MidiManager {
         // Match both note and device (or deviceId is null for "any device")
         if (assignment.note === note && (!assignment.deviceId || assignment.deviceId === deviceId)) {
           this.activeDrumBank = drumId;
-          console.log(`🎚️ BANK PAD: Note ${note} switched active drum to ${drumId}`);
+          debugLog(`🎚️ BANK PAD: Note ${note} switched active drum to ${drumId}`);
           if (this.onBankModeChange) {
             this.onBankModeChange(drumId);
           }
@@ -361,7 +362,7 @@ export class MidiManager {
     // Start timer on first value
     if (this.ccLearnCalibrationValues.length === 0) {
       this.ccLearnStartTime = Date.now();
-      console.log(`CC Calibration: Move controller through FULL range for 3 seconds...`);
+      infoLog(`CC Calibration: Move controller through FULL range for 3 seconds...`);
     }
 
     this.ccLearnCalibrationValues.push(ccValue);
@@ -379,16 +380,16 @@ export class MidiManager {
         this.globalVariableAssignments[target].deviceId = deviceId;
         const device = this.connectedDevices.find(d => d.id === deviceId);
         const deviceName = device ? device.name : deviceId;
-        console.log(`Bank Variable Learn Complete: CC ${ccNumber} from ${deviceName} assigned to ${target}`);
+        infoLog(`Bank Variable Learn Complete: CC ${ccNumber} from ${deviceName} assigned to ${target}`);
       } else {
         // Store CC assignment for drum parameter
         this.ccAssignments = this.ccAssignments || {};
         this.ccAssignments[this.ccLearnDrumId] = this.ccAssignments[this.ccLearnDrumId] || {};
         this.ccAssignments[this.ccLearnDrumId][target] = { cc: ccNumber, ccMin, ccMax };
-        console.log(`CC Learn Complete: CC ${ccNumber} assigned to ${this.ccLearnDrumId}.${target}`);
+        infoLog(`CC Learn Complete: CC ${ccNumber} assigned to ${this.ccLearnDrumId}.${target}`);
       }
 
-      console.log(`  Detected range: ${ccMin}-${ccMax}`);
+      debugLog(`  Detected range: ${ccMin}-${ccMax}`);
       this.exitLearnMode();
     }
   }
@@ -433,7 +434,7 @@ export class MidiManager {
   startMidiLearn(drumId) {
     this.midiLearnMode = true;
     this.midiLearnDrumId = drumId;
-    console.log(`MIDI Learn: Waiting for note for ${drumId}...`);
+    debugLog(`MIDI Learn: Waiting for note for ${drumId}...`);
   }
 
   /**
@@ -444,7 +445,7 @@ export class MidiManager {
     this.ccLearnDrumId = drumId;
     this.ccLearnParameter = parameter;
     this.ccLearnCalibrationValues = [];
-    console.log(`CC Learn: Waiting for CC for ${drumId}.${parameter}...`);
+    debugLog(`CC Learn: Waiting for CC for ${drumId}.${parameter}...`);
   }
 
   /**
@@ -454,7 +455,7 @@ export class MidiManager {
     this.bankLearnMode = true;
     this.bankLearnType = 'pad';
     this.bankLearnTarget = drumId;
-    console.log(`Bank Pad Learn: Waiting for note for ${drumId}...`);
+    debugLog(`Bank Pad Learn: Waiting for note for ${drumId}...`);
   }
 
   /**
@@ -465,7 +466,7 @@ export class MidiManager {
     this.bankLearnType = 'variable';
     this.bankLearnTarget = paramKey;
     this.ccLearnCalibrationValues = [];
-    console.log(`Bank Variable Learn: Waiting for CC for ${paramKey}...`);
+    debugLog(`Bank Variable Learn: Waiting for CC for ${paramKey}...`);
   }
 
   /**
@@ -488,7 +489,7 @@ export class MidiManager {
    */
   toggleBankMode() {
     this.bankModeEnabled = !this.bankModeEnabled;
-    console.log(`Bank Mode: ${this.bankModeEnabled ? 'ON' : 'OFF'}`);
+    debugLog(`Bank Mode: ${this.bankModeEnabled ? 'ON' : 'OFF'}`);
     return this.bankModeEnabled;
   }
 
@@ -501,7 +502,7 @@ export class MidiManager {
     const deviceName = device ? device.name : deviceId;
     const stableKey = device ? device.stableKey : null;
 
-    console.log(`MIDI Learn: Assigned note ${note} from ${deviceName} to ${drumId}`);
+    infoLog(`MIDI Learn: Assigned note ${note} from ${deviceName} to ${drumId}`);
 
     // This will be handled by callback - pass both volatile ID and stable key
     if (this.onDrumNoteAssigned) {
@@ -515,14 +516,14 @@ export class MidiManager {
    */
   handleDeviceRegistryChange(event, stableKey, newDeviceId) {
     if (event === 'register') {
-      console.log(`🔄 Device registered: ${stableKey}, checking for drums to update...`);
+      debugLog(`🔄 Device registered: ${stableKey}, checking for drums to update...`);
 
       // This will be called from main.js to update drum settings
       if (this.onDeviceMappingsUpdated) {
         this.onDeviceMappingsUpdated(stableKey, newDeviceId);
       }
     } else if (event === 'disconnect') {
-      console.log(`⚠️ Device disconnected: ${stableKey}`);
+      debugLog(`⚠️ Device disconnected: ${stableKey}`);
       // Note: We keep the stable key in drum settings so it can reconnect later
     }
   }

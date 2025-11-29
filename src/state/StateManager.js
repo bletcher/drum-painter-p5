@@ -5,6 +5,7 @@
 
 import { MAX_HISTORY } from '../config/constants.js';
 import { DRUM_KIT_CONFIG } from '../config/drumKit.js';
+import { debugLog, debugWarn, debugError, infoLog } from '../utils/debug.js';
 
 const STORAGE_KEY = 'drumPainterSettings';
 
@@ -43,10 +44,10 @@ export class StateManager {
     if (this.historyIndex > 0) {
       this.historyIndex--;
       paintCanvas.image(this.canvasHistory[this.historyIndex], 0, 0);
-      console.log(`Undo (${this.historyIndex + 1}/${this.canvasHistory.length})`);
+      debugLog(`Undo (${this.historyIndex + 1}/${this.canvasHistory.length})`);
       return true;
     } else {
-      console.log('Nothing to undo');
+      debugLog('Nothing to undo');
       return false;
     }
   }
@@ -59,10 +60,10 @@ export class StateManager {
     if (this.historyIndex < this.canvasHistory.length - 1) {
       this.historyIndex++;
       paintCanvas.image(this.canvasHistory[this.historyIndex], 0, 0);
-      console.log(`Redo (${this.historyIndex + 1}/${this.canvasHistory.length})`);
+      debugLog(`Redo (${this.historyIndex + 1}/${this.canvasHistory.length})`);
       return true;
     } else {
-      console.log('Nothing to redo');
+      debugLog('Nothing to redo');
       return false;
     }
   }
@@ -117,24 +118,24 @@ export class StateManager {
         timestamp: new Date().toISOString()
       };
 
-      console.log('💾 Saving to localStorage with key:', STORAGE_KEY);
-      console.log('💾 Saving drum settings:', Object.keys(state.drumSettings));
-      console.log('💾 Saving global settings:', state.globalSettings);
+      debugLog('💾 Saving to localStorage with key:', STORAGE_KEY);
+      debugLog('💾 Saving drum settings:', Object.keys(state.drumSettings));
+      debugLog('💾 Saving global settings:', state.globalSettings);
 
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 
       // Verify it was saved
       const verification = localStorage.getItem(STORAGE_KEY);
-      console.log('✅ Verified save - data exists:', !!verification);
+      debugLog('✅ Verified save - data exists:', !!verification);
 
       // Debug logging
-      console.log('✓ Settings saved to browser storage');
-      console.log('  Bank mode enabled:', state.bankModeSettings.enabled);
-      console.log('  Bank pad assignments:', Object.keys(state.bankModeSettings.padAssignments || {}).length, 'drums');
+      infoLog('✓ Settings saved to browser storage');
+      debugLog('  Bank mode enabled:', state.bankModeSettings.enabled);
+      debugLog('  Bank pad assignments:', Object.keys(state.bankModeSettings.padAssignments || {}).length, 'drums');
 
       return true;
     } catch (error) {
-      console.error('❌ Error saving settings:', error);
+      debugError('❌ Error saving settings:', error);
       return false;
     }
   }
@@ -145,22 +146,22 @@ export class StateManager {
    */
   loadDefault() {
     try {
-      console.log('📦 Checking localStorage for key:', STORAGE_KEY);
+      debugLog('📦 Checking localStorage for key:', STORAGE_KEY);
       const saved = localStorage.getItem(STORAGE_KEY);
-      console.log('📦 Raw localStorage value:', saved ? 'Found' : 'Not found');
+      debugLog('📦 Raw localStorage value:', saved ? 'Found' : 'Not found');
 
       if (!saved) {
-        console.warn('⚠️ No saved settings found in localStorage');
+        debugWarn('⚠️ No saved settings found in localStorage');
         return null;
       }
 
       const state = JSON.parse(saved);
-      console.log('✓ Settings loaded from browser storage');
-      console.log('📦 Loaded state keys:', Object.keys(state));
-      console.log('📦 Loaded drum settings:', state.drumSettings ? Object.keys(state.drumSettings) : 'none');
+      infoLog('✓ Settings loaded from browser storage');
+      debugLog('📦 Loaded state keys:', Object.keys(state));
+      debugLog('📦 Loaded drum settings:', state.drumSettings ? Object.keys(state.drumSettings) : 'none');
       return state;
     } catch (error) {
-      console.error('❌ Error loading settings:', error);
+      debugError('❌ Error loading settings:', error);
       return null;
     }
   }
@@ -225,10 +226,10 @@ export class StateManager {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      console.log('✓ Settings exported to file');
+      infoLog('✓ Settings exported to file');
       return true;
     } catch (error) {
-      console.error('Error exporting settings:', error);
+      debugError('Error exporting settings:', error);
       return false;
     }
   }
@@ -245,16 +246,16 @@ export class StateManager {
       reader.onload = (e) => {
         try {
           const state = JSON.parse(e.target.result);
-          console.log('✓ Settings imported from file');
+          infoLog('✓ Settings imported from file');
           resolve(state);
         } catch (error) {
-          console.error('Error parsing imported file:', error);
+          debugError('Error parsing imported file:', error);
           reject(error);
         }
       };
 
       reader.onerror = () => {
-        console.error('Error reading file');
+        debugError('Error reading file');
         reject(new Error('File read error'));
       };
 
@@ -268,10 +269,10 @@ export class StateManager {
   clearSavedSettings() {
     try {
       localStorage.removeItem(STORAGE_KEY);
-      console.log('✓ Saved settings cleared');
+      infoLog('✓ Saved settings cleared');
       return true;
     } catch (error) {
-      console.error('Error clearing settings:', error);
+      debugError('Error clearing settings:', error);
       return false;
     }
   }
@@ -294,20 +295,20 @@ export class StateManager {
       const basePath = import.meta.env.BASE_URL || '/';
       const settingsPath = `${basePath}default-settings.json`;
 
-      console.log('📦 Attempting to load default-settings.json from:', settingsPath);
+      debugLog('📦 Attempting to load default-settings.json from:', settingsPath);
       const response = await fetch(settingsPath);
 
       if (!response.ok) {
-        console.log('⚠️ No default-settings.json file found at:', settingsPath);
+        debugLog('⚠️ No default-settings.json file found at:', settingsPath);
         return null;
       }
 
       const state = await response.json();
-      console.log('✓ Loaded settings from default-settings.json');
-      console.log('📦 Loaded state keys:', Object.keys(state));
+      infoLog('✓ Loaded settings from default-settings.json');
+      debugLog('📦 Loaded state keys:', Object.keys(state));
       return state;
     } catch (error) {
-      console.log('⚠️ Could not load default-settings.json:', error.message);
+      debugLog('⚠️ Could not load default-settings.json:', error.message);
       return null;
     }
   }

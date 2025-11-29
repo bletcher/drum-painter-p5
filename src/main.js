@@ -20,6 +20,8 @@ import { findDrumByMidiNote } from './utils/drumHelpers.js';
 import { applyAllThemes } from './utils/applyTheme.js';
 import { visualStyleManager } from './canvas/VisualStyleManager.js';
 import { getBrushTextureCache } from './canvas/BrushTextureCache.js';
+import { debugLog, debugWarn, debugError, infoLog } from './utils/debug.js';
+import { checkBrowserCompatibility } from './utils/browserCompat.js';
 
 // ===== GLOBAL STATE =====
 let paintCanvas;
@@ -104,6 +106,12 @@ window.setup = async function() {
 
   // Apply centralized theme to HTML elements
   applyAllThemes();
+
+  // Check browser compatibility for MIDI support
+  const midiSupported = checkBrowserCompatibility();
+  if (!midiSupported) {
+    infoLog('⚠️ Web MIDI API not supported in this browser');
+  }
 
   // Initialize system managers
   stateManager = new StateManager();
@@ -204,7 +212,7 @@ window.setup = async function() {
   midiManager.onDrumNoteAssigned = (drumId, note, deviceId, stableKey) => {
     // Safety check - ensure drum exists in drumSettings
     if (!drumSettings[drumId]) {
-      console.error(`Cannot assign MIDI note: Drum "${drumId}" not found in drumSettings`);
+      debugError(`Cannot assign MIDI note: Drum "${drumId}" not found in drumSettings`);
       notificationSystem.show(`Error: Drum "${drumId}" not found`, 'error');
       return;
     }
@@ -218,12 +226,12 @@ window.setup = async function() {
     const deviceName = device ? device.name : 'Unknown';
 
     notificationSystem.show(`${drumId}: Note ${note} (${deviceName})`);
-    console.log(`✓ Mapped ${drumId} to Note ${note} from ${deviceName} (stable: ${stableKey})`);
+    debugLog(`✓ Mapped ${drumId} to Note ${note} from ${deviceName} (stable: ${stableKey})`);
   };
 
   // Set device mappings updated callback (auto-updates when devices reconnect)
   midiManager.onDeviceMappingsUpdated = (stableKey, newDeviceId) => {
-    console.log(`🔄 Updating drum mappings for reconnected device: ${stableKey} -> ${newDeviceId}`);
+    debugLog(`🔄 Updating drum mappings for reconnected device: ${stableKey} -> ${newDeviceId}`);
 
     // Find all drums mapped to this stable key and update their volatile device IDs
     let updatedCount = 0;
@@ -233,7 +241,7 @@ window.setup = async function() {
         const oldId = drum.midiDevice;
         drum.midiDevice = newDeviceId;
         updatedCount++;
-        console.log(`  ✓ Updated ${drumId}: device ID ${oldId} -> ${newDeviceId}`);
+        debugLog(`  ✓ Updated ${drumId}: device ID ${oldId} -> ${newDeviceId}`);
       }
     }
 
@@ -267,14 +275,14 @@ window.setup = async function() {
   stateManager.saveCanvasState(paintCanvas);
 
   // Try to load saved settings
-  console.log('🔄 Attempting to load saved settings...');
+  debugLog('🔄 Attempting to load saved settings...');
   await loadSavedSettings();
-  console.log('Current drumSettings after initialization:', drumSettings);
-  console.log('🔍 After loadSavedSettings - chronicleMode.metronomeEnabled:', chronicleMode.metronomeEnabled);
+  debugLog('Current drumSettings after initialization:', drumSettings);
+  debugLog('🔍 After loadSavedSettings - chronicleMode.metronomeEnabled:', chronicleMode.metronomeEnabled);
 
   // Initialize UI controls
   initializeUI();
-  console.log('🔍 After initializeUI - chronicleMode.metronomeEnabled:', chronicleMode.metronomeEnabled);
+  debugLog('🔍 After initializeUI - chronicleMode.metronomeEnabled:', chronicleMode.metronomeEnabled);
 
   // Activate the current mode (important for initializing mode-specific state)
   getCurrentMode().onActivate({ paintCanvas, drumSettings });
@@ -284,13 +292,13 @@ window.setup = async function() {
 
   // Sync timeline controls UI with loaded settings (including metronome checkbox)
   if (timelineControls) {
-    console.log('🔄 Syncing timeline controls UI with loaded settings...');
+    debugLog('🔄 Syncing timeline controls UI with loaded settings...');
     timelineControls.syncUI();
   }
 
-  console.log('🎨 Drum Painter - Modular Version');
-  console.log('📦 Current mode:', currentModeType, '- Style/Layout:', currentModeType === 'freeform' ? freeformMode.style : chronicleMode.layout);
-  console.log('🥁 Drum kit:', DRUM_KIT_CONFIG.map(d => d.name));
+  debugLog('🎨 Drum Painter - Modular Version');
+  debugLog('📦 Current mode:', currentModeType, '- Style/Layout:', currentModeType === 'freeform' ? freeformMode.style : chronicleMode.layout);
+  debugLog('🥁 Drum kit:', DRUM_KIT_CONFIG.map(d => d.name));
 };
 
 // ===== UI INITIALIZATION =====
@@ -453,7 +461,7 @@ function initializeUI() {
       paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
       window.currentBgColor = currentBgColor; // Update global
       window.currentBlendMode = currentBlendMode; // Update global
-      console.log(`Blend Mode: ${BLEND_MODE_NAMES[currentBlendMode]}`);
+      debugLog(`Blend Mode: ${BLEND_MODE_NAMES[currentBlendMode]}`);
       notificationSystem.show(`Blend: ${BLEND_MODE_NAMES[currentBlendMode]}`);
     });
   }
@@ -620,6 +628,70 @@ function initializeUI() {
     });
   }
 
+  const shortcutRecord = document.getElementById('shortcut-record');
+  if (shortcutRecord) {
+    shortcutRecord.addEventListener('click', () => {
+      if (!videoRecorder.isRecording) {
+        videoRecorder.startRecording().then(success => {
+          if (success) {
+            updateVideoRecordingUI(true);
+          }
+        });
+      } else {
+        videoRecorder.stopRecording();
+        updateVideoRecordingUI(false);
+      }
+    });
+  }
+
+  const shortcutSaveSettings = document.getElementById('shortcut-save-settings');
+  if (shortcutSaveSettings) {
+    shortcutSaveSettings.addEventListener('click', () => {
+      // Simulate D key press
+      const event = new KeyboardEvent('keydown', { key: 'd' });
+      window.dispatchEvent(event);
+    });
+  }
+
+  const shortcutBlendMode = document.getElementById('shortcut-blend-mode');
+  if (shortcutBlendMode) {
+    shortcutBlendMode.addEventListener('click', () => {
+      currentBlendMode = (currentBlendMode + 1) % BLEND_MODES.length;
+      paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
+      window.currentBlendMode = currentBlendMode;
+      const blendSelect = document.getElementById('blend-select');
+      if (blendSelect) blendSelect.value = currentBlendMode.toString();
+      notificationSystem.show(`Blend: ${BLEND_MODE_NAMES[currentBlendMode]}`);
+    });
+  }
+
+  const shortcutArrows = document.getElementById('shortcut-arrows');
+  if (shortcutArrows) {
+    shortcutArrows.addEventListener('click', () => {
+      if (window.toggleShortcutsPanel) {
+        window.toggleShortcutsPanel();
+      }
+    });
+  }
+
+  const shortcutDrums = document.getElementById('shortcut-drums');
+  if (shortcutDrums) {
+    shortcutDrums.addEventListener('click', () => {
+      if (window.toggleShortcutsPanel) {
+        window.toggleShortcutsPanel();
+      }
+    });
+  }
+
+  const shortcutHelp = document.getElementById('shortcut-help');
+  if (shortcutHelp) {
+    shortcutHelp.addEventListener('click', () => {
+      if (window.toggleShortcutsPanel) {
+        window.toggleShortcutsPanel();
+      }
+    });
+  }
+
   // Close customization button
   const closeBtn = document.getElementById('close-customize-btn');
   const backdrop = document.getElementById('customization-backdrop');
@@ -685,7 +757,7 @@ function initializeUI() {
         bankModeSettings: midiManager.getState()
       };
 
-      console.log('Saving settings:', JSON.stringify(appState.drumSettings, null, 2));
+      debugLog('Saving settings:', JSON.stringify(appState.drumSettings, null, 2));
 
       if (stateManager.saveAsDefault(appState)) {
         notificationSystem.show('Settings saved!');
@@ -816,7 +888,7 @@ function initializeUI() {
         for (let i = DRUM_KIT_CONFIG.length - 1; i >= 0; i--) {
           const drumId = DRUM_KIT_CONFIG[i].id;
           if (!drumSettings[drumId]) {
-            console.warn(`⚠️ Removing orphaned drum: ${drumId}`);
+            debugWarn(`⚠️ Removing orphaned drum: ${drumId}`);
             orphanedDrums.push(drumId);
             DRUM_KIT_CONFIG.splice(i, 1);
           }
@@ -850,10 +922,10 @@ function initializeUI() {
         // Rebuild UI
         customizationPanel.build();
 
-        console.log('✓ Settings imported from file');
+        infoLog('✓ Settings imported from file');
         notificationSystem.show('Imported successfully!');
       } catch (error) {
-        console.error('Error importing settings:', error);
+        debugError('Error importing settings:', error);
         notificationSystem.show('Import failed');
         alert('Failed to import settings. Please check the file format.');
       }
@@ -991,7 +1063,7 @@ function initializeUI() {
         try {
           projects[projectName] = JSON.parse(localStorage.getItem(key));
         } catch (e) {
-          console.error(`Failed to parse project: ${projectName}`, e);
+          debugError(`Failed to parse project: ${projectName}`, e);
         }
       }
     }
@@ -1133,7 +1205,7 @@ function initializeUI() {
 
         notificationSystem.show(`Project "${projectName}" loaded!`, 'success');
       } catch (error) {
-        console.error('Error loading project:', error);
+        debugError('Error loading project:', error);
         notificationSystem.show('Failed to load project', 'error');
       }
     });
@@ -1208,7 +1280,7 @@ function openMidiDevicesModal() {
 
   // Populate devices list - prefer direct midiManager access
   const devices = midiManager?.connectedDevices || window.midiDevicesList || [];
-  console.log('🎹 Opening MIDI devices modal, found devices:', devices);
+  debugLog('🎹 Opening MIDI devices modal, found devices:', devices);
 
   if (devices.length === 0) {
     devicesList.innerHTML = `
@@ -1278,7 +1350,7 @@ function setupVideoRecorderUI() {
       recordBtn.style.cursor = 'not-allowed';
       recordText.textContent = 'Not Supported';
     }
-    console.warn('⚠️ Video recording not supported in this browser');
+    debugWarn('⚠️ Video recording not supported in this browser');
     return;
   }
 
@@ -1514,7 +1586,7 @@ function updateRecordingsList() {
           }, 2000);
         }, 500);
       } catch (error) {
-        console.error('Merge failed:', error);
+        debugError('Merge failed:', error);
         if (statusSpan) statusSpan.textContent = 'Merge failed';
         if (statusSpan) statusSpan.style.color = '#dc2626';
 
@@ -1820,7 +1892,7 @@ window.keyPressed = function() {
     // Save state for undo
     stateManager.saveCanvasState(paintCanvas);
 
-    console.log('Canvas cleared');
+    debugLog('Canvas cleared');
     notificationSystem.show('Canvas cleared', 'success');
     return false;
   }
@@ -1829,7 +1901,7 @@ window.keyPressed = function() {
   if (key === 's' || key === 'S') {
     let filename = `drum-painting-${getCurrentMode().name.replace(/\s+/g, '-')}-${Date.now()}.png`;
     paintCanvas.save(filename);
-    console.log(`Saved: ${filename}`);
+    debugLog(`Saved: ${filename}`);
     notificationSystem.show(`Saved: ${filename}`);
     return false;
   }
@@ -1841,10 +1913,10 @@ window.keyPressed = function() {
 
     // Debug: Check checkbox state vs chronicleMode value
     const metronomeCheckbox = document.getElementById('metronome-enabled');
-    console.log('💾 === SAVE DEBUG ===');
-    console.log('💾 Checkbox checked:', metronomeCheckbox?.checked);
-    console.log('💾 chronicleMode.metronomeEnabled:', chronicleMode.metronomeEnabled);
-    console.log('💾 Are they the same?', metronomeCheckbox?.checked === chronicleMode.metronomeEnabled);
+    debugLog('💾 === SAVE DEBUG ===');
+    debugLog('💾 Checkbox checked:', metronomeCheckbox?.checked);
+    debugLog('💾 chronicleMode.metronomeEnabled:', chronicleMode.metronomeEnabled);
+    debugLog('💾 Are they the same?', metronomeCheckbox?.checked === chronicleMode.metronomeEnabled);
 
     const appState = {
       drumSettings,
@@ -1873,9 +1945,9 @@ window.keyPressed = function() {
       },
       bankModeSettings: midiManager.getState()
     };
-    console.log('💾 Saving metronomeEnabled value:', appState.timelineSettings.metronomeEnabled);
+    debugLog('💾 Saving metronomeEnabled value:', appState.timelineSettings.metronomeEnabled);
     if (stateManager.saveAsDefault(appState)) {
-      console.log('✓ Settings saved as default');
+      infoLog('✓ Settings saved as default');
       notificationSystem.show('Settings saved');
     }
     return false;
@@ -1897,11 +1969,133 @@ window.keyPressed = function() {
     return false;
   }
 
-  // 1-9 - switch modes
+  // B - cycle blend modes
+  if (key === 'b' || key === 'B') {
+    currentBlendMode = (currentBlendMode + 1) % BLEND_MODES.length;
+    paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
+    window.currentBlendMode = currentBlendMode;
+    const blendSelect = document.getElementById('blend-select');
+    if (blendSelect) blendSelect.value = currentBlendMode.toString();
+    notificationSystem.show(`Blend: ${BLEND_MODE_NAMES[currentBlendMode]}`);
+    return false;
+  }
+
+  // P - play/pause timeline (only for time-based layouts: staff, spiral)
+  if (key === 'p' || key === 'P') {
+    if (currentModeType === 'timeline' && (chronicleMode.layout === 'staff' || chronicleMode.layout === 'spiral')) {
+      if (timelineControls) {
+        timelineControls.toggleRecording();
+        notificationSystem.show(chronicleMode.recording ? 'Timeline started' : 'Timeline paused');
+      }
+    }
+    return false;
+  }
+
+  // C - clear timeline
+  if (key === 'c' || key === 'C') {
+    if (currentModeType === 'timeline') {
+      if (confirm('Clear the timeline? This cannot be undone.')) {
+        // Reset blend mode temporarily for clearing
+        paintCanvas.blendMode(BLEND);
+        paintCanvas.background(BG_COLORS[currentBgColor]);
+        paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
+
+        window.currentBgColor = currentBgColor;
+        strokeCount = 0;
+        particles = [];
+
+        // Clear timeline state
+        chronicleMode.clear({ paintCanvas, currentBgColor });
+
+        // Save state for undo
+        stateManager.saveCanvasState(paintCanvas);
+
+        notificationSystem.show('Timeline cleared', 'success');
+      }
+    }
+    return false;
+  }
+
+  // Arrow keys - navigate modes and styles/layouts
+  if (keyCode === LEFT_ARROW || keyCode === RIGHT_ARROW) {
+    // Left/Right: Toggle between Freeform and Timeline
+    const freeformRadio = document.getElementById('mode-type-freeform');
+    const timelineRadio = document.getElementById('mode-type-timeline');
+
+    if (keyCode === LEFT_ARROW && currentModeType !== 'freeform') {
+      // Switch to Freeform
+      if (freeformRadio) {
+        freeformRadio.click();
+        notificationSystem.show('Mode: Freeform');
+      }
+    } else if (keyCode === RIGHT_ARROW && currentModeType === 'freeform') {
+      // Switch to Timeline
+      if (timelineRadio) {
+        timelineRadio.click();
+        notificationSystem.show('Mode: Timeline');
+      }
+    }
+    return false;
+  }
+
+  if (keyCode === UP_ARROW || keyCode === DOWN_ARROW) {
+    // Up/Down: Cycle through styles (Freeform) or layouts (Timeline)
+    if (currentModeType === 'freeform') {
+      const styleSelect = document.getElementById('freeform-style-select');
+      if (styleSelect) {
+        const options = Array.from(styleSelect.options);
+        const currentIndex = options.findIndex(opt => opt.value === freeformMode.style);
+        let newIndex;
+
+        if (keyCode === UP_ARROW) {
+          newIndex = currentIndex > 0 ? currentIndex - 1 : options.length - 1;
+        } else {
+          newIndex = currentIndex < options.length - 1 ? currentIndex + 1 : 0;
+        }
+
+        styleSelect.selectedIndex = newIndex;
+        styleSelect.dispatchEvent(new Event('change'));
+        notificationSystem.show(`Style: ${options[newIndex].text.split('—')[0].trim()}`);
+      }
+    } else {
+      const layoutSelect = document.getElementById('timeline-layout-select');
+      if (layoutSelect) {
+        const options = Array.from(layoutSelect.options);
+        const currentIndex = options.findIndex(opt => opt.value === chronicleMode.layout);
+        let newIndex;
+
+        if (keyCode === UP_ARROW) {
+          newIndex = currentIndex > 0 ? currentIndex - 1 : options.length - 1;
+        } else {
+          newIndex = currentIndex < options.length - 1 ? currentIndex + 1 : 0;
+        }
+
+        layoutSelect.selectedIndex = newIndex;
+        layoutSelect.dispatchEvent(new Event('change'));
+        notificationSystem.show(`Layout: ${options[newIndex].text.split('—')[0].trim()}`);
+      }
+    }
+    return false;
+  }
+
+  // 1-9 - select drum in customization panel
   if (key >= '1' && key <= '9') {
-    let newMode = parseInt(key) - 1;
-    if (newMode < modes.length) {
-      switchMode(newMode);
+    const drumIndex = parseInt(key) - 1;
+    if (drumIndex < DRUM_KIT_CONFIG.length) {
+      const drumId = DRUM_KIT_CONFIG[drumIndex].id;
+
+      // If customization panel is open, select the drum
+      if (customizationPanel.isVisible) {
+        customizationPanel.selectDrum(drumId);
+        notificationSystem.show(`Selected: ${DRUM_KIT_CONFIG[drumIndex].name}`);
+      } else {
+        // Open panel and select drum
+        customizationPanel.toggle();
+        setTimeout(() => {
+          customizationPanel.selectDrum(drumId);
+          notificationSystem.show(`Selected: ${DRUM_KIT_CONFIG[drumIndex].name}`);
+        }, 100);
+      }
     }
     return false;
   }
@@ -1928,12 +2122,12 @@ function handlePaint(note, velocity, deviceId) {
     // No mapping found - don't paint
     const device = midiManager.connectedDevices.find(d => d.id === deviceId);
     const deviceName = device ? device.name : deviceId;
-    console.log(`⚠️ Unmapped MIDI: Note ${note} from ${deviceName} - not painting`);
+    debugLog(`⚠️ Unmapped MIDI: Note ${note} from ${deviceName} - not painting`);
     return;
   }
 
   const drumName = drumSettings[drumId]?.name || drumId;
-  console.log(`🎵 Paint: Note ${note} (${drumName}), Vel ${velocity.toFixed(2)}`);
+  debugLog(`🎵 Paint: Note ${note} (${drumName}), Vel ${velocity.toFixed(2)}`);
 
   // Flash MIDI activity indicator
   const activityLight = document.getElementById('midi-activity-light');
@@ -1965,7 +2159,7 @@ function handlePaint(note, velocity, deviceId) {
     getCurrentMode().paint(note, velocity, context);
     strokeCount++;
   } catch (error) {
-    console.error('Error painting:', error);
+    debugError('Error painting:', error);
   }
 }
 
@@ -2001,7 +2195,7 @@ function handleDirectModeCC(ccNumber, ccValue) {
             drumSettings[drumId][paramKey] = mappedValue;
           }
 
-          console.log(`🎚️ Direct CC: ${drumId}.${paramKey} = ${mappedValue.toFixed(1)} (CC${ccNumber}=${ccValue})`);
+          debugLog(`🎚️ Direct CC: ${drumId}.${paramKey} = ${mappedValue.toFixed(1)} (CC${ccNumber}=${ccValue})`);
         }
         return;
       }
@@ -2047,7 +2241,7 @@ function handleBankModeCC(drumId, paramKey, normalizedValue, ccValue, ccNumber) 
     drumSettings[drumId][paramKey] = mappedValue;
   }
 
-  console.log(`🎚️ Bank CC: ${drumId}.${paramKey} = ${mappedValue.toFixed(1)} (CC${ccNumber}=${ccValue})`);
+  debugLog(`🎚️ Bank CC: ${drumId}.${paramKey} = ${mappedValue.toFixed(1)} (CC${ccNumber}=${ccValue})`);
 
   // Show notification
   notificationSystem.show(`${drumId}: ${paramKey} = ${mappedValue.toFixed(0)}`);
@@ -2138,7 +2332,7 @@ function switchMode(oldModeIndex) {
   // Don't hide Quick Settings panel - it will be hidden when recording starts
   // and shown when recording stops
 
-  console.log(`Mode: ${getCurrentMode().name}`);
+  debugLog(`Mode: ${getCurrentMode().name}`);
   notificationSystem.show(getCurrentMode().name);
 }
 
@@ -2155,7 +2349,7 @@ async function loadSavedSettings() {
   }
 
   if (!savedState) {
-    console.log('No saved settings found, using factory defaults');
+    debugLog('No saved settings found, using factory defaults');
     return;
   }
 
@@ -2164,18 +2358,18 @@ async function loadSavedSettings() {
     // Clear and reload config
     DRUM_KIT_CONFIG.length = 0;
     savedState.drumKitConfig.forEach(drum => DRUM_KIT_CONFIG.push(drum));
-    console.log(`✓ Loaded drum kit config: ${DRUM_KIT_CONFIG.length} drums`);
+    debugLog(`✓ Loaded drum kit config: ${DRUM_KIT_CONFIG.length} drums`);
   }
 
   // Apply bank mode settings FIRST (before orphan cleanup that might auto-save)
   if (savedState.bankModeSettings && midiManager) {
     midiManager.loadState(savedState.bankModeSettings);
-    console.log('✓ Loaded bank mode settings (early)');
+    debugLog('✓ Loaded bank mode settings (early)');
   }
 
   // Apply drum settings (merge instead of replace to maintain references)
   if (savedState.drumSettings) {
-    console.log('Loading drum settings from storage:', JSON.stringify(savedState.drumSettings, null, 2));
+    debugLog('Loading drum settings from storage:', JSON.stringify(savedState.drumSettings, null, 2));
     for (const drumId in savedState.drumSettings) {
       if (drumSettings[drumId]) {
         // Update existing drum
@@ -2191,13 +2385,13 @@ async function loadSavedSettings() {
         if (drumSettings[drumId].midiDevice === undefined) {
           drumSettings[drumId].midiDevice = null;
         }
-        console.log(`➕ Added custom drum from saved settings: ${drumId} (${savedState.drumSettings[drumId].name})`);
+        debugLog(`➕ Added custom drum from saved settings: ${drumId} (${savedState.drumSettings[drumId].name})`);
       }
     }
     // Update global window.drumSettings reference
     window.drumSettings = drumSettings;
-    console.log('✓ Loaded drum settings');
-    console.log('Current drum settings after load:', JSON.stringify(drumSettings, null, 2));
+    debugLog('✓ Loaded drum settings');
+    debugLog('Current drum settings after load:', JSON.stringify(drumSettings, null, 2));
   }
 
   // Load spiral settings BEFORE orphan cleanup (so auto-save has correct values)
@@ -2217,7 +2411,7 @@ async function loadSavedSettings() {
     if (savedState.spiralSettings.pattern !== undefined) {
       chronicleMode.spiralSettings.pattern = savedState.spiralSettings.pattern;
     }
-    console.log('✓ Loaded spiral settings (early)');
+    debugLog('✓ Loaded spiral settings (early)');
   }
 
   // Load timeline settings BEFORE orphan cleanup (so auto-save has correct values)
@@ -2232,11 +2426,11 @@ async function loadSavedSettings() {
       chronicleMode.beatsPerMeasure = savedState.timelineSettings.beatsPerMeasure;
     }
     if (savedState.timelineSettings.metronomeEnabled !== undefined) {
-      console.log('📦 Loading metronomeEnabled from savedState:', savedState.timelineSettings.metronomeEnabled);
+      debugLog('📦 Loading metronomeEnabled from savedState:', savedState.timelineSettings.metronomeEnabled);
       chronicleMode.metronomeEnabled = savedState.timelineSettings.metronomeEnabled;
-      console.log('📦 chronicleMode.metronomeEnabled is now:', chronicleMode.metronomeEnabled);
+      debugLog('📦 chronicleMode.metronomeEnabled is now:', chronicleMode.metronomeEnabled);
     } else {
-      console.log('⚠️ No metronomeEnabled in savedState.timelineSettings');
+      debugLog('⚠️ No metronomeEnabled in savedState.timelineSettings');
     }
     if (savedState.timelineSettings.midiLatencyMs !== undefined) {
       chronicleMode.midiLatencyMs = savedState.timelineSettings.midiLatencyMs;
@@ -2256,7 +2450,7 @@ async function loadSavedSettings() {
     if (savedState.timelineSettings.layout !== undefined) {
       chronicleMode.layout = savedState.timelineSettings.layout;
     }
-    console.log('✓ Loaded timeline settings (early)');
+    debugLog('✓ Loaded timeline settings (early)');
   }
 
   // Clean up orphaned drums (two-way cleanup)
@@ -2265,7 +2459,7 @@ async function loadSavedSettings() {
   for (let i = DRUM_KIT_CONFIG.length - 1; i >= 0; i--) {
     const drumId = DRUM_KIT_CONFIG[i].id;
     if (!drumSettings[drumId]) {
-      console.warn(`⚠️ Removing orphaned drum from config: ${drumId}`);
+      debugWarn(`⚠️ Removing orphaned drum from config: ${drumId}`);
       DRUM_KIT_CONFIG.splice(i, 1);
     }
   }
@@ -2280,9 +2474,9 @@ async function loadSavedSettings() {
   }
 
   if (orphanedSettings.length > 0) {
-    console.warn(`🗑️ Removing ${orphanedSettings.length} orphaned drum settings not in current config:`);
+    debugWarn(`🗑️ Removing ${orphanedSettings.length} orphaned drum settings not in current config:`);
     orphanedSettings.forEach(drumId => {
-      console.warn(`  - ${drumId} (${drumSettings[drumId]?.name || 'unknown'})`);
+      debugWarn(`  - ${drumId} (${drumSettings[drumId]?.name || 'unknown'})`);
       delete drumSettings[drumId];
     });
 
@@ -2315,7 +2509,7 @@ async function loadSavedSettings() {
       bankModeSettings: midiManager.getState()
     };
     stateManager.saveAsDefault(appState);
-    console.log(`✓ Cleaned up and saved settings`);
+    infoLog(`✓ Cleaned up and saved settings`);
   }
 
   // Apply global settings
@@ -2345,7 +2539,7 @@ async function loadSavedSettings() {
       // Update global window reference
       window.currentBgColor = currentBgColor;
     }
-    console.log('✓ Loaded global settings');
+    debugLog('✓ Loaded global settings');
   }
 
   // Update active drum indicator (bank mode settings already loaded earlier)
@@ -2368,13 +2562,13 @@ async function loadSavedSettings() {
 
     // Sync UI elements - note that initializeUI hasn't been called yet, so we need to do this after
     // For now, just set the mode type and we'll sync UI in initializeUI
-    console.log('✓ Loaded paint mode (new structure):', currentModeType,
+    debugLog('✓ Loaded paint mode (new structure):', currentModeType,
                 savedState.freeformStyle || 'default',
                 savedState.chronicleLayout || 'default');
   } else if (savedState.currentMode !== undefined) {
     // Legacy: Load old mode index and convert to new structure
     switchMode(savedState.currentMode);
-    console.log('✓ Loaded paint mode (legacy):', savedState.currentMode);
+    infoLog('✓ Loaded paint mode (legacy):', savedState.currentMode);
   }
 
   // Update spiral UI sliders/dropdowns (settings already loaded earlier)
@@ -2405,7 +2599,7 @@ async function loadSavedSettings() {
     }
   }
 
-  console.log(`📁 Loaded settings from ${savedState.timestamp}`);
+  infoLog(`📁 Loaded settings from ${savedState.timestamp}`);
 }
 
 /**
@@ -2421,7 +2615,7 @@ function migrateDrumIdChanges() {
 
   for (const [oldId, newId] of Object.entries(migrations)) {
     if (drumSettings[oldId] && !drumSettings[newId]) {
-      console.log(`🔄 Migrating drum ID: ${oldId} -> ${newId}`);
+      debugLog(`🔄 Migrating drum ID: ${oldId} -> ${newId}`);
 
       // Copy all settings from old ID to new ID
       drumSettings[newId] = { ...drumSettings[oldId] };
@@ -2440,7 +2634,7 @@ function migrateDrumIdChanges() {
   }
 
   if (migrated) {
-    console.log('✅ Drum ID migration complete');
+    debugLog('✅ Drum ID migration complete');
 
     // Save updated settings
     const appState = {
@@ -2480,7 +2674,7 @@ function migrateDrumIdChanges() {
  */
 function migrateDrumMappingsToStableKeys() {
   if (!midiManager || !midiManager.deviceRegistry) {
-    console.log('⚠️ Cannot migrate: MIDI manager not ready');
+    debugLog('⚠️ Cannot migrate: MIDI manager not ready');
     return;
   }
 
@@ -2499,7 +2693,7 @@ function migrateDrumMappingsToStableKeys() {
         // Found it! Upgrade the mapping
         drum.midiDeviceStable = stableKey;
         migratedCount++;
-        console.log(`🔄 Migrated ${drumId} to use stable key: ${stableKey}`);
+        debugLog(`🔄 Migrated ${drumId} to use stable key: ${stableKey}`);
       } else {
         // Device ID not in current registry - might be disconnected or from old session
         // Try to match by device name from connectedDevices (less reliable)
@@ -2507,10 +2701,10 @@ function migrateDrumMappingsToStableKeys() {
         if (connectedDevice && connectedDevice.stableKey) {
           drum.midiDeviceStable = connectedDevice.stableKey;
           migratedCount++;
-          console.log(`🔄 Migrated ${drumId} to use stable key (via connected devices): ${connectedDevice.stableKey}`);
+          debugLog(`🔄 Migrated ${drumId} to use stable key (via connected devices): ${connectedDevice.stableKey}`);
         } else {
           ambiguousCount++;
-          console.log(`⚠️ Cannot migrate ${drumId}: device ID ${drum.midiDevice} not found in registry`);
+          debugLog(`⚠️ Cannot migrate ${drumId}: device ID ${drum.midiDevice} not found in registry`);
           // Clear the obsolete device ID to allow note-only matching
           drum.midiDevice = null;
         }
@@ -2519,7 +2713,7 @@ function migrateDrumMappingsToStableKeys() {
   }
 
   if (migratedCount > 0) {
-    console.log(`✅ Migrated ${migratedCount} drum mapping(s) to stable device keys`);
+    debugLog(`✅ Migrated ${migratedCount} drum mapping(s) to stable device keys`);
     notificationSystem.show(`Upgraded ${migratedCount} drum mapping(s) to new device tracking`, 'success');
 
     // Save updated settings to persist the migration
@@ -2554,7 +2748,7 @@ function migrateDrumMappingsToStableKeys() {
   }
 
   if (ambiguousCount > 0) {
-    console.log(`⚠️ ${ambiguousCount} drum(s) with unknown devices - set to "any device" mode`);
+    debugLog(`⚠️ ${ambiguousCount} drum(s) with unknown devices - set to "any device" mode`);
   }
 }
 
@@ -2590,29 +2784,29 @@ function checkForDuplicateNoteMappings() {
   }
 
   if (duplicates.length > 0) {
-    console.warn(`⚠️ Found ${duplicates.length} MIDI note conflict(s):`);
+    debugWarn(`⚠️ Found ${duplicates.length} MIDI note conflict(s):`);
     duplicates.forEach(({ note, drums }) => {
-      console.warn(`  Note ${note} mapped to ${drums.length} drums:`);
+      debugWarn(`  Note ${note} mapped to ${drums.length} drums:`);
       drums.forEach(drum => {
         const deviceInfo = drum.deviceStable
           ? `device: ${drum.deviceStable}`
           : drum.device
             ? `device: ${drum.device} (no stable key!)`
             : 'ANY device';
-        console.warn(`    - ${drum.id} (${drum.name}) [${deviceInfo}]`);
+        debugWarn(`    - ${drum.id} (${drum.name}) [${deviceInfo}]`);
       });
-      console.warn(`  → Only ONE will respond unless they have different device assignments!`);
+      debugWarn(`  → Only ONE will respond unless they have different device assignments!`);
     });
 
     // Show notification
     const notesList = duplicates.map(d => d.note).join(', ');
     notificationSystem.show(`⚠️ MIDI Note Conflicts: Notes ${notesList} mapped to multiple drums. Check console!`, 'warning');
   } else {
-    console.log(`✅ No MIDI note conflicts detected`);
+    debugLog(`✅ No MIDI note conflicts detected`);
   }
 
   // Also log all current mappings for debugging
-  console.log('📋 Current Drum Mappings:');
+  debugLog('📋 Current Drum Mappings:');
   for (const drumId in drumSettings) {
     const drum = drumSettings[drumId];
     const deviceInfo = drum.midiDeviceStable
@@ -2620,7 +2814,7 @@ function checkForDuplicateNoteMappings() {
       : drum.midiDevice
         ? `volatile:${drum.midiDevice}`
         : 'ANY';
-    console.log(`  ${drumId} (${drum.name}): Note ${drum.midiNote} @ ${deviceInfo}`);
+    debugLog(`  ${drumId} (${drum.name}): Note ${drum.midiNote} @ ${deviceInfo}`);
   }
 }
 
@@ -2746,10 +2940,32 @@ window.mouseDragged = function() {
   const speed = dist(mouseX, mouseY, prevMouseX, prevMouseY);
   const testVelocity = constrain(map(speed, 0, 50, 0.3, 1.0), 0.3, 1.0);
 
-  // Use first drum's MIDI note
+  // Use first drum for testing (bypass MIDI mapping check)
+  const drumId = DRUM_KIT_CONFIG[0].id;
   const testNote = DRUM_KIT_CONFIG[0].defaultMidiNote;
 
-  handlePaint(testNote, testVelocity);
+  console.log(`🖱️ Mouse dragged: speed=${speed.toFixed(2)}, vel=${testVelocity.toFixed(2)}, mode=${getCurrentMode().name}`);
+
+  // Create context for mode (direct paint, no MIDI mapping required)
+  const context = {
+    paintCanvas,
+    drumSettings,
+    globalSizeMultiplier,
+    particles,
+    strokeCount,
+    debugPanel,
+    drumId,
+    DRUM_KIT_CONFIG,
+    currentBgColor
+  };
+
+  // Paint directly with current mode
+  try {
+    getCurrentMode().paint(testNote, testVelocity, context);
+    strokeCount++;
+  } catch (error) {
+    debugError('Error painting with mouse:', error);
+  }
 
   // Update previous position
   prevMouseX = mouseX;
@@ -2773,11 +2989,32 @@ window.mouseClicked = function() {
   }
 
   // Single click for single stroke
+  const drumId = DRUM_KIT_CONFIG[0].id;
   const testNote = DRUM_KIT_CONFIG[0].defaultMidiNote;
   const testVelocity = 0.7; // Medium velocity for clicks
 
-  console.log(`🖱️ Mouse click: Note ${testNote}, Vel ${testVelocity.toFixed(2)}`);
-  handlePaint(testNote, testVelocity);
+  console.log(`🖱️ Mouse click: Note ${testNote}, Vel ${testVelocity.toFixed(2)}, Mode: ${getCurrentMode().name}`);
+
+  // Create context for mode (direct paint, no MIDI mapping required)
+  const context = {
+    paintCanvas,
+    drumSettings,
+    globalSizeMultiplier,
+    particles,
+    strokeCount,
+    debugPanel,
+    drumId,
+    DRUM_KIT_CONFIG,
+    currentBgColor
+  };
+
+  // Paint directly with current mode
+  try {
+    getCurrentMode().paint(testNote, testVelocity, context);
+    strokeCount++;
+  } catch (error) {
+    debugError('Error painting with mouse:', error);
+  }
 };
 
 window.mouseReleased = function() {
@@ -2813,22 +3050,22 @@ window.mouseWheel = function(event) {
   }
 };
 
-console.log('🖱️  Click or drag anywhere to test painting');
-console.log('');
-console.log('⌨️  MODES (1-8):');
-console.log('   1: Classic Pointillism');
-console.log('   2: Fibonacci Spiral');
-console.log('   3: Radial Symmetry');
-console.log('   4: Gravity Field');
-console.log('   5: Organic Growth');
-console.log('   6: Dendritic Spreading');
-console.log('   7: Lightning');
-console.log('   8: Timeline');
-console.log('');
-console.log('⌨️  CONTROLS:');
-console.log('   SPACE: Clear canvas');
-console.log('   S: Save image');
-console.log('   D: Save settings as default');
-console.log('   Z: Undo');
-console.log('   Y: Redo');
-console.log('   H: Hide/show UI');
+debugLog('🖱️  Click or drag anywhere to test painting');
+debugLog('');
+debugLog('⌨️  MODES (1-8):');
+debugLog('   1: Classic Pointillism');
+debugLog('   2: Fibonacci Spiral');
+debugLog('   3: Radial Symmetry');
+debugLog('   4: Gravity Field');
+debugLog('   5: Organic Growth');
+debugLog('   6: Dendritic Spreading');
+debugLog('   7: Lightning');
+debugLog('   8: Timeline');
+debugLog('');
+debugLog('⌨️  CONTROLS:');
+debugLog('   SPACE: Clear canvas');
+debugLog('   S: Save image');
+debugLog('   D: Save settings as default');
+debugLog('   Z: Undo');
+debugLog('   Y: Redo');
+debugLog('   H: Hide/show UI');

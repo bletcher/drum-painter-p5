@@ -30,13 +30,16 @@ export class ClassicMode extends ModeBase {
   paint(note, velocity, context) {
     const { paintCanvas, drumSettings, globalSizeMultiplier, particles, midiDeviceId, debugPanel, drumId } = context;
 
-    // Random position
+    // Random position (p5.js global functions)
     let x = random(paintCanvas.width);
     let y = random(paintCanvas.height);
 
     // Get drum settings (use drumId from context if available, otherwise find it)
     const actualDrumId = drumId || findDrumByMidiNote(note, midiDeviceId, drumSettings);
-    if (!actualDrumId) return; // Safety check - should never happen due to handlePaint check
+
+    if (!actualDrumId) {
+      return; // Safety check - should never happen due to handlePaint check
+    }
 
     const settings = drumSettings[actualDrumId];
 
@@ -44,15 +47,36 @@ export class ClassicMode extends ModeBase {
     let scaledVelSize = applyScalingCurve(velocity, settings?.sizeScaling || 'linear');
     let scaledVelOpacity = applyScalingCurve(velocity, settings?.opacityScaling || 'linear');
 
+    // Get visual properties directly from settings (since we already have the drumId)
     // Calculate size
-    let size = (this.baseSize + scaledVelSize * this.velocityMult) * globalSizeMultiplier * getDrumSize(note, midiDeviceId, drumSettings);
+    let size = (this.baseSize + scaledVelSize * this.velocityMult) * globalSizeMultiplier * (settings.size || 1.0);
 
-    // Get visual properties
-    let col = getDrumColor(note, midiDeviceId, scaledVelOpacity, drumSettings);
-    let shape = getDrumShape(note, midiDeviceId, drumSettings);
-    let opacityMult = getDrumOpacity(note, midiDeviceId, drumSettings);
-    let stroke = getDrumStroke(note, midiDeviceId, drumSettings);
-    let rotation = getDrumRotation(note, midiDeviceId, drumSettings);
+    // Get color with hue variation (use global p5 functions)
+    let col = color(settings.color);
+    if (settings.hueVariation > 0) {
+      push();
+      colorMode(HSB, 360, 100, 100);
+      let h = hue(col);
+      let s = saturation(col);
+      let b = brightness(col);
+
+      // Apply scaling curve to velocity for hue variation
+      let scaledVelHue = applyScalingCurve(velocity, settings.hueScaling || 'linear');
+      let hueShift = settings.hueVariation * scaledVelHue;
+      h = (h + hueShift) % 360;
+
+      col = color(h, s, b);
+      pop();
+    }
+
+    let shape = settings.shape;
+    let opacityMult = settings.opacity;
+    let stroke = {
+      enabled: settings.strokeEnabled,
+      weight: settings.strokeWeight,
+      color: settings.strokeColor
+    };
+    let rotation = settings.rotation;
 
     // Safety check - should not happen but handle gracefully
     if (!col) return;

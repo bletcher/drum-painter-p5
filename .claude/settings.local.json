@@ -24,7 +24,8 @@
       "Bash(elif [ -d nul ])",
       "Bash(then echo \"nul is a directory\")",
       "Bash(else echo \"nul does not exist\")",
-      "Bash(fi)"
+      "Bash(fi)",
+      "Bash(find:*)"
     ],
     "deny": [],
     "ask": []

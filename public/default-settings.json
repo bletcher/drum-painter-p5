@@ -48,12 +48,12 @@
     "kick": {
       "name": "Kick",
       "midiNote": 60,
-      "midiDevice": "input-5",
+      "midiDevice": "input-2",
       "midiDeviceStable": "TriggerIO::Alesis",
       "color": "#2f4858",
       "shape": "circle",
       "opacity": 0.65,
-      "opacityScaling": "1:1",
+      "opacityScaling": "linear",
       "size": 1,
       "sizeScaling": "1:1",
       "strokeEnabled": true,
@@ -98,18 +98,17 @@
           "ccMin": 0,
           "ccMax": 127
         }
-      },
-      "hueVariationScaling": "1:1"
+      }
     },
     "snare": {
       "name": "Snare",
       "midiNote": 62,
-      "midiDevice": "input-5",
+      "midiDevice": "input-2",
       "midiDeviceStable": "TriggerIO::Alesis",
       "color": "#f26419",
       "shape": "circle",
       "opacity": 1,
-      "opacityScaling": "1:1",
+      "opacityScaling": "linear",
       "size": 1,
       "sizeScaling": "1:1",
       "strokeEnabled": true,
@@ -155,19 +154,19 @@
           "ccMax": 127
         }
       },
-      "hueVariationScaling": "1:1"
+      "hueVariationScaling": "boost-soft"
     },
     "floor_tom": {
       "name": "Floor Tom",
       "midiNote": 70,
-      "midiDevice": "input-5",
+      "midiDevice": "input-2",
       "midiDeviceStable": "TriggerIO::Alesis",
       "color": "#86bbd8",
       "shape": "circle",
       "opacity": 1,
-      "opacityScaling": "1:1",
+      "opacityScaling": "linear",
       "size": 1,
-      "sizeScaling": "1:1",
+      "sizeScaling": "linear",
       "strokeEnabled": true,
       "strokeWeight": 2,
       "strokeColor": "#33658a",
@@ -210,8 +209,7 @@
           "ccMin": 0,
           "ccMax": 127
         }
-      },
-      "hueVariationScaling": "1:1"
+      }
     },
     "drum_1762125826961": {
       "name": "Floor-rim",
@@ -219,9 +217,9 @@
       "color": "#f6ae2d",
       "shape": "circle",
       "opacity": 1,
-      "opacityScaling": "1:1",
+      "opacityScaling": "linear",
       "size": 1,
-      "sizeScaling": "1:1",
+      "sizeScaling": "linear",
       "strokeEnabled": true,
       "strokeWeight": 2,
       "strokeColor": "#f26419",
@@ -265,9 +263,8 @@
           "ccMax": 127
         }
       },
-      "midiDevice": "input-5",
-      "midiDeviceStable": "TriggerIO::Alesis",
-      "hueVariationScaling": "1:1"
+      "midiDevice": "input-2",
+      "midiDeviceStable": "TriggerIO::Alesis"
     },
     "drum_1762791844722": {
       "name": "Snare-rim",
@@ -275,9 +272,9 @@
       "color": "#33658a",
       "shape": "circle",
       "opacity": 1,
-      "opacityScaling": "1:1",
+      "opacityScaling": "linear",
       "size": 1,
-      "sizeScaling": "1:1",
+      "sizeScaling": "linear",
       "strokeEnabled": true,
       "strokeWeight": 3,
       "strokeColor": "#86bbd8",
@@ -321,14 +318,13 @@
           "ccMax": 127
         }
       },
-      "midiDevice": "input-5",
-      "midiDeviceStable": "TriggerIO::Alesis",
-      "hueVariationScaling": "1:1"
+      "midiDevice": "input-2",
+      "midiDeviceStable": "TriggerIO::Alesis"
     },
     "drum_1762996086573": {
       "name": "Rack tom",
       "midiNote": 68,
-      "midiDevice": "input-5",
+      "midiDevice": "input-2",
       "midiDeviceStable": "TriggerIO::Alesis",
       "color": "#697819",
       "shape": "circle",
@@ -336,9 +332,9 @@
       "opacityScaling": "1:1",
       "size": 1,
       "sizeScaling": "1:1",
-      "strokeEnabled": true,
+      "strokeEnabled": false,
       "strokeWeight": 2,
-      "strokeColor": "#343b12",
+      "strokeColor": "#000000",
       "hueVariation": 0,
       "hueScaling": "1:1",
       "rotation": 0,
@@ -383,7 +379,7 @@
     "drum_1762996582203": {
       "name": "Rack-rim",
       "midiNote": 69,
-      "midiDevice": "input-5",
+      "midiDevice": "input-2",
       "midiDeviceStable": "TriggerIO::Alesis",
       "color": "#33b49e",
       "shape": "circle",
@@ -441,7 +437,7 @@
     "blendMode": 0,
     "bgColor": 0
   },
-  "currentModeType": "freeform",
+  "currentModeType": "timeline",
   "freeformStyle": "classic",
   "chronicleLayout": "staff",
   "spiralSettings": {
@@ -452,7 +448,7 @@
     "pattern": "spiral"
   },
   "timelineSettings": {
-    "bpm": 94,
+    "bpm": 80,
     "subdivision": 4,
     "beatsPerMeasure": 4,
     "metronomeEnabled": false,
@@ -514,49 +510,103 @@
         "ccMin": 0,
         "ccMax": 127,
         "deviceId": null
+      },
+      "splatterDensity": {
+        "cc": null,
+        "ccMin": 0,
+        "ccMax": 127,
+        "deviceId": null
+      },
+      "splatterConnectionThickness": {
+        "cc": null,
+        "ccMin": 0,
+        "ccMax": 127,
+        "deviceId": null
+      },
+      "splatterSprayIntensity": {
+        "cc": null,
+        "ccMin": 0,
+        "ccMax": 127,
+        "deviceId": null
+      },
+      "splatterConnectionAmount": {
+        "cc": null,
+        "ccMin": 0,
+        "ccMax": 127,
+        "deviceId": null
+      },
+      "splatterCoreSize": {
+        "cc": null,
+        "ccMin": 0,
+        "ccMax": 127,
+        "deviceId": null
+      },
+      "brushDensity": {
+        "cc": null,
+        "ccMin": 0,
+        "ccMax": 127,
+        "deviceId": null
+      },
+      "brushOpacity": {
+        "cc": null,
+        "ccMin": 0,
+        "ccMax": 127,
+        "deviceId": null
+      },
+      "brushEdgeSoftness": {
+        "cc": null,
+        "ccMin": 0,
+        "ccMax": 127,
+        "deviceId": null
+      },
+      "brushStrokeVariation": {
+        "cc": null,
+        "ccMin": 0,
+        "ccMax": 127,
+        "deviceId": null
+      },
+      "splatterSpraySize": {
+        "cc": null,
+        "ccMin": 0,
+        "ccMax": 127,
+        "deviceId": null
       }
     },
     "deviceRegistry": {
       "devices": [
         {
-          "stableKey": "Looptimus Mini::Atmel Corp.",
-          "name": "Looptimus Mini",
-          "manufacturer": "Atmel Corp.",
-          "lastSeen": 1763062080417
-        },
-        {
-          "stableKey": "Arturia KeyLab Essential 49::unknown",
-          "name": "Arturia KeyLab Essential 49",
-          "manufacturer": "Unknown",
-          "lastSeen": 1763062080417
-        },
-        {
-          "stableKey": "MIDIIN2 (Arturia KeyLab Essenti::unknown",
-          "name": "MIDIIN2 (Arturia KeyLab Essenti",
-          "manufacturer": "Unknown",
-          "lastSeen": 1763062080417
-        },
-        {
           "stableKey": "Focusrite USB MIDI::unknown",
           "name": "Focusrite USB MIDI",
           "manufacturer": "Unknown",
-          "lastSeen": 1763062080418
+          "lastSeen": 1764389696205
         },
         {
           "stableKey": "Alesis Strike MultiPad::Alesis",
           "name": "Alesis Strike MultiPad",
           "manufacturer": "Alesis",
-          "lastSeen": 1763062080418
+          "lastSeen": 1764389696205
         },
         {
           "stableKey": "TriggerIO::Alesis",
           "name": "TriggerIO",
           "manufacturer": "Alesis",
-          "lastSeen": 1763062080418
+          "lastSeen": 1764389696205
+        },
+        {
+          "stableKey": "Arturia KeyLab Essential 49::unknown",
+          "name": "Arturia KeyLab Essential 49",
+          "manufacturer": "Unknown",
+          "lastSeen": 1764389696205
+        },
+        {
+          "stableKey": "MIDIIN2 (Arturia KeyLab Essenti::unknown",
+          "name": "MIDIIN2 (Arturia KeyLab Essenti",
+          "manufacturer": "Unknown",
+          "lastSeen": 1764389696205
         }
       ],
-      "timestamp": 1763062317884
+      "timestamp": 1764389901903
     }
   },
-  "timestamp": "2025-11-13T19:31:57.884Z"
+  "timestamp": "2025-11-29T04:18:21.904Z"
 }

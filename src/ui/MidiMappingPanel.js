@@ -5,6 +5,7 @@
 
 import { DRUM_KIT_CONFIG } from '../config/drumKit.js';
 import { MIDI_MAPPING_PANEL, COLORS, SPACING, RADIUS, TYPOGRAPHY } from '../config/theme.js';
+import { debugLog, debugWarn, debugError, infoLog } from '../utils/debug.js';
 
 export class MidiMappingPanel {
   constructor(drumSettings, midiManager, notificationSystem, updateIndicatorCallback) {
@@ -418,7 +419,7 @@ export class MidiMappingPanel {
     buttonEl.textContent = '⏳';
     buttonEl.style.background = MIDI_MAPPING_PANEL.learnButton.active;
 
-    console.log(`Bank Learn: Waiting for ${type === 'pad' ? 'pad hit' : 'fader/dial movement'} for ${target}...`);
+    debugLog(`Bank Learn: Waiting for ${type === 'pad' ? 'pad hit' : 'fader/dial movement'} for ${target}...`);
 
     // Setup callback to update UI when learn completes
     const checkLearnComplete = setInterval(() => {
@@ -434,7 +435,7 @@ export class MidiMappingPanel {
         this.midiManager.exitLearnMode();
         clearInterval(checkLearnComplete);
         this.build();
-        console.log('Bank learn timeout');
+        debugLog('Bank learn timeout');
       }
     }, 4000);
   }

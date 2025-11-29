@@ -4,6 +4,8 @@
  * Plus record, stop, start over, continue buttons
  */
 
+import { debugLog, debugWarn, debugError, infoLog } from '../utils/debug.js';
+
 export class TimelineControls {
   constructor(timelineMode, notificationSystem, videoRecorder = null) {
     this.timelineMode = timelineMode;
@@ -70,9 +72,9 @@ export class TimelineControls {
     const metronomeCheckbox = document.getElementById('metronome-enabled');
     if (metronomeCheckbox) {
       metronomeCheckbox.addEventListener('change', (e) => {
-        console.log('🔘 Metronome checkbox changed to:', e.target.checked);
+        debugLog('🔘 Metronome checkbox changed to:', e.target.checked);
         this.timelineMode.metronomeEnabled = e.target.checked;
-        console.log('🔘 timelineMode.metronomeEnabled is now:', this.timelineMode.metronomeEnabled);
+        debugLog('🔘 timelineMode.metronomeEnabled is now:', this.timelineMode.metronomeEnabled);
         if (e.target.checked) {
           this.timelineMode.initializeAudioContext();
           this.notificationSystem.show('Metronome enabled');
@@ -81,7 +83,7 @@ export class TimelineControls {
         }
       });
     } else {
-      console.warn('⚠️ Metronome checkbox element not found!');
+      debugWarn('⚠️ Metronome checkbox element not found!');
     }
 
     // MIDI latency input

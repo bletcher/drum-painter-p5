@@ -5,6 +5,7 @@
  */
 
 import * as constants from '../config/constants.js';
+import { debugLog, debugWarn, debugError, infoLog } from '../utils/debug.js';
 
 export class VisualStyleManager {
   constructor() {
@@ -97,7 +98,7 @@ export class VisualStyleManager {
   updateParameter(paramKey, normalizedValue) {
     const mapping = this.parameterMappings[paramKey];
     if (!mapping) {
-      console.warn(`Unknown visual style parameter: ${paramKey}`);
+      debugWarn(`Unknown visual style parameter: ${paramKey}`);
       return;
     }
 
@@ -107,7 +108,7 @@ export class VisualStyleManager {
     // Update each constant this parameter controls
     for (const constantName of mapping.constants) {
       this.constantOverrides[constantName] = value;
-      console.log(`🎨 Visual Style: ${mapping.description} = ${value.toFixed(2)} (${constantName})`);
+      debugLog(`🎨 Visual Style: ${mapping.description} = ${value.toFixed(2)} (${constantName})`);
     }
 
     // Clear texture cache to force regeneration with new values
@@ -130,7 +131,7 @@ export class VisualStyleManager {
   invalidateTextureCache() {
     if (this.brushTextureCache) {
       this.brushTextureCache.clearCache();
-      console.log('🗑️ Texture cache cleared');
+      debugLog('🗑️ Texture cache cleared');
     }
   }
 
@@ -140,7 +141,7 @@ export class VisualStyleManager {
   resetToDefaults() {
     this.constantOverrides = {};
     this.invalidateTextureCache();
-    console.log('♻️ Visual style reset to defaults');
+    debugLog('♻️ Visual style reset to defaults');
   }
 
   /**

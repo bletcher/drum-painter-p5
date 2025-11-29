@@ -7,6 +7,7 @@ import { DRUM_KIT_CONFIG } from '../config/drumKit.js';
 import { SCALING_CURVES, SCALING_CURVE_NAMES, SHAPE_OPTIONS } from '../config/constants.js';
 import { CUSTOMIZATION_PANEL, COLORS, SPACING, RADIUS, TYPOGRAPHY, SHADOWS } from '../config/theme.js';
 import { drawSplatterCanvas, drawBrushStrokeCanvas, drawInkBlotCanvas } from '../canvas/DrawingUtils.js';
+import { debugLog, debugWarn, debugError, infoLog } from '../utils/debug.js';
 
 export class DrumCustomizationPanel {
   constructor(drumSettings, midiManager, stateManager, notificationSystem, chronicleMode) {
@@ -36,6 +37,22 @@ export class DrumCustomizationPanel {
       panel.style.display = 'none';
       backdrop.style.display = 'none';
     }
+  }
+
+  /**
+   * Select a specific drum by ID
+   * @param {string} drumId - The drum ID to select
+   */
+  selectDrum(drumId) {
+    // Check if drum exists
+    const drumExists = DRUM_KIT_CONFIG.find(d => d.id === drumId);
+    if (!drumExists) {
+      debugWarn(`Drum ${drumId} not found in DRUM_KIT_CONFIG`);
+      return;
+    }
+
+    this.currentTab = drumId;
+    this.build();
   }
 
   /**
@@ -295,7 +312,7 @@ export class DrumCustomizationPanel {
       const label = document.getElementById(`tab-label-${drumId}`);
       if (label) label.textContent = newName;
 
-      console.log(`✏️ Renamed drum ${drumId} to: ${newName}`);
+      debugLog(`✏️ Renamed drum ${drumId} to: ${newName}`);
     };
 
     return group;
@@ -721,14 +738,14 @@ export class DrumCustomizationPanel {
         this.midiManager.startCCLearn(drumId, paramKey);
         learnBtn.textContent = '⏳';
         learnBtn.style.background = CUSTOMIZATION_PANEL.ccButton.learning;
-        console.log(`CC Learn Mode: Move controller through FULL range for ${drumId}.${paramKey} (3 seconds)`);
+        debugLog(`CC Learn Mode: Move controller through FULL range for ${drumId}.${paramKey} (3 seconds)`);
 
         setTimeout(() => {
           if (this.midiManager.ccLearnMode) {
             this.midiManager.exitLearnMode();
             learnBtn.textContent = '🎛';
             learnBtn.style.background = CUSTOMIZATION_PANEL.ccButton.learn;
-            console.log('CC Learn timeout - no controller detected');
+            debugLog('CC Learn timeout - no controller detected');
           }
         }, 4000);
       };

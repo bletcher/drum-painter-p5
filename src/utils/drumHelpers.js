@@ -5,6 +5,7 @@
 
 import { SCALING_CURVES, IGNORE_MIDI_DEVICE_ID } from '../config/constants.js';
 import { applyScalingCurve } from './scaling.js';
+import { debugLog, debugWarn, debugError, infoLog } from './debug.js';
 
 /**
  * Find which drum ID is mapped to a given MIDI note from a specific device
@@ -48,7 +49,7 @@ export function findDrumByMidiNote(midiNote, deviceId, drumSettings, midiManager
       if (drum.midiNote === midiNote && drum.midiDeviceStable === currentStableKey) {
         // Found match by stable key! Auto-update the volatile device ID
         if (drum.midiDevice !== deviceId) {
-          console.log(`🔄 Auto-updating device ID for ${drumId}: ${drum.midiDevice} -> ${deviceId} (stable: ${currentStableKey})`);
+          debugLog(`🔄 Auto-updating device ID for ${drumId}: ${drum.midiDevice} -> ${deviceId} (stable: ${currentStableKey})`);
           drum.midiDevice = deviceId;
         }
         return drumId;
@@ -73,7 +74,7 @@ export function findDrumByMidiNote(midiNote, deviceId, drumSettings, midiManager
     if (drum.midiNote === midiNote && !drum.midiDeviceStable && !drum.midiDevice) {
       // Only log if device tracking is enabled (to help debug missing stable keys)
       if (midiManager && currentStableKey) {
-        console.log(`ℹ️ Note-only match for Note ${midiNote}: ${drumId} (no device assigned - works with any device)`);
+        debugLog(`ℹ️ Note-only match for Note ${midiNote}: ${drumId} (no device assigned - works with any device)`);
       }
       return drumId;
     }
@@ -85,8 +86,8 @@ export function findDrumByMidiNote(midiNote, deviceId, drumSettings, midiManager
     for (let drumId in drumSettings) {
       const drum = drumSettings[drumId];
       if (drum.midiNote === midiNote && drum.midiDeviceStable && drum.midiDeviceStable !== currentStableKey) {
-        console.warn(`⚠️ Note ${midiNote} is mapped to ${drumId}, but it's assigned to device "${drum.midiDeviceStable}", not current device "${currentStableKey}"`);
-        console.warn(`   → Please remap ${drumId} or remove it from your drum kit`);
+        debugWarn(`⚠️ Note ${midiNote} is mapped to ${drumId}, but it's assigned to device "${drum.midiDeviceStable}", not current device "${currentStableKey}"`);
+        debugWarn(`   → Please remap ${drumId} or remove it from your drum kit`);
       }
     }
   }

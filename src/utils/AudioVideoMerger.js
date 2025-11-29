@@ -5,6 +5,7 @@
 
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile, toBlobURL } from '@ffmpeg/util';
+import { debugLog, debugWarn, debugError, infoLog } from './debug.js';
 
 export class AudioVideoMerger {
   constructor(notificationSystem) {
@@ -43,11 +44,11 @@ export class AudioVideoMerger {
       this.isLoaded = true;
       this.isLoading = false;
       this.notificationSystem.show('FFmpeg ready!', 'success');
-      console.log('✓ FFmpeg.wasm loaded');
+      infoLog('✓ FFmpeg.wasm loaded');
       return true;
     } catch (error) {
       this.isLoading = false;
-      console.error('Failed to load FFmpeg:', error);
+      debugError('Failed to load FFmpeg:', error);
       this.notificationSystem.show('Failed to load FFmpeg', 'error');
       return false;
     }
@@ -78,9 +79,9 @@ export class AudioVideoMerger {
       }
 
       this.notificationSystem.show('Merging audio and video...', 'info');
-      console.log('Starting merge...');
-      console.log('  Video size:', (videoBlob.size / 1024 / 1024).toFixed(2), 'MB');
-      console.log('  Audio size:', (audioFile.size / 1024 / 1024).toFixed(2), 'MB');
+      debugLog('Starting merge...');
+      debugLog('  Video size:', (videoBlob.size / 1024 / 1024).toFixed(2), 'MB');
+      debugLog('  Audio size:', (audioFile.size / 1024 / 1024).toFixed(2), 'MB');
 
       // Write input files to FFmpeg virtual filesystem
       await this.ffmpeg.writeFile('input_video.webm', await fetchFile(videoBlob));
@@ -113,13 +114,13 @@ export class AudioVideoMerger {
         // Ignore cleanup errors
       }
 
-      console.log('✓ Merge complete');
-      console.log('  Output size:', (mergedBlob.size / 1024 / 1024).toFixed(2), 'MB');
+      infoLog('✓ Merge complete');
+      debugLog('  Output size:', (mergedBlob.size / 1024 / 1024).toFixed(2), 'MB');
 
       this.notificationSystem.show('Audio merged successfully!', 'success');
       return mergedBlob;
     } catch (error) {
-      console.error('Merge failed:', error);
+      debugError('Merge failed:', error);
       this.notificationSystem.show('Failed to merge audio and video', 'error');
       throw error;
     }

@@ -230,5 +230,8 @@ export const DEFAULT_STAFF_WIDTH = 1800;
 export const DEFAULT_MIDI_LATENCY_MS = 70;
 
 // ===== DEBUGGING =====
+// Set to true to enable verbose console logging
+export const DEBUG_MODE = false;
+
 // Set to true to make all drums respond to any MIDI device (ignore device ID)
 export const IGNORE_MIDI_DEVICE_ID = false;

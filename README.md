@@ -4,12 +4,13 @@ Create stunning generative art with your MIDI drums! A browser-based painting ap
 
 ## Features
 
-- **Three-Group Mode System** - Staff (time-based), Freeform (random), Chronicle (point-based sequential)
-- **Device-Specific MIDI Mapping** - Use multiple MIDI devices simultaneously
+- **Two-Mode System** - Timeline (structured layouts) and Freeform (random patterns)
+- **Timeline Modes** - Point-based (paint immediately) and Time-based (require Start button)
+- **Device-Specific MIDI Mapping** - Use multiple MIDI devices simultaneously with auto-opening ports
 - **Bank Mode** - Map global parameters to MIDI CC controls
-- **Staff & Chronicle Modes** - Record and playback drum patterns with multiple visual layouts
-- **Video Recording** - Capture your creative sessions
-- **Velocity Curves** - Customize response to drum dynamics with 5 scaling options
+- **7 Structured Layouts** - Staff, Spiral, Fibonacci, Radial, Rings, Petals, Polygon
+- **Video Recording** - Capture your creative sessions with audio merge support
+- **Velocity Curves** - Customize response to drum dynamics with 6 scaling options
 - **Project System** - Save and load complete setups
 - **Blend Modes** - 8 layering effects including Add, Difference, Multiply, Screen
 - **Comprehensive Customization** - Color, size, shape, opacity, hue variation per drum
@@ -70,72 +71,99 @@ The script will:
 
 ## Paint Modes
 
-The application uses a **three-group mode system**:
+The application uses a **two-mode system**:
 
-1. **Main Mode Type** (Staff, Freeform, or Chronicle) - Radio buttons
-2. **Style/Layout Selection** - Dropdown menu for specific variations within each mode
+1. **Mode Type** (Freeform or Timeline) - Radio buttons
+2. **Style/Layout Selection** - Dropdown menu for specific variations
 
-### Staff Mode (Time-Based Recording)
+### Timeline Mode (Structured Layouts)
 
-Timeline-based recording where position depends on elapsed time. Requires pressing Start button. Choose from 2 layouts:
+Structured visual patterns with precise positioning. Includes both time-based and point-based layouts.
 
-#### Staff Notation
-Traditional horizontal DAW-style sequencer with musical grid. Each drum on its own horizontal lane, time flows left to right with BPM sync and metronome.
+#### Time-Based Layouts (Require Start Button)
 
-#### Spiral Timeline
-Archimedean spiral pattern expanding from center. Time flows outward with rotation synchronized to beats. Completes one full rotation per measure, matching the visual metronome. Drums are offset radially for clarity.
+Position depends on elapsed time with BPM synchronization:
 
-### Freeform Mode (Random Placement)
+**Staff Notation**
+- Traditional horizontal DAW-style sequencer with musical grid
+- Each drum on its own horizontal lane
+- Time flows left to right with BPM sync
+- Grid shows eighth triplet subdivisions by default
+- Visual metronome and auto-scroll during recording
 
-Immediate visual response - each drum hit creates instant random patterns. Choose from 5 styles:
+**Spiral**
+- Archimedean spiral expanding from center
+- Notes appear exactly where/when played along the spiral
+- One full rotation per measure
+- Drums offset radially for clarity
+- Smooth continuous flow
 
-#### Classic Pointillism
-Random placement across canvas. Each drum has unique color, size controlled by velocity. Supports all shapes including complex brushstrokes, splatter, and ink blot effects.
+#### Point-Based Layouts (Paint Immediately)
 
-#### Gravity Field
-Dots fall downward creating flowing organic trails. Velocity controls trail length and horizontal drift. Features fading multi-stroke effects. Complex shapes (brushstroke/splatter/inkblot) automatically convert to circles for performance optimization.
+Position based on hit count, not time. Paint without starting timeline - perfect for live performance:
 
-#### Organic Growth
-Cluster-based growth around "seed" points. Seeds migrate slowly creating natural clustering patterns. Supports all shapes.
+**Fibonacci**
+- Golden ratio spiral building outward from center
+- Creates organic growth patterns
+- Expands with each hit
 
-#### Dendritic Spreading
-Realistic river drainage networks based on Horton's Laws:
+**Radial**
+- 8-fold symmetrical patterns radiating from center
+- Perfect for mandalas
+- Each hit creates 8 mirrored dots simultaneously
+
+**Rings**
+- Drums positioned on spokes radiating from center
+- Distance increases with each hit
+- Creates star/burst patterns
+
+**Petals**
+- Organic flower-like curves
+- Each drum traces a petal path
+- Sinusoidal oscillation for natural flowing patterns
+
+**Polygon**
+- Spiraling geometric pattern with breathing effect
+- Drums at polygon vertices that rotate and pulse
+- One full rotation every 60 hits with subtle pulsing
+- Number of vertices equals number of drums
+
+### Freeform Mode (Random Patterns)
+
+Immediate visual response with random placement. Choose from 5 styles:
+
+**Classic Pointillism**
+- Random placement across canvas
+- Each drum has unique color
+- Size controlled by velocity
+- Supports all shapes including complex brushstrokes, splatter, and ink blot effects
+
+**Gravity Field**
+- Dots fall downward creating flowing organic trails
+- Velocity controls trail length and horizontal drift
+- Fading multi-stroke effects
+- Complex shapes auto-convert to circles for performance
+
+**Organic Growth**
+- Cluster-based growth around moving "seed" points
+- Seeds migrate slowly creating natural clustering patterns
+- Supports all shapes
+
+**Dendritic Spreading**
+- Realistic river drainage networks based on Horton's Laws
 - Hierarchical tributary branching (convergent)
 - Width increases downstream (stream order)
 - Natural meandering with sinusoidal curves
 - Flows away from canvas edges
-- Velocity controls length and branching complexity
 - Complex shapes auto-convert to circles for performance
 
-#### Lightning
-Realistic electrical discharge with fractal branching:
+**Lightning**
+- Realistic electrical discharge with fractal branching
 - Cloud-to-ground strikes (originates from top)
 - Stepped leader physics with sharp angular zigzags
 - Divergent branching (main bolt splits into thinner branches)
-- Multiple splits from same point (1-3 branches)
-- Width decreases along branches (energy dissipation)
 - Bright core with electric corona glow
-- Velocity controls complexity and branch count
 - Complex shapes auto-convert to circles for performance
-
-### Chronicle Mode (Point-Based Sequential)
-
-Sequential visual patterns where position is based on note count, not time. Paint immediately without starting timeline. Choose from 5 layouts:
-
-#### Fibonacci Spiral
-Dots arranged in golden ratio spiral, building outward from center. Creates organic growth patterns expanding with each hit.
-
-#### Radial Symmetry
-8-fold symmetrical patterns radiating from center - perfect for mandalas. Each hit creates 8 mirrored dots simultaneously.
-
-#### Rings (Radial Spokes)
-Drums positioned on spokes radiating from center. Distance from center increases with each hit, creating star/burst patterns.
-
-#### Petals (Flower Petals)
-Organic flower-like curves. Each drum traces a petal path with sinusoidal oscillation for natural flowing patterns.
-
-#### Polygon (Rotating Expanding Polygon)
-Spiraling geometric pattern with breathing effect. Drums positioned at polygon vertices that rotate and pulse as they expand outward. Creates a hypnotic spiral-polygon hybrid - one full rotation every 60 hits with subtle pulsing. Number of vertices equals number of drums.
 
 ## MIDI Setup
 
@@ -227,12 +255,14 @@ Press **?** to see all shortcuts, or **U** for the complete User Guide.
 - **?** - Show keyboard shortcuts
 - **U** - Show user guide
 
-### Paint Modes
-Mode switching is done via UI radio buttons (Staff/Freeform/Chronicle) and dropdown menus for specific styles/layouts.
+### Navigation
+- **← →** - Switch between Freeform and Timeline modes
+- **↑ ↓** - Cycle through styles (Freeform) or layouts (Timeline)
+- **B** - Cycle through blend modes
+- **1-9** - Select drum in customization panel
 
-### Staff Mode (when active)
-- **P** - Start/pause playback
-- **R** - Toggle recording
+### Timeline Mode (when time-based layout active)
+- **P** - Start/pause recording
 - **C** - Clear timeline
 
 ## Recording & Export
@@ -337,7 +367,7 @@ drum-painter-p5/
 │   │   ├── OrganicMode.js   # Organic growth style
 │   │   ├── DendriticMode.js # River dendritic style
 │   │   ├── LightningMode.js # Lightning branching style
-│   │   └── TimelineMode.js  # Chronicle mode (staff/rings/spiral/radial/flower/polygon)
+│   │   └── TimelineMode.js  # Timeline mode (staff/spiral/fibonacci/radial/rings/petals/polygon)
 │   ├── midi/
 │   │   └── MidiManager.js # MIDI input handling
 │   ├── state/
@@ -371,14 +401,29 @@ drum-painter-p5/
 
 ## Browser Compatibility
 
-**Recommended: Chrome, Edge, Opera**
+**Desktop Only - Not for Mobile Use**
 
-Web MIDI API support required:
+This application is designed for desktop computers with MIDI hardware and will display a warning on mobile devices.
+
+### Requirements
+
+**Platform:**
+- ✅ Desktop/Laptop (Windows, macOS, Linux)
+- ❌ Mobile devices (phones, tablets) - Not supported
+
+**Browser (Web MIDI API required):**
 - ✅ Chrome/Chromium
-- ✅ Edge
+- ✅ Microsoft Edge
 - ✅ Opera
 - ❌ Firefox (MIDI not supported)
 - ❌ Safari (MIDI not supported)
+
+### Automatic Compatibility Checks
+
+The app automatically detects your device and browser on startup:
+- **Mobile devices** - Shows warning that desktop is required
+- **Unsupported browsers** - Shows MIDI compatibility message with browser recommendations
+- You can still explore the UI with mouse/keyboard on incompatible setups, but MIDI won't work
 
 ## Troubleshooting
 
@@ -415,6 +460,31 @@ Web MIDI API support required:
 - See [BUILD.md](BUILD.md) for detailed troubleshooting
 
 ## Advanced Customization
+
+### Debug Mode
+
+Enable verbose console logging for development and troubleshooting:
+
+**To Enable:**
+1. Open `src/config/constants.js`
+2. Change `DEBUG_MODE` from `false` to `true`
+3. Rebuild/refresh the app
+
+```javascript
+// In src/config/constants.js
+export const DEBUG_MODE = true;  // Enable verbose logging
+```
+
+**What it does:**
+- Enables detailed console logging (211+ debug statements)
+- Shows MIDI device connections, note events, mode switches
+- Displays state changes, file operations, and internal events
+- Errors and important status messages always shown regardless of DEBUG_MODE
+
+**Production Use:**
+- Keep `DEBUG_MODE = false` for production (default)
+- Only important user-facing messages will be logged
+- Cleaner console output and slightly better performance
 
 ### Velocity Curves
 
@@ -462,7 +532,7 @@ Map any CC parameter in Bank Mode:
 
 ### Creating Animations
 
-Use Staff Mode (Staff Notation or Spiral layouts) to record rhythmic patterns with precise timing, then export as video for looping animations. Chronicle Mode layouts (Fibonacci, Radial, Rings, Petals, Polygon) create sequential point-based patterns perfect for geometric animations.
+Use Timeline Mode's time-based layouts (Staff Notation or Spiral) to record rhythmic patterns with precise timing, then export as video for looping animations. Point-based layouts (Fibonacci, Radial, Rings, Petals, Polygon) create sequential patterns perfect for geometric animations and can be painted during live performance without starting timeline.
 
 ### Color Palettes
 

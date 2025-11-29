@@ -107,8 +107,12 @@ export class BrushTextureCache {
 
     // Add to cache with size limit
     if (this.cache.size >= this.maxCacheSize) {
-      // Remove oldest entry
+      // Remove oldest entry and dispose its graphics object
       const firstKey = this.cache.keys().next().value;
+      const oldTexture = this.cache.get(firstKey);
+      if (oldTexture && oldTexture.remove) {
+        oldTexture.remove(); // Free GPU memory
+      }
       this.cache.delete(firstKey);
     }
 
@@ -133,8 +137,12 @@ export class BrushTextureCache {
 
     // Add to cache with size limit
     if (this.cache.size >= this.maxCacheSize) {
-      // Remove oldest entry
+      // Remove oldest entry and dispose its graphics object
       const firstKey = this.cache.keys().next().value;
+      const oldTexture = this.cache.get(firstKey);
+      if (oldTexture && oldTexture.remove) {
+        oldTexture.remove(); // Free GPU memory
+      }
       this.cache.delete(firstKey);
     }
 
@@ -598,8 +606,12 @@ export class BrushTextureCache {
 
     // Add to cache with size limit
     if (this.cache.size >= this.maxCacheSize) {
-      // Remove oldest entry
+      // Remove oldest entry and dispose its graphics object
       const firstKey = this.cache.keys().next().value;
+      const oldTexture = this.cache.get(firstKey);
+      if (oldTexture && oldTexture.remove) {
+        oldTexture.remove(); // Free GPU memory
+      }
       this.cache.delete(firstKey);
     }
 
@@ -742,9 +754,15 @@ export class BrushTextureCache {
   }
 
   /**
-   * Clear the entire cache
+   * Clear the entire cache and dispose all graphics objects
    */
   clearCache() {
+    // Dispose all graphics objects before clearing
+    for (const texture of this.cache.values()) {
+      if (texture && texture.remove) {
+        texture.remove(); // Free GPU memory
+      }
+    }
     this.cache.clear();
   }
 }

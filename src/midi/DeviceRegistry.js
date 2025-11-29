@@ -4,6 +4,8 @@
  * across reconnects using name+manufacturer as stable key
  */
 
+import { debugLog, debugWarn, debugError, infoLog } from '../utils/debug.js';
+
 export class DeviceRegistry {
   constructor() {
     // Map of stable device keys to current device info
@@ -43,7 +45,7 @@ export class DeviceRegistry {
     // Update reverse lookup
     this.idToStable.set(device.id, stableKey);
 
-    console.log(`📱 Device registered: ${stableKey} (ID: ${device.id})`);
+    debugLog(`📱 Device registered: ${stableKey} (ID: ${device.id})`);
 
     if (this.onRegistryChange) {
       this.onRegistryChange('register', stableKey, device.id);
@@ -62,7 +64,7 @@ export class DeviceRegistry {
       device.state = 'disconnected';
       device.lastSeen = Date.now();
 
-      console.log(`📴 Device disconnected: ${stableKey}`);
+      debugLog(`📴 Device disconnected: ${stableKey}`);
 
       if (this.onRegistryChange) {
         this.onRegistryChange('disconnect', stableKey, deviceId);
@@ -150,7 +152,7 @@ export class DeviceRegistry {
       if (device) {
         this.idToStable.delete(device.id);
         this.devices.delete(key);
-        console.log(`🗑️ Pruned old device: ${key}`);
+        debugLog(`🗑️ Pruned old device: ${key}`);
       }
     });
 
@@ -198,6 +200,6 @@ export class DeviceRegistry {
       }
     });
 
-    console.log(`📂 Loaded ${state.devices.length} known devices from registry`);
+    infoLog(`📂 Loaded ${state.devices.length} known devices from registry`);
   }
 }
