@@ -24,7 +24,7 @@ import { getBrushTextureCache } from './canvas/BrushTextureCache.js';
 // ===== GLOBAL STATE =====
 let paintCanvas;
 let particles = [];
-let currentModeType = 'staff'; // 'staff' (time-based timeline), 'freeform' (random), or 'chronicle' (point-based sequential)
+let currentModeType = 'freeform'; // 'staff' (time-based timeline), 'freeform' (random), or 'chronicle' (point-based sequential)
 let strokeCount = 0;
 let globalSizeMultiplier = 1.0;
 let showUI = true;
@@ -62,9 +62,10 @@ const chronicleMode = new TimelineMode(DRUM_KIT_CONFIG);
 
 // Helper function to get current active mode
 function getCurrentMode() {
-  // Staff and Chronicle both use chronicleMode (TimelineMode) with different layouts
-  // Staff: time-based (staff/spiral) with timeline controls
-  // Chronicle: point-based (fibonacci/radial/etc) without timeline controls
+  // Timeline mode (TimelineMode) handles all structured layouts:
+  // - Time-based: staff, spiral (require Start button, use elapsed time)
+  // - Point-based: fibonacci, radial, rings, petals, polygon (advance by hits)
+  // Freeform mode handles random/unpredictable styles
   return currentModeType === 'freeform' ? freeformMode : chronicleMode;
 }
 
@@ -276,7 +277,7 @@ window.setup = async function() {
   console.log('🔍 After initializeUI - chronicleMode.metronomeEnabled:', chronicleMode.metronomeEnabled);
 
   // Activate the current mode (important for initializing mode-specific state)
-  getCurrentMode().onActivate({ paintCanvas });
+  getCurrentMode().onActivate({ paintCanvas, drumSettings });
 
   // Rebuild customization panel to reflect loaded settings (including custom drums)
   customizationPanel.build();
@@ -295,34 +296,31 @@ window.setup = async function() {
 // ===== UI INITIALIZATION =====
 
 function initializeUI() {
-  // Mode type selector (Staff / Freeform / Chronicle radio buttons)
-  const staffRadio = document.getElementById('mode-type-staff');
+  // Mode type selector (Freeform / Timeline radio buttons)
+  const timelineRadio = document.getElementById('mode-type-timeline');
   const freeformRadio = document.getElementById('mode-type-freeform');
-  const chronicleRadio = document.getElementById('mode-type-chronicle');
-  const staffLayoutSelector = document.getElementById('staff-layout-selector');
+  const timelineLayoutSelector = document.getElementById('timeline-layout-selector');
   const freeformStyleSelector = document.getElementById('freeform-style-selector');
-  const chronicleLayoutSelector = document.getElementById('chronicle-layout-selector');
-  const staffLayoutSelect = document.getElementById('staff-layout-select');
+  const timelineLayoutSelect = document.getElementById('timeline-layout-select');
   const freeformStyleSelect = document.getElementById('freeform-style-select');
-  const chronicleLayoutSelect = document.getElementById('chronicle-layout-select');
 
   // Sync UI with current mode state (important for loading saved settings)
-  if (staffRadio && freeformRadio && chronicleRadio) {
-    if (currentModeType === 'staff') {
-      staffRadio.checked = true;
-    } else if (currentModeType === 'freeform') {
-      freeformRadio.checked = true;
+  if (timelineRadio && freeformRadio) {
+    if (currentModeType === 'timeline' || currentModeType === 'staff' || currentModeType === 'chronicle') {
+      timelineRadio.checked = true;
+      currentModeType = 'timeline'; // Normalize old modes
     } else {
-      chronicleRadio.checked = true;
+      freeformRadio.checked = true;
     }
   }
-  // Sync Staff layout dropdown (only if layout is valid for Staff)
-  if (staffLayoutSelect) {
-    const validStaffLayouts = ['staff', 'spiral'];
-    if (validStaffLayouts.includes(chronicleMode.layout)) {
-      staffLayoutSelect.value = chronicleMode.layout;
+
+  // Sync Timeline layout dropdown
+  if (timelineLayoutSelect) {
+    const allTimelineLayouts = ['fibonacci', 'radial', 'rings', 'petals', 'polygon', 'staff', 'spiral'];
+    if (allTimelineLayouts.includes(chronicleMode.layout)) {
+      timelineLayoutSelect.value = chronicleMode.layout;
     } else {
-      staffLayoutSelect.value = 'staff'; // Default
+      timelineLayoutSelect.value = 'fibonacci'; // Default
     }
   }
 
@@ -331,64 +329,64 @@ function initializeUI() {
     freeformStyleSelect.value = freeformMode.style;
   }
 
-  // Sync Chronicle layout dropdown (only if layout is valid for Chronicle)
-  if (chronicleLayoutSelect) {
-    const validChronicleLayouts = ['fibonacci', 'radial', 'rings', 'petals', 'polygon'];
-    if (validChronicleLayouts.includes(chronicleMode.layout)) {
-      chronicleLayoutSelect.value = chronicleMode.layout;
-    } else {
-      chronicleLayoutSelect.value = 'fibonacci'; // Default
-    }
-  }
-
   // Function to update UI visibility based on mode type
   function updateModeUI() {
-    const isStaff = currentModeType === 'staff';
+    const isTimeline = currentModeType === 'timeline';
     const isFreeform = currentModeType === 'freeform';
-    const isChronicle = currentModeType === 'chronicle';
+
+    // Check if current layout is time-based (staff/spiral) - these need timeline controls
+    const isTimeBased = chronicleMode.layout === 'staff' || chronicleMode.layout === 'spiral';
 
     // Show/hide appropriate selectors
-    if (staffLayoutSelector) {
-      staffLayoutSelector.style.display = isStaff ? 'block' : 'none';
+    if (timelineLayoutSelector) {
+      timelineLayoutSelector.style.display = isTimeline ? 'block' : 'none';
     }
     if (freeformStyleSelector) {
       freeformStyleSelector.style.display = isFreeform ? 'block' : 'none';
     }
-    if (chronicleLayoutSelector) {
-      chronicleLayoutSelector.style.display = isChronicle ? 'block' : 'none';
-    }
 
-    // Show/hide Timeline controls (only for Staff mode - time-based recording)
+    // Show/hide Timeline controls (only for time-based layouts: staff/spiral)
     const timelineControlsEl = document.getElementById('timeline-controls');
     if (timelineControlsEl) {
-      timelineControlsEl.style.display = isStaff ? 'block' : 'none';
+      timelineControlsEl.style.display = (isTimeline && isTimeBased) ? 'block' : 'none';
+      // Sync UI controls with timeline mode settings when showing
+      if (isTimeline && isTimeBased && timelineControls) {
+        timelineControls.syncUI();
+      }
     }
 
-    // Show/hide Quick Settings video section (hide in Staff mode, show in Freeform/Chronicle)
+    // Show/hide Quick Settings video section (hide for time-based layouts, show for others)
     const quickSettingsVideoSection = document.getElementById('quick-settings-video-section');
     if (quickSettingsVideoSection) {
-      quickSettingsVideoSection.style.display = isStaff ? 'none' : 'block';
+      quickSettingsVideoSection.style.display = (isTimeline && isTimeBased) ? 'none' : 'block';
     }
+
+    // Don't hide the Quick Settings panel when switching to Timeline mode
+    // It will be hidden when recording starts (in TimelineMode.startRecording for time-based layouts)
+    // and shown when recording stops (in TimelineMode.stopRecording)
   }
 
   // Mode type change handlers
-  if (staffRadio) {
-    staffRadio.addEventListener('change', (e) => {
+  if (timelineRadio) {
+    timelineRadio.addEventListener('change', (e) => {
       if (e.target.checked) {
         getCurrentMode().onDeactivate({ paintCanvas });
-        currentModeType = 'staff';
+        currentModeType = 'timeline';
 
-        // Ensure chronicleMode has a valid Staff layout selected
-        const staffLayoutSelect = document.getElementById('staff-layout-select');
-        if (staffLayoutSelect) {
-          chronicleMode.layout = staffLayoutSelect.value || 'staff';
+        // Ensure chronicleMode has a valid layout selected
+        const timelineLayoutSelect = document.getElementById('timeline-layout-select');
+        if (timelineLayoutSelect) {
+          chronicleMode.layout = timelineLayoutSelect.value || 'fibonacci';
         } else {
-          chronicleMode.layout = 'staff'; // Default fallback
+          chronicleMode.layout = 'fibonacci'; // Default fallback
         }
 
-        getCurrentMode().onActivate({ paintCanvas });
+        getCurrentMode().onActivate({ paintCanvas, drumSettings });
         updateModeUI();
-        notificationSystem.show('Staff Mode');
+
+        // Show different notification based on layout type
+        const isTimeBased = chronicleMode.layout === 'staff' || chronicleMode.layout === 'spiral';
+        notificationSystem.show(isTimeBased ? 'Timeline Mode (time-based)' : 'Timeline Mode (point-based)');
       }
     });
   }
@@ -398,41 +396,23 @@ function initializeUI() {
       if (e.target.checked) {
         getCurrentMode().onDeactivate({ paintCanvas });
         currentModeType = 'freeform';
-        getCurrentMode().onActivate({ paintCanvas });
+        getCurrentMode().onActivate({ paintCanvas, drumSettings });
         updateModeUI();
         notificationSystem.show('Freeform Mode');
       }
     });
   }
 
-  if (chronicleRadio) {
-    chronicleRadio.addEventListener('change', (e) => {
-      if (e.target.checked) {
-        getCurrentMode().onDeactivate({ paintCanvas });
-        currentModeType = 'chronicle';
-
-        // Ensure chronicleMode has a valid Chronicle layout selected
-        const chronicleLayoutSelect = document.getElementById('chronicle-layout-select');
-        if (chronicleLayoutSelect) {
-          chronicleMode.layout = chronicleLayoutSelect.value || 'fibonacci';
-        } else {
-          chronicleMode.layout = 'fibonacci'; // Default fallback
-        }
-
-        getCurrentMode().onActivate({ paintCanvas });
-        updateModeUI();
-        notificationSystem.show('Chronicle Mode');
-      }
-    });
-  }
-
-  // Staff layout selector
-  if (staffLayoutSelect) {
-    staffLayoutSelect.addEventListener('change', (e) => {
+  // Timeline layout selector
+  if (timelineLayoutSelect) {
+    timelineLayoutSelect.addEventListener('change', (e) => {
       const layout = e.target.value;
       chronicleMode.layout = layout;
       const layoutName = e.target.options[e.target.selectedIndex].text.split('—')[0].trim();
       notificationSystem.show(layoutName);
+
+      // Update UI visibility based on new layout (time-based vs point-based)
+      updateModeUI();
     });
   }
 
@@ -458,16 +438,6 @@ function initializeUI() {
 
       const styleName = e.target.options[e.target.selectedIndex].text.split('—')[0].trim();
       notificationSystem.show(styleName);
-    });
-  }
-
-  // Chronicle layout selector
-  if (chronicleLayoutSelect) {
-    chronicleLayoutSelect.addEventListener('change', (e) => {
-      const layout = e.target.value;
-      chronicleMode.layout = layout;
-      const layoutName = e.target.options[e.target.selectedIndex].text.split('—')[0].trim();
-      notificationSystem.show(layoutName);
     });
   }
 
@@ -616,7 +586,7 @@ function initializeUI() {
     shortcutClear.addEventListener('click', () => {
       if (confirm('Clear the entire canvas?')) {
         paintCanvas.background(BG_COLORS[currentBgColor]);
-        getCurrentMode().clear();
+        getCurrentMode().clear({ paintCanvas, currentBgColor });
         notificationSystem.show('Canvas cleared');
       }
     });
@@ -1626,8 +1596,11 @@ window.draw = function() {
   // Calculate scaling and offset
   let scaleFactor, displayWidth, displayHeight, offsetX, offsetY;
 
-  if (currentModeType === "staff") {
-    // Staff mode: scale based on width only, allow vertical scrolling
+  // Check if we're in a time-based layout (staff or spiral)
+  const isTimeBased = currentModeType === 'timeline' && (chronicleMode.layout === 'staff' || chronicleMode.layout === 'spiral');
+
+  if (isTimeBased) {
+    // Time-based layouts: scale based on width only, allow vertical scrolling
     scaleFactor = (width / paintCanvas.width) * 0.95;
     displayWidth = paintCanvas.width * scaleFactor;
     displayHeight = paintCanvas.height * scaleFactor;
@@ -1652,14 +1625,14 @@ window.draw = function() {
   // Draw the paint canvas
   image(paintCanvas, offsetX, offsetY, displayWidth, displayHeight);
 
-  // Draw spiral timeline guide over the canvas if in Staff mode with spiral layout
-  if (currentModeType === 'staff' && chronicleMode.layout === 'spiral') {
+  // Draw spiral timeline guide over the canvas if in Timeline mode with spiral layout
+  if (currentModeType === 'timeline' && chronicleMode.layout === 'spiral') {
     // Could add a spiral guide visualization here if needed
-    // For now, spiral is drawn as part of Staff mode's drawLaneGuides
+    // For now, spiral is drawn as part of Timeline mode's drawLaneGuides
   }
 
-  // Draw timeline guides OVER the canvas if in Staff mode
-  if (currentModeType === "staff") {
+  // Draw timeline guides OVER the canvas if in time-based layout
+  if (isTimeBased) {
     chronicleMode.drawLaneGuides(window, offsetX, offsetY, scaleFactor, paintCanvas);
 
     // Draw circular visual metronome
@@ -1706,8 +1679,9 @@ window.draw = function() {
     }
   }
 
-  // Update Staff mode if active - handles metronome
-  if (currentModeType === "staff") {
+  // Update Timeline mode if active (time-based layouts) - handles metronome
+  const isTimeBasedNow = currentModeType === 'timeline' && (chronicleMode.layout === 'staff' || chronicleMode.layout === 'spiral');
+  if (isTimeBasedNow) {
     const context = {
       paintCanvas,
       drumSettings,
@@ -1840,15 +1814,8 @@ window.keyPressed = function() {
     strokeCount = 0;
     particles = [];
 
-    // Reset mode-specific state
-    if (currentModeType === 'freeform') {
-      if (freeformMode.style === 'fibonacci' && freeformMode.styles.fibonacci.spiralAngle !== undefined) {
-        freeformMode.styles.fibonacci.spiralAngle = 0;
-      }
-      if (freeformMode.style === 'organic' && freeformMode.styles.organic.resetGrowthPoints) {
-        freeformMode.styles.organic.resetGrowthPoints(paintCanvas);
-      }
-    }
+    // Clear mode-specific state
+    getCurrentMode().clear({ paintCanvas, currentBgColor });
 
     // Save state for undo
     stateManager.saveCanvasState(paintCanvas);
@@ -2136,41 +2103,40 @@ function switchMode(oldModeIndex) {
     const freeformStyleSelect = document.getElementById('freeform-style-select');
     if (freeformRadio) freeformRadio.checked = true;
     if (freeformStyleSelect) freeformStyleSelect.value = mapping.style;
-  } else if (mapping.type === 'staff') {
-    chronicleMode.layout = mapping.layout;
-    const staffRadio = document.getElementById('mode-type-staff');
-    const staffLayoutSelect = document.getElementById('staff-layout-select');
-    if (staffRadio) staffRadio.checked = true;
-    if (staffLayoutSelect) staffLayoutSelect.value = mapping.layout;
   } else {
+    // Timeline mode (handles all layouts: fibonacci, radial, rings, petals, polygon, staff, spiral)
+    // Normalize old 'staff' and 'chronicle' types to 'timeline'
     chronicleMode.layout = mapping.layout;
-    const chronicleRadio = document.getElementById('mode-type-chronicle');
-    const chronicleLayoutSelect = document.getElementById('chronicle-layout-select');
-    if (chronicleRadio) chronicleRadio.checked = true;
-    if (chronicleLayoutSelect) chronicleLayoutSelect.value = mapping.layout;
+    const timelineRadio = document.getElementById('mode-type-timeline');
+    const timelineLayoutSelect = document.getElementById('timeline-layout-select');
+    if (timelineRadio) timelineRadio.checked = true;
+    if (timelineLayoutSelect) timelineLayoutSelect.value = mapping.layout;
   }
 
   // Activate new mode
-  getCurrentMode().onActivate({ paintCanvas });
+  getCurrentMode().onActivate({ paintCanvas, drumSettings });
 
   // Update UI visibility
-  const staffLayoutSelector = document.getElementById('staff-layout-selector');
+  const timelineLayoutSelector = document.getElementById('timeline-layout-selector');
   const freeformStyleSelector = document.getElementById('freeform-style-selector');
-  const chronicleLayoutSelector = document.getElementById('chronicle-layout-selector');
-  if (staffLayoutSelector) staffLayoutSelector.style.display = mapping.type === 'staff' ? 'block' : 'none';
+  if (timelineLayoutSelector) timelineLayoutSelector.style.display = mapping.type !== 'freeform' ? 'block' : 'none';
   if (freeformStyleSelector) freeformStyleSelector.style.display = mapping.type === 'freeform' ? 'block' : 'none';
-  if (chronicleLayoutSelector) chronicleLayoutSelector.style.display = mapping.type === 'chronicle' ? 'block' : 'none';
 
+  // Check if layout is time-based for timeline controls
+  const isTimeBased = mapping.layout === 'staff' || mapping.layout === 'spiral';
   const timelineControlsEl = document.getElementById('timeline-controls');
   if (timelineControlsEl) {
-    timelineControlsEl.style.display = mapping.type === 'staff' ? 'block' : 'none';
+    timelineControlsEl.style.display = (mapping.type !== 'freeform' && isTimeBased) ? 'block' : 'none';
   }
 
-  // Show/hide Quick Settings video section (hide in Staff mode, show in Freeform/Chronicle)
+  // Show/hide Quick Settings video section (hide for time-based layouts)
   const quickSettingsVideoSection = document.getElementById('quick-settings-video-section');
   if (quickSettingsVideoSection) {
-    quickSettingsVideoSection.style.display = mapping.type === 'staff' ? 'none' : 'block';
+    quickSettingsVideoSection.style.display = (mapping.type !== 'freeform' && isTimeBased) ? 'none' : 'block';
   }
+
+  // Don't hide Quick Settings panel - it will be hidden when recording starts
+  // and shown when recording stops
 
   console.log(`Mode: ${getCurrentMode().name}`);
   notificationSystem.show(getCurrentMode().name);
@@ -2697,8 +2663,9 @@ window.mousePressed = function() {
     return;
   }
 
-  // Handle metronome dragging in Staff mode
-  if (currentModeType === "staff" && chronicleMode.handleMetronomeMousePressed(mouseX, mouseY)) {
+  // Handle metronome dragging in time-based layouts
+  const isTimeBased = currentModeType === 'timeline' && (chronicleMode.layout === 'staff' || chronicleMode.layout === 'spiral');
+  if (isTimeBased && chronicleMode.handleMetronomeMousePressed(mouseX, mouseY)) {
     return; // Metronome was clicked, don't do anything else
   }
 
@@ -2738,8 +2705,9 @@ window.mousePressed = function() {
 };
 
 window.mouseDragged = function() {
-  // Handle metronome dragging in Staff mode
-  if (currentModeType === "staff") {
+  // Handle metronome dragging in time-based layouts
+  const isTimeBased = currentModeType === 'timeline' && (chronicleMode.layout === 'staff' || chronicleMode.layout === 'spiral');
+  if (isTimeBased) {
     chronicleMode.handleMetronomeMouseDragged(mouseX, mouseY);
   }
 
@@ -2813,8 +2781,9 @@ window.mouseClicked = function() {
 };
 
 window.mouseReleased = function() {
-  // Handle metronome release in Staff mode
-  if (currentModeType === "staff") {
+  // Handle metronome release in time-based layouts
+  const isTimeBased = currentModeType === 'timeline' && (chronicleMode.layout === 'staff' || chronicleMode.layout === 'spiral');
+  if (isTimeBased) {
     chronicleMode.handleMetronomeMouseReleased();
   }
 

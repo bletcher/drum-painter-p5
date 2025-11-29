@@ -51,4 +51,12 @@ export class ModeBase {
   onDeactivate(context) {
     // Override if needed
   }
+
+  /**
+   * Clear mode-specific state (called when canvas is cleared)
+   * @param {Object} context - Painting context
+   */
+  clear(context) {
+    // Override if mode has state to clear
+  }
 }

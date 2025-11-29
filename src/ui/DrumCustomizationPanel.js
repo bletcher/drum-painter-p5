@@ -875,7 +875,15 @@ export class DrumCustomizationPanel {
    */
   addNewDrum() {
     const drumNumber = DRUM_KIT_CONFIG.length + 1;
-    const newId = `drum_${Date.now()}`;
+
+    // Generate a meaningful ID (e.g., "drum_5" instead of "drum_1762996582203")
+    // Ensure uniqueness by checking existing IDs
+    let newId = `drum_${drumNumber}`;
+    let counter = drumNumber;
+    while (DRUM_KIT_CONFIG.some(d => d.id === newId) || this.drumSettings[newId]) {
+      counter++;
+      newId = `drum_${counter}`;
+    }
 
     const newDrum = {
       id: newId,

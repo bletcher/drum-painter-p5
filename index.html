@@ -194,39 +194,20 @@
     <div style="margin: 10px 0;">
       <label style="display: block; margin-bottom: 8px; font-weight: bold; font-size: 11px;">Paint Mode:</label>
 
-      <!-- Mode Type Selection (Staff / Freeform / Chronicle) -->
+      <!-- Mode Type Selection (Freeform / Timeline) -->
       <div style="display: flex; gap: 12px; margin-bottom: 8px;">
         <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; font-size: 11px;">
-          <input type="radio" name="mode-type" id="mode-type-staff" value="staff" checked>
-          <span>Staff</span>
-        </label>
-        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; font-size: 11px;">
-          <input type="radio" name="mode-type" id="mode-type-freeform" value="freeform">
+          <input type="radio" name="mode-type" id="mode-type-freeform" value="freeform" checked>
           <span>Freeform</span>
         </label>
         <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; font-size: 11px;">
-          <input type="radio" name="mode-type" id="mode-type-chronicle" value="chronicle">
-          <span>Chronicle</span>
+          <input type="radio" name="mode-type" id="mode-type-timeline" value="timeline">
+          <span>Timeline</span>
         </label>
       </div>
 
-      <!-- Staff Layout Selector (shown when Staff is selected) -->
-      <div id="staff-layout-selector" data-tooltip="Time-based recording modes with timeline" style="display: block;">
-        <select id="staff-layout-select" style="
-          width: 100%;
-          padding: 6px;
-          border: 1px solid #ddd;
-          border-radius: 4px;
-          font-size: 11px;
-          background: white;
-        ">
-          <option value="staff" selected>Staff Notation — Musical staff timeline</option>
-          <option value="spiral">Spiral Timeline — Rotating outward</option>
-        </select>
-      </div>
-
       <!-- Freeform Style Selector (shown when Freeform is selected) -->
-      <div id="freeform-style-selector" data-tooltip="Random/unpredictable paint styles" style="display: none;">
+      <div id="freeform-style-selector" data-tooltip="Random/unpredictable paint styles" style="display: block;">
         <select id="freeform-style-select" style="
           width: 100%;
           padding: 6px;
@@ -243,9 +224,9 @@
         </select>
       </div>
 
-      <!-- Chronicle Layout Selector (shown when Chronicle is selected) -->
-      <div id="chronicle-layout-selector" data-tooltip="Point-based sequential patterns" style="display: none;">
-        <select id="chronicle-layout-select" style="
+      <!-- Timeline Layout Selector (shown when Timeline is selected) -->
+      <div id="timeline-layout-selector" data-tooltip="Sequential and time-based structured patterns" style="display: none;">
+        <select id="timeline-layout-select" style="
           width: 100%;
           padding: 6px;
           border: 1px solid #ddd;
@@ -253,11 +234,17 @@
           font-size: 11px;
           background: white;
         ">
-          <option value="fibonacci" selected>Fibonacci — Golden ratio spiral</option>
-          <option value="radial">Radial — Radiating from center</option>
-          <option value="rings">Rings — Radial spokes pattern</option>
-          <option value="petals">Petals — Flower arrangement</option>
-          <option value="polygon">Polygon — Geometric shapes</option>
+          <optgroup label="Point-Based (advance by hits)">
+            <option value="fibonacci" selected>Fibonacci — Golden ratio spiral</option>
+            <option value="radial">Radial — Radiating from center</option>
+            <option value="rings">Rings — Concentric circles</option>
+            <option value="petals">Petals — Flower arrangement</option>
+            <option value="polygon">Polygon — Rotating shapes</option>
+          </optgroup>
+          <optgroup label="Time-Based (require Start button)">
+            <option value="staff">Staff Notation — Musical timeline</option>
+            <option value="spiral">Spiral — Rotating outward</option>
+          </optgroup>
         </select>
       </div>
     </div>
@@ -347,9 +334,9 @@
           <label style="min-width: 45px;">Grid:</label>
           <select id="timeline-subdivision"
             style="flex: 1; padding: 4px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px; cursor: pointer;">
-            <option value="4" selected>Eighth Triplets</option>
+            <option value="4">Quarter Notes</option>
             <option value="8">Eighth Notes</option>
-            <option value="12">Eighth Triplets</option>
+            <option value="12" selected>Eighth Triplets</option>
             <option value="16">Sixteenth Notes</option>
           </select>
         </div>

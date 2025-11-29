@@ -48,6 +48,13 @@ export class OrganicMode extends ModeBase {
     }
   }
 
+  clear(context) {
+    // Reset growth points when canvas is cleared
+    if (context?.paintCanvas) {
+      this.resetGrowthPoints(context.paintCanvas);
+    }
+  }
+
   paint(note, velocity, context) {
     const { paintCanvas, drumSettings, globalSizeMultiplier, particles, midiDeviceId, debugPanel, drumId } = context;
 

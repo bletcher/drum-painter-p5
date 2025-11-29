@@ -12,8 +12,10 @@ export const PARTICLE_LIFETIME = 30;
 export const PARTICLE_SIZE_GROWTH = 0.1;
 
 // ===== PAINT SIZE SETTINGS =====
+// Standard modes use velocityMult = 60 for consistent sizing
+// Special modes (Lightning=10, Dendritic=12, Timeline=15) kept smaller
 export const BASE_SIZE_CLASSIC = 5;
-export const VELOCITY_MULT_CLASSIC = 200;//60;
+export const VELOCITY_MULT_CLASSIC = 60;
 export const BASE_SIZE_FIBONACCI = 5;
 export const VELOCITY_MULT_FIBONACCI = 60;
 export const BASE_SIZE_SYMMETRY = 5;
@@ -219,7 +221,7 @@ export const MODE_NAMES = [
 
 // ===== TIMELINE SETTINGS =====
 export const DEFAULT_TIMELINE_BPM = 90;
-export const DEFAULT_TIMELINE_SUBDIVISION = 4;
+export const DEFAULT_TIMELINE_SUBDIVISION = 12;  // 12 = Eighth triplets
 export const DEFAULT_TIMELINE_BEATS_PER_MEASURE = 4;
 export const DEFAULT_TIMELINE_PIXELS_PER_SECOND = 200;
 export const DEFAULT_STAFF_HEIGHT = 80;

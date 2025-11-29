@@ -92,7 +92,7 @@ export class MidiManager {
   /**
    * Handle successful MIDI access
    */
-  onMIDISuccess(midi) {
+  async onMIDISuccess(midi) {
     console.log('✓ MIDI Access granted');
     console.log('🔍 Raw MIDI object:', midi);
     console.log('🔍 MIDI inputs map:', midi.inputs);
@@ -134,13 +134,23 @@ export class MidiManager {
     console.log('📱 Connected devices:', this.connectedDevices);
 
     // Connect to all inputs - pass device ID with message
-    inputs.forEach(input => {
-      input.onmidimessage = (message) => this.handleMIDIMessage(message, input.id);
-      console.log(`Connected to: ${input.name} (ID: ${input.id})`);
-    });
+    for (const input of inputs) {
+      try {
+        // Open the port if it's not already open
+        if (input.connection !== 'open') {
+          await input.open();
+        }
+        input.onmidimessage = (message) => this.handleMIDIMessage(message, input.id);
+        console.log(`✅ Connected to: ${input.name} (ID: ${input.id}, state: ${input.connection})`);
+      } catch (error) {
+        console.warn(`⚠️ Failed to open ${input.name}:`, error);
+        // Still set up the handler in case the port is already open
+        input.onmidimessage = (message) => this.handleMIDIMessage(message, input.id);
+      }
+    }
 
     // Listen for device state changes (connect/disconnect)
-    midi.onstatechange = (e) => {
+    midi.onstatechange = async (e) => {
       console.log('🔄 MIDI device state changed:', e.port.name, e.port.state);
 
       if (e.port.type === 'input') {
@@ -148,9 +158,12 @@ export class MidiManager {
           // Register new device in registry
           const stableKey = this.deviceRegistry.registerDevice(e.port);
 
-          // Connect to new input
+          // Connect to new input - open if not already open
+          if (e.port.connection !== 'open') {
+            await e.port.open();
+          }
           e.port.onmidimessage = (message) => this.handleMIDIMessage(message, e.port.id);
-          console.log(`🔌 Newly connected: ${e.port.name} (${stableKey})`);
+          console.log(`🔌 Newly connected: ${e.port.name} (${stableKey}, state: ${e.port.connection})`);
         } else if (e.port.state === 'disconnected') {
           // Mark device as disconnected in registry
           this.deviceRegistry.markDisconnected(e.port.id);

@@ -6,6 +6,7 @@
 
 import { FibonacciMode } from './FibonacciMode.js';
 import { RadialMode } from './RadialMode.js';
+import { DEFAULT_TIMELINE_SUBDIVISION } from '../config/constants.js';
 
 export class TimelineMode {
   constructor(drumKitConfig) {
@@ -20,7 +21,7 @@ export class TimelineMode {
 
     // Musical settings
     this.bpm = 80; // Beats per minute
-    this.subdivision = 4; // Beat subdivision (4 = quarter notes, 8 = eighth notes, 16 = sixteenth notes)
+    this.subdivision = DEFAULT_TIMELINE_SUBDIVISION; // Beat subdivision (4 = quarter notes, 8 = eighth notes, 12 = eighth triplets, 16 = sixteenth notes)
     this.beatsPerMeasure = 4; // Time signature numerator (2/4, 3/4, 4/4, etc.)
     this.midiLatencyMs = 70; // MIDI latency compensation in milliseconds
     this.warmupMeasures = 0; // Number of measures to wait before painting (0-4)
@@ -70,6 +71,10 @@ export class TimelineMode {
     this.lastMetronomeSubdivision = 4;
     this.audioContext = null; // Web Audio API context
 
+    // Hit counters for point-based layouts (rings, radial, petals, polygon)
+    this.globalHitCount = 0; // Total hits across all drums
+    this.perDrumHitCount = {}; // Hits per individual drum
+
     // Timeline lanes (generated from drum kit config)
     this.timelineLanes = {};
     this.timelineLaneCount = 0;
@@ -77,14 +82,33 @@ export class TimelineMode {
   }
 
   /**
-   * Regenerate timeline lanes from drum kit config
+   * Regenerate timeline lanes from current drum settings
+   * @param {Object} drumSettings - Current drum settings (optional, uses drumKitConfig if not provided)
    */
-  regenerateLanes() {
+  regenerateLanes(drumSettings = null) {
     this.timelineLanes = {};
-    this.drumKitConfig.forEach((drum, index) => {
-      this.timelineLanes[drum.id] = index;
-    });
-    this.timelineLaneCount = this.drumKitConfig.length;
+
+    if (drumSettings) {
+      // Use actual drum settings as source of truth
+      // Object.keys() preserves insertion order (ES6+)
+      // This matches the order in the Customization Panel
+      const drumIds = Object.keys(drumSettings);
+      drumIds.forEach((drumId, index) => {
+        this.timelineLanes[drumId] = index;
+      });
+      this.timelineLaneCount = drumIds.length;
+
+      console.log(`📋 Timeline lanes regenerated: ${this.timelineLaneCount} drums`);
+      console.log('   Drum order:', drumIds);
+      console.log('   Lane mapping:', this.timelineLanes);
+    } else {
+      // Fallback to drum kit config (only used during initial constructor call)
+      this.drumKitConfig.forEach((drum, index) => {
+        this.timelineLanes[drum.id] = index;
+      });
+      this.timelineLaneCount = this.drumKitConfig.length;
+      console.log(`📋 Timeline lanes initialized from config: ${this.timelineLaneCount} drums`);
+    }
 
     // Update staff height based on number of drums
     // Each drum gets drumLineSpacing, plus one extra spacing at the top
@@ -93,13 +117,14 @@ export class TimelineMode {
 
   /**
    * Called when timeline mode is activated
+   * @param {Object} context - Context object with paintCanvas and drumSettings
    */
-  onActivate({ paintCanvas }) {
+  onActivate({ paintCanvas, drumSettings }) {
     console.log('Timeline Mode activated');
     console.log('🎵 Metronome enabled:', this.metronomeEnabled);
     console.log('🎵 Audio context exists:', !!this.audioContext);
     // Ensure timeline lanes match current drum configuration
-    this.regenerateLanes();
+    this.regenerateLanes(drumSettings);
 
     // Note: Audio context initialization moved to startRecording()
     // because browser autoplay policy requires user interaction
@@ -164,7 +189,7 @@ export class TimelineMode {
           y: centerY + distance * Math.sin(spokeAngle)
         };
 
-      case 'flower':
+      case 'petals':
         // Flower petals - each drum traces a petal curve
         const petalAngle = (laneIndex / this.timelineLaneCount) * Math.PI * 2;
         const petalRadius = 100 + (beatCount * 20);
@@ -199,15 +224,15 @@ export class TimelineMode {
         };
 
       case 'spiral':
-        // Archimedean spiral - synchronized with metronome
-        // One full rotation per measure, quantized to beat positions
-        const quantizedBeatCount = Math.floor(beatCount); // Snap to nearest beat
+        // Archimedean spiral - notes appear exactly where/when played
+        // One full rotation per measure
 
         // Complete one rotation per measure to match metronome pattern
-        const measurePosition = quantizedBeatCount % this.beatsPerMeasure;
-        const measureNumber = Math.floor(quantizedBeatCount / this.beatsPerMeasure);
+        const measurePosition = beatCount % this.beatsPerMeasure;
+        const measureNumber = Math.floor(beatCount / this.beatsPerMeasure);
 
         // Angle within current measure (0 to 2π per measure)
+        // Uses exact beatCount for precise positioning along the spiral
         const theta = (measurePosition / this.beatsPerMeasure) * Math.PI * 2;
 
         // Radius increases with each complete measure
@@ -297,31 +322,61 @@ export class TimelineMode {
 
     // Find which drum this is (use contextDrumId if available, otherwise find it)
     const drumId = contextDrumId || this.findDrumIdByNote(note, midiDeviceId, drumSettings);
-    if (!drumId || !(drumId in this.timelineLanes)) {
-      console.warn(`Drum ${note} not mapped to timeline lane`);
+    if (!drumId) {
+      console.warn(`⚠️ Note ${note} - No drum ID found in drumSettings`);
+      console.warn(`   Available drums:`, Object.keys(drumSettings));
+      return;
+    }
+    if (!(drumId in this.timelineLanes)) {
+      console.warn(`⚠️ Note ${note} (${drumId}) - Drum ID not in timeline lanes`);
+      console.warn(`   Timeline lanes:`, this.timelineLanes);
+      console.warn(`   This drum exists in settings but was not added to timeline lanes!`);
       return;
     }
 
+    // Determine if this layout is time-based or point-based
+    const isTimeBased = (this.layout === 'staff' || this.layout === 'spiral');
+    const isPointBased = (this.layout === 'rings' || this.layout === 'radial' ||
+                          this.layout === 'petals' || this.layout === 'polygon');
+
     // Only require recording for time-based layouts (Staff, Spiral)
     // Point-based layouts (Rings, Petals, Polygon) can paint anytime
-    const isTimeBased = (this.layout === 'staff' || this.layout === 'spiral');
     if (isTimeBased && !this.recording) {
       console.log('Timeline not recording - press Start button first');
       return;
     }
 
-    // Don't paint if we're still in warm-up period
-    if (this.isInWarmup()) {
+    // Don't paint if we're still in warm-up period (only for time-based layouts)
+    if (isTimeBased && this.isInWarmup()) {
       return;
     }
 
-    // Calculate effective time elapsed (accounts for warm-up period)
-    // Also subtract MIDI latency compensation to align notes with grid
-    const timeElapsed = this.getEffectiveTimeElapsed() - (this.midiLatencyMs / 1000.0);
+    // Calculate beat count based on layout type
+    let beatCount;
+    let timeElapsed;
 
-    // Calculate beat count for layout positioning
-    const secondsPerBeat = 60 / this.bpm;
-    const beatCount = timeElapsed / secondsPerBeat;
+    if (isPointBased) {
+      // Point-based layouts: use hit count instead of time
+      // Initialize per-drum counter if needed
+      if (this.perDrumHitCount[drumId] === undefined) {
+        this.perDrumHitCount[drumId] = 0;
+      }
+
+      // Increment counters
+      this.globalHitCount++;
+      this.perDrumHitCount[drumId]++;
+
+      // Use global hit count for position (all drums contribute to progression)
+      beatCount = this.globalHitCount;
+      timeElapsed = 0; // Not used for point-based layouts
+    } else {
+      // Time-based layouts: use elapsed time
+      // Calculate effective time elapsed (accounts for warm-up period)
+      // Also subtract MIDI latency compensation to align notes with grid
+      timeElapsed = this.getEffectiveTimeElapsed() - (this.midiLatencyMs / 1000.0);
+      const secondsPerBeat = 60 / this.bpm;
+      beatCount = timeElapsed / secondsPerBeat;
+    }
 
     // Get position based on selected layout
     const centerX = paintCanvas.width / 2;
@@ -608,6 +663,12 @@ export class TimelineMode {
 
     this.recording = true;
 
+    // Hide quick settings panel when recording starts
+    const quickSettingsPanel = document.getElementById('drum-settings');
+    if (quickSettingsPanel) {
+      quickSettingsPanel.style.display = 'none';
+    }
+
     // Initialize audio context for metronome (user interaction = browser allows audio)
     if (this.metronomeEnabled) {
       if (!this.audioContext) {
@@ -665,6 +726,12 @@ export class TimelineMode {
     this.recording = false;
     this.stopTime = Date.now();
     console.log('Timeline recording stopped');
+
+    // Show quick settings panel when recording stops
+    const quickSettingsPanel = document.getElementById('drum-settings');
+    if (quickSettingsPanel) {
+      quickSettingsPanel.style.display = 'block';
+    }
   }
 
   /**
@@ -676,6 +743,10 @@ export class TimelineMode {
     this.pausedTime = 0;
     this.stopTime = null;
     this.lastMetronomeClick = -1;
+
+    // Reset hit counters for point-based layouts
+    this.globalHitCount = 0;
+    this.perDrumHitCount = {};
 
     // Clear canvas
     const bgColor = context.currentBgColor !== undefined ? context.currentBgColor : 0;
@@ -689,6 +760,24 @@ export class TimelineMode {
     paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
 
     console.log('Timeline cleared');
+  }
+
+  /**
+   * Clear mode-specific state (called when canvas is cleared)
+   * @param {Object} context - Painting context
+   */
+  clear(context) {
+    this.recording = false;
+    this.startTime = null;
+    this.pausedTime = 0;
+    this.stopTime = null;
+    this.lastMetronomeClick = -1;
+
+    // Reset hit counters for point-based layouts
+    this.globalHitCount = 0;
+    this.perDrumHitCount = {};
+
+    console.log('Timeline state cleared');
   }
 
   /**
