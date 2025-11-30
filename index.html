@@ -234,16 +234,16 @@
           font-size: 11px;
           background: white;
         ">
-          <optgroup label="Point-Based (advance by hits)">
-            <option value="fibonacci" selected>Fibonacci — Golden ratio spiral</option>
-            <option value="radial">Radial — Radiating from center</option>
+          <optgroup label="Time-Based (sync with metronome)">
+            <option value="staff">Staff — Musical notation timeline</option>
+            <option value="spiral">Spiral — Rotating outward</option>
             <option value="rings">Rings — Concentric circles</option>
             <option value="petals">Petals — Flower arrangement</option>
             <option value="polygon">Polygon — Rotating shapes</option>
           </optgroup>
-          <optgroup label="Time-Based (require Start button)">
-            <option value="staff">Staff Notation — Musical timeline</option>
-            <option value="spiral">Spiral — Rotating outward</option>
+          <optgroup label="Point-Based (advance by hits)">
+            <option value="fibonacci" selected>Fibonacci — Golden ratio spiral</option>
+            <option value="radial">Radial — Radiating from center</option>
           </optgroup>
         </select>
       </div>
@@ -270,6 +270,52 @@
         <option value="6">Add — Additive light, bright glowing overlaps</option>
         <option value="7">Difference — Inverts colors, psychedelic effect</option>
       </select>
+      </div>
+    </div>
+
+    <!-- Post-Processing Effects -->
+    <div style="margin: 10px 0;">
+      <label style="display: block; margin-bottom: 5px; font-weight: bold; font-size: 11px;">Post-Processing:</label>
+      <div data-tooltip="Visual effects applied to final output" style="display: block;">
+        <select id="postfx-select" style="
+          width: 100%;
+          padding: 6px;
+          border: 1px solid #ddd;
+          border-radius: 4px;
+          font-size: 11px;
+          background: white;
+        ">
+          <option value="none">None — No effects</option>
+          <option value="bloom">Bloom — Glowing bright areas</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Background Color Picker & Dark Mode -->
+    <div style="margin: 10px 0;">
+      <label style="display: block; margin-bottom: 5px; font-weight: bold; font-size: 11px;">Canvas Background:</label>
+      <div style="display: flex; gap: 8px; align-items: center; justify-content: space-between;">
+        <div data-tooltip="Pick any background color for the canvas" style="display: flex; gap: 8px; align-items: center;">
+          <input type="color" id="bg-color-picker" value="#ffffff" style="
+            width: 60px;
+            height: 32px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            cursor: pointer;
+          ">
+          <button id="bg-color-reset" style="
+            padding: 6px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: white;
+            cursor: pointer;
+            font-size: 11px;
+          ">Reset</button>
+        </div>
+        <label data-tooltip="Toggle dark mode theme" style="display: flex; align-items: center; gap: 6px; cursor: pointer; white-space: nowrap;">
+          <input type="checkbox" id="dark-mode-toggle" style="cursor: pointer;">
+          <span style="font-weight: bold; font-size: 11px;">🌙 Dark</span>
+        </label>
       </div>
     </div>
 
@@ -561,7 +607,7 @@
     position: fixed;
     top: 10px;
     right: 10px;
-    background: rgba(255, 255, 255, 0.95);
+    background: rgba(255, 255, 255, 0.95) !important;
     padding: 15px;
     border-radius: 8px;
     font-size: 11px;
@@ -868,6 +914,68 @@
           <div style="font-size: 10px; color: #999; text-align: center; padding: 20px;">
             No recordings yet
           </div>
+        </div>
+      </div>
+
+      <!-- Session Recording Section -->
+      <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #ddd;">
+        <strong style="display: flex; align-items: center; gap: 6px; margin-bottom: 10px; font-size: 12px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <polyline points="12 6 12 12 16 14"/>
+          </svg>
+          Session Recording
+        </strong>
+
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <div style="display: flex; gap: 6px;">
+            <button id="session-record-btn" data-tooltip="Start recording MIDI session" style="
+              flex: 1;
+              padding: 6px 12px;
+              border: 1px solid #ddd;
+              border-radius: 4px;
+              background: white;
+              cursor: pointer;
+              font-size: 11px;
+              font-weight: bold;
+            ">🔴 Record</button>
+            <button id="session-stop-btn" data-tooltip="Stop recording" disabled style="
+              flex: 1;
+              padding: 6px 12px;
+              border: 1px solid #ddd;
+              border-radius: 4px;
+              background: #f0f0f0;
+              cursor: not-allowed;
+              font-size: 11px;
+            ">⏹️ Stop</button>
+          </div>
+          <div style="display: flex; gap: 6px;">
+            <button id="session-export-btn" data-tooltip="Export session to JSON file" disabled style="
+              flex: 1;
+              padding: 6px 12px;
+              border: 1px solid #ddd;
+              border-radius: 4px;
+              background: #f0f0f0;
+              cursor: not-allowed;
+              font-size: 11px;
+            ">💾 Export</button>
+            <button id="session-clear-btn" data-tooltip="Clear session data" disabled style="
+              flex: 1;
+              padding: 6px 12px;
+              border: 1px solid #ddd;
+              border-radius: 4px;
+              background: #f0f0f0;
+              cursor: not-allowed;
+              font-size: 11px;
+            ">🗑️ Clear</button>
+          </div>
+          <div id="session-status" style="
+            font-size: 10px;
+            color: #666;
+            text-align: center;
+            padding: 4px;
+            min-height: 18px;
+          ">Ready to record</div>
         </div>
       </div>
     </div>
@@ -1671,9 +1779,9 @@
             <li><strong>Pitch Bend Support:</strong> Pitch wheel mapped as pseudo-CC (1001-1016 for channels 1-16)</li>
           </ul>
 
-          <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Staff Mode Advanced (Time-Based Recording)</h4>
+          <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Time-Based Layouts (Rhythmic/Temporal Recording)</h4>
           <p style="color: #444; line-height: 1.7; font-size: 14px;">
-            Staff mode has 2 time-based layouts (Staff Notation and Spiral Timeline). Both require pressing Start button and share these features:
+            Staff mode has 5 time-based layouts (Staff Notation, Spiral Timeline, Rings, Petals, Polygon). All require pressing Start button, sync with metronome, and share these features:
           </p>
           <ul style="line-height: 1.8; color: #444; font-size: 14px;">
             <li><strong>BPM Sync:</strong> Grid aligns to beats per minute (40-240 BPM)</li>
@@ -1956,6 +2064,164 @@
     user-select: none;
   ">v2.1.0</div>
 
+  <script>
+    // Setup collapsible sections for main control panel
+    (function setupPanelCollapsibleSections() {
+      // Load collapsed state from localStorage
+      const savedState = localStorage.getItem('controlPanelCollapsedSections');
+      const collapsedSections = savedState ? JSON.parse(savedState) : {};
+
+      function saveCollapsedState() {
+        localStorage.setItem('controlPanelCollapsedSections', JSON.stringify(collapsedSections));
+      }
+
+      function createCollapsibleSection(sectionId, title, content, defaultExpanded = true) {
+        const isCollapsed = collapsedSections[sectionId] !== undefined
+          ? collapsedSections[sectionId]
+          : !defaultExpanded;
+
+        const section = document.createElement('div');
+        section.style.cssText = 'margin-bottom: 8px;';
+
+        // Header
+        const header = document.createElement('div');
+        header.style.cssText = `
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 6px 8px;
+          background: #f0f0f0;
+          border-radius: 4px;
+          cursor: pointer;
+          user-select: none;
+          font-weight: bold;
+          font-size: 11px;
+          color: #666;
+          transition: background 0.2s;
+          margin-bottom: 6px;
+        `;
+        header.innerHTML = `
+          <span>${title}</span>
+          <span style="font-size: 10px; transition: transform 0.2s; transform: rotate(${isCollapsed ? 0 : 90}deg);">▶</span>
+        `;
+
+        // Content wrapper
+        const contentWrapper = document.createElement('div');
+        contentWrapper.style.display = isCollapsed ? 'none' : 'block';
+        contentWrapper.appendChild(content);
+
+        // Toggle functionality
+        header.onclick = () => {
+          const currentlyCollapsed = contentWrapper.style.display === 'none';
+          contentWrapper.style.display = currentlyCollapsed ? 'block' : 'none';
+          const arrow = header.querySelector('span:last-child');
+          arrow.style.transform = currentlyCollapsed ? 'rotate(90deg)' : 'rotate(0deg)';
+
+          collapsedSections[sectionId] = !currentlyCollapsed;
+          saveCollapsedState();
+        };
+
+        header.onmouseover = () => header.style.background = '#e0e0e0';
+        header.onmouseout = () => header.style.background = '#f0f0f0';
+
+        section.appendChild(header);
+        section.appendChild(contentWrapper);
+
+        return section;
+      }
+
+      // Wait for DOM to be ready
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initCollapsibleSections);
+      } else {
+        initCollapsibleSections();
+      }
+
+      function initCollapsibleSections() {
+        const mainPanel = document.getElementById('main-panel-sections');
+        if (!mainPanel) return;
+
+        // Get all children (we'll wrap specific sections)
+        const children = Array.from(mainPanel.children);
+
+        // Clear the panel
+        mainPanel.innerHTML = '';
+
+        // Group elements into sections
+        let currentGroup = [];
+        let currentTitle = null;
+        let sections = [];
+
+        for (let i = 0; i < children.length; i++) {
+          const child = children[i];
+
+          // Check if this is a divider (hr) - marks end of a section
+          if (child.tagName === 'HR') {
+            if (currentGroup.length > 0 && currentTitle) {
+              sections.push({ title: currentTitle, elements: currentGroup });
+              currentGroup = [];
+              currentTitle = null;
+            }
+            continue;
+          }
+
+          // Check if this starts a new section (has a label or strong tag with section name)
+          const labelText = child.querySelector('label')?.textContent || child.querySelector('strong')?.textContent || '';
+
+          if (labelText.includes('Paint Mode')) {
+            if (currentGroup.length > 0 && currentTitle) {
+              sections.push({ title: currentTitle, elements: currentGroup });
+            }
+            currentTitle = '🎨 Paint Mode';
+            currentGroup = [child];
+          } else if (labelText.includes('Spiral') || child.id === 'spiral-controls') {
+            if (currentGroup.length > 0 && currentTitle) {
+              sections.push({ title: currentTitle, elements: currentGroup });
+            }
+            currentTitle = '🌀 Spiral Settings';
+            currentGroup = [child];
+          } else if (labelText.includes('Keyboard')) {
+            if (currentGroup.length > 0 && currentTitle) {
+              sections.push({ title: currentTitle, elements: currentGroup });
+            }
+            currentTitle = '⌨️ Keyboard Shortcuts';
+            currentGroup = [child];
+          } else if (child.id === 'projects-section') {
+            if (currentGroup.length > 0 && currentTitle) {
+              sections.push({ title: currentTitle, elements: currentGroup });
+            }
+            currentTitle = '💾 Projects';
+            currentGroup = [child];
+          } else {
+            // Add to current group
+            if (currentTitle) {
+              currentGroup.push(child);
+            } else {
+              // No section yet, just add to panel
+              mainPanel.appendChild(child);
+            }
+          }
+        }
+
+        // Add last section
+        if (currentGroup.length > 0 && currentTitle) {
+          sections.push({ title: currentTitle, elements: currentGroup });
+        }
+
+        // Create collapsible sections
+        sections.forEach((section, index) => {
+          const container = document.createElement('div');
+          section.elements.forEach(el => container.appendChild(el));
+
+          const sectionId = section.title.toLowerCase().replace(/[^a-z]+/g, '-');
+          const defaultExpanded = index === 0; // First section expanded by default
+          const collapsibleSection = createCollapsibleSection(sectionId, section.title, container, defaultExpanded);
+
+          mainPanel.appendChild(collapsibleSection);
+        });
+      }
+    })();
+  </script>
   <script type="module" src="src/main.js"></script>
 </body>
 </html>

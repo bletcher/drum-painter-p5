@@ -22,6 +22,10 @@ import { visualStyleManager } from './canvas/VisualStyleManager.js';
 import { getBrushTextureCache } from './canvas/BrushTextureCache.js';
 import { debugLog, debugWarn, debugError, infoLog } from './utils/debug.js';
 import { checkBrowserCompatibility } from './utils/browserCompat.js';
+import { showUserFriendlyError, formatErrorMessage } from './utils/errorMessages.js';
+import { DarkModeManager } from './utils/darkMode.js';
+import { SessionRecorder } from './session/SessionRecorder.js';
+import { PostProcessing } from './effects/PostProcessing.js';
 
 // ===== GLOBAL STATE =====
 let paintCanvas;
@@ -30,7 +34,7 @@ let currentModeType = 'freeform'; // 'staff' (time-based timeline), 'freeform' (
 let strokeCount = 0;
 let globalSizeMultiplier = 1.0;
 let showUI = true;
-let currentBgColor = 0;
+let currentBgColor = '#ffffff'; // Default white background
 let currentBlendMode = 0;
 let BLEND_MODES = []; // Will be initialized in setup()
 let timelineScrollY = 0; // Vertical scroll offset for timeline mode
@@ -53,6 +57,9 @@ let timelineControls;
 let videoRecorder;
 let audioVideoMerger;
 let debugPanel;
+let darkModeManager;
+let sessionRecorder;
+let postProcessing;
 
 // DOM elements
 let midiStatusEl;
@@ -65,8 +72,8 @@ const chronicleMode = new TimelineMode(DRUM_KIT_CONFIG);
 // Helper function to get current active mode
 function getCurrentMode() {
   // Timeline mode (TimelineMode) handles all structured layouts:
-  // - Time-based: staff, spiral (require Start button, use elapsed time)
-  // - Point-based: fibonacci, radial, rings, petals, polygon (advance by hits)
+  // - Time-based: staff, spiral, rings, petals, polygon (require Start button, use elapsed time, sync with metronome)
+  // - Point-based: fibonacci, radial (advance by hits, no temporal relationship)
   // Freeform mode handles random/unpredictable styles
   return currentModeType === 'freeform' ? freeformMode : chronicleMode;
 }
@@ -84,7 +91,7 @@ window.setup = async function() {
 
   // Create offscreen painting canvas
   paintCanvas = createGraphics(PAINT_CANVAS_WIDTH, PAINT_CANVAS_HEIGHT);
-  paintCanvas.background(BG_COLORS[currentBgColor]);
+  paintCanvas.background(currentBgColor);
   paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
 
   // Expose canvases globally
@@ -116,6 +123,12 @@ window.setup = async function() {
   // Initialize system managers
   stateManager = new StateManager();
   notificationSystem = new NotificationSystem();
+  darkModeManager = new DarkModeManager();
+  sessionRecorder = new SessionRecorder(notificationSystem);
+  postProcessing = new PostProcessing();
+
+  // Apply saved dark mode preference
+  darkModeManager.apply();
 
   // Initialize visual style manager with brush texture cache reference
   visualStyleManager.setBrushTextureCache(getBrushTextureCache());
@@ -124,7 +137,7 @@ window.setup = async function() {
   midiManager = new MidiManager((note, velocity, deviceId) => handlePaint(note, velocity, deviceId));
 
   // Initialize customization panel
-  customizationPanel = new DrumCustomizationPanel(drumSettings, midiManager, stateManager, notificationSystem, chronicleMode);
+  customizationPanel = new DrumCustomizationPanel(drumSettings, midiManager, stateManager, notificationSystem, chronicleMode, darkModeManager);
 
   // Initialize MIDI mapping panel
   midiMappingPanel = new MidiMappingPanel(drumSettings, midiManager, notificationSystem, updateActiveDrumIndicator);
@@ -342,8 +355,8 @@ function initializeUI() {
     const isTimeline = currentModeType === 'timeline';
     const isFreeform = currentModeType === 'freeform';
 
-    // Check if current layout is time-based (staff/spiral) - these need timeline controls
-    const isTimeBased = chronicleMode.layout === 'staff' || chronicleMode.layout === 'spiral';
+    // Check if current layout is time-based (staff/spiral/rings/petals/polygon) - these need timeline controls
+    const isTimeBased = ['staff', 'spiral', 'rings', 'petals', 'polygon'].includes(chronicleMode.layout);
 
     // Show/hide appropriate selectors
     if (timelineLayoutSelector) {
@@ -393,7 +406,7 @@ function initializeUI() {
         updateModeUI();
 
         // Show different notification based on layout type
-        const isTimeBased = chronicleMode.layout === 'staff' || chronicleMode.layout === 'spiral';
+        const isTimeBased = ['staff', 'spiral', 'rings', 'petals', 'polygon'].includes(chronicleMode.layout);
         notificationSystem.show(isTimeBased ? 'Timeline Mode (time-based)' : 'Timeline Mode (point-based)');
       }
     });
@@ -466,6 +479,77 @@ function initializeUI() {
     });
   }
 
+  // Post-processing effects dropdown
+  const postfxSelect = document.getElementById('postfx-select');
+  if (postfxSelect) {
+    postfxSelect.addEventListener('change', (e) => {
+      const effect = e.target.value;
+      postProcessing.setEffect(effect);
+      debugLog(`Post-processing: ${effect}`);
+      notificationSystem.show(`Post FX: ${effect === 'none' ? 'None' : effect.charAt(0).toUpperCase() + effect.slice(1)}`);
+    });
+  }
+
+  // Background color picker
+  const bgColorPicker = document.getElementById('bg-color-picker');
+  const bgColorReset = document.getElementById('bg-color-reset');
+
+  if (bgColorPicker) {
+    bgColorPicker.value = currentBgColor;
+    bgColorPicker.addEventListener('change', (e) => {
+      currentBgColor = e.target.value;
+
+      // Temporarily reset blend mode to normal for clearing
+      paintCanvas.blendMode(BLEND);
+      paintCanvas.background(currentBgColor);
+      // Restore the current blend mode
+      paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
+
+      window.currentBgColor = currentBgColor; // Update global
+      debugLog(`Background Color: ${currentBgColor}`);
+      notificationSystem.show(`Background: ${currentBgColor}`);
+
+      // Save state for undo
+      stateManager.saveCanvasState(paintCanvas);
+    });
+  }
+
+  if (bgColorReset) {
+    bgColorReset.addEventListener('click', () => {
+      currentBgColor = '#ffffff';
+      if (bgColorPicker) bgColorPicker.value = currentBgColor;
+
+      // Temporarily reset blend mode to normal for clearing
+      paintCanvas.blendMode(BLEND);
+      paintCanvas.background(currentBgColor);
+      // Restore the current blend mode
+      paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
+
+      window.currentBgColor = currentBgColor; // Update global
+      debugLog(`Background Color reset to white`);
+      notificationSystem.show(`Background: white`);
+
+      // Save state for undo
+      stateManager.saveCanvasState(paintCanvas);
+    });
+  }
+
+  // Dark mode toggle
+  const darkModeToggle = document.getElementById('dark-mode-toggle');
+  if (darkModeToggle) {
+    // Set initial state from saved preference
+    darkModeToggle.checked = darkModeManager.darkMode;
+
+    darkModeToggle.addEventListener('change', (e) => {
+      const isDark = darkModeManager.toggle();
+      notificationSystem.show(isDark ? 'Dark mode enabled' : 'Light mode enabled');
+      debugLog(`Dark mode: ${isDark ? 'ON' : 'OFF'}`);
+    });
+  }
+
+  // Session recording controls
+  setupSessionRecordingUI();
+
   // Global size slider
   const globalSizeSlider = document.getElementById('global-size');
   const globalSizeVal = document.getElementById('global-size-val');
@@ -531,7 +615,7 @@ function initializeUI() {
       chronicleMode.startTime = Date.now();
       // Temporarily reset blend mode to normal for clearing
       paintCanvas.blendMode(BLEND);
-      paintCanvas.background(BG_COLORS[currentBgColor]);
+      paintCanvas.background(currentBgColor);
       // Restore the current blend mode
       paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
       notificationSystem.show('Spiral Reset');
@@ -593,7 +677,7 @@ function initializeUI() {
   if (shortcutClear) {
     shortcutClear.addEventListener('click', () => {
       if (confirm('Clear the entire canvas?')) {
-        paintCanvas.background(BG_COLORS[currentBgColor]);
+        paintCanvas.background(currentBgColor);
         getCurrentMode().clear({ paintCanvas, currentBgColor });
         notificationSystem.show('Canvas cleared');
       }
@@ -786,8 +870,8 @@ function initializeUI() {
         }
         globalSizeMultiplier = 1.0;
         currentBlendMode = 0;
-        currentBgColor = 0;
-        paintCanvas.background(BG_COLORS[currentBgColor]);
+        currentBgColor = '#ffffff';
+        paintCanvas.background(currentBgColor);
         paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
         window.currentBlendMode = currentBlendMode; // Update global
 
@@ -905,10 +989,17 @@ function initializeUI() {
             window.currentBlendMode = currentBlendMode; // Update global
           }
           if (state.globalSettings.bgColor !== undefined) {
-            currentBgColor = state.globalSettings.bgColor;
+            // Handle both old integer format and new hex string format
+            if (typeof state.globalSettings.bgColor === 'number') {
+              // Convert old integer index to hex color
+              const oldColors = ['#ffffff', '#000000', '#202020', '#f0f0f0', '#c8c8c8'];
+              currentBgColor = oldColors[state.globalSettings.bgColor] || '#ffffff';
+            } else {
+              currentBgColor = state.globalSettings.bgColor;
+            }
             // Temporarily reset blend mode to normal for clearing
             paintCanvas.blendMode(BLEND);
-            paintCanvas.background(BG_COLORS[currentBgColor]);
+            paintCanvas.background(currentBgColor);
             paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
           }
         }
@@ -926,8 +1017,8 @@ function initializeUI() {
         notificationSystem.show('Imported successfully!');
       } catch (error) {
         debugError('Error importing settings:', error);
-        notificationSystem.show('Import failed');
-        alert('Failed to import settings. Please check the file format.');
+        showUserFriendlyError(notificationSystem, 'FILE_PARSE_ERROR', error);
+        alert(formatErrorMessage('FILE_PARSE_ERROR', error));
       }
 
       // Reset input so same file can be imported again
@@ -1148,11 +1239,20 @@ function initializeUI() {
         }
 
         if (projectData.currentBgColor !== undefined) {
-          currentBgColor = projectData.currentBgColor;
+          // Handle both old integer format and new hex string format
+          if (typeof projectData.currentBgColor === 'number') {
+            // Convert old integer index to hex color
+            const oldColors = ['#ffffff', '#000000', '#202020', '#f0f0f0', '#c8c8c8'];
+            currentBgColor = oldColors[projectData.currentBgColor] || '#ffffff';
+          } else {
+            currentBgColor = projectData.currentBgColor;
+          }
           paintCanvas.blendMode(BLEND);
-          paintCanvas.background(BG_COLORS[currentBgColor]);
+          paintCanvas.background(currentBgColor);
           paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
           window.currentBgColor = currentBgColor;
+          const bgColorPicker = document.getElementById('bg-color-picker');
+          if (bgColorPicker) bgColorPicker.value = currentBgColor;
         }
 
         if (projectData.currentMode !== undefined) {
@@ -1206,7 +1306,7 @@ function initializeUI() {
         notificationSystem.show(`Project "${projectName}" loaded!`, 'success');
       } catch (error) {
         debugError('Error loading project:', error);
-        notificationSystem.show('Failed to load project', 'error');
+        showUserFriendlyError(notificationSystem, 'PROJECT_LOAD_ERROR', error);
       }
     });
   }
@@ -1330,6 +1430,126 @@ function closeMidiDevicesModal() {
   if (backdrop) {
     backdrop.style.display = 'none';
   }
+}
+
+/**
+ * Setup Session Recording UI
+ */
+function setupSessionRecordingUI() {
+  const recordBtn = document.getElementById('session-record-btn');
+  const stopBtn = document.getElementById('session-stop-btn');
+  const exportBtn = document.getElementById('session-export-btn');
+  const clearBtn = document.getElementById('session-clear-btn');
+  const statusEl = document.getElementById('session-status');
+
+  if (!recordBtn || !stopBtn || !exportBtn || !clearBtn || !statusEl) {
+    debugWarn('Session recording UI elements not found');
+    return;
+  }
+
+  // Update UI based on recording status
+  function updateUI() {
+    const status = sessionRecorder.getStatus();
+    const stats = sessionRecorder.getStats();
+
+    if (status.isRecording) {
+      // Recording in progress
+      recordBtn.disabled = true;
+      recordBtn.style.cursor = 'not-allowed';
+      recordBtn.style.background = '#f0f0f0';
+
+      stopBtn.disabled = false;
+      stopBtn.style.cursor = 'pointer';
+      stopBtn.style.background = 'white';
+      stopBtn.style.fontWeight = 'bold';
+
+      exportBtn.disabled = true;
+      clearBtn.disabled = true;
+
+      statusEl.textContent = `Recording... ${status.eventCount} events (${status.duration.toFixed(1)}s)`;
+      statusEl.style.color = '#c00';
+      statusEl.style.fontWeight = 'bold';
+    } else if (stats.hasData) {
+      // Has recorded data
+      recordBtn.disabled = false;
+      recordBtn.style.cursor = 'pointer';
+      recordBtn.style.background = 'white';
+      recordBtn.style.fontWeight = 'bold';
+
+      stopBtn.disabled = true;
+      stopBtn.style.cursor = 'not-allowed';
+      stopBtn.style.background = '#f0f0f0';
+
+      exportBtn.disabled = false;
+      exportBtn.style.cursor = 'pointer';
+      exportBtn.style.background = 'white';
+
+      clearBtn.disabled = false;
+      clearBtn.style.cursor = 'pointer';
+      clearBtn.style.background = 'white';
+
+      statusEl.textContent = `${stats.totalEvents} events recorded (${stats.duration.toFixed(1)}s)`;
+      statusEl.style.color = '#060';
+      statusEl.style.fontWeight = 'normal';
+    } else {
+      // Ready to record
+      recordBtn.disabled = false;
+      recordBtn.style.cursor = 'pointer';
+      recordBtn.style.background = 'white';
+      recordBtn.style.fontWeight = 'bold';
+
+      stopBtn.disabled = true;
+      stopBtn.style.cursor = 'not-allowed';
+      stopBtn.style.background = '#f0f0f0';
+
+      exportBtn.disabled = true;
+      exportBtn.style.cursor = 'not-allowed';
+      exportBtn.style.background = '#f0f0f0';
+
+      clearBtn.disabled = true;
+      clearBtn.style.cursor = 'not-allowed';
+      clearBtn.style.background = '#f0f0f0';
+
+      statusEl.textContent = 'Ready to record';
+      statusEl.style.color = '#666';
+      statusEl.style.fontWeight = 'normal';
+    }
+  }
+
+  // Record button
+  recordBtn.addEventListener('click', () => {
+    sessionRecorder.startRecording();
+    updateUI();
+  });
+
+  // Stop button
+  stopBtn.addEventListener('click', () => {
+    sessionRecorder.stopRecording();
+    updateUI();
+  });
+
+  // Export button
+  exportBtn.addEventListener('click', () => {
+    sessionRecorder.exportToFile();
+  });
+
+  // Clear button
+  clearBtn.addEventListener('click', () => {
+    if (confirm('Clear session data? This cannot be undone.')) {
+      sessionRecorder.clearSession();
+      updateUI();
+    }
+  });
+
+  // Update UI during recording (refresh every 100ms)
+  setInterval(() => {
+    if (sessionRecorder.getStatus().isRecording) {
+      updateUI();
+    }
+  }, 100);
+
+  // Initial UI update
+  updateUI();
 }
 
 /**
@@ -1589,6 +1809,7 @@ function updateRecordingsList() {
         debugError('Merge failed:', error);
         if (statusSpan) statusSpan.textContent = 'Merge failed';
         if (statusSpan) statusSpan.style.color = '#dc2626';
+        showUserFriendlyError(notificationSystem, 'VIDEO_MERGE_ERROR', error);
 
         // Hide progress after a delay
         setTimeout(() => {
@@ -1669,7 +1890,7 @@ window.draw = function() {
   let scaleFactor, displayWidth, displayHeight, offsetX, offsetY;
 
   // Check if we're in a time-based layout (staff or spiral)
-  const isTimeBased = currentModeType === 'timeline' && (chronicleMode.layout === 'staff' || chronicleMode.layout === 'spiral');
+  const isTimeBased = currentModeType === 'timeline' && ['staff', 'spiral', 'rings', 'petals', 'polygon'].includes(chronicleMode.layout);
 
   if (isTimeBased) {
     // Time-based layouts: scale based on width only, allow vertical scrolling
@@ -1692,6 +1913,11 @@ window.draw = function() {
     } else {
       offsetY = timelineScrollY; // Use scroll offset for tall canvases
     }
+  }
+
+  // Apply post-processing effects before displaying
+  if (postProcessing) {
+    postProcessing.apply(paintCanvas);
   }
 
   // Draw the paint canvas
@@ -1752,7 +1978,7 @@ window.draw = function() {
   }
 
   // Update Timeline mode if active (time-based layouts) - handles metronome
-  const isTimeBasedNow = currentModeType === 'timeline' && (chronicleMode.layout === 'staff' || chronicleMode.layout === 'spiral');
+  const isTimeBasedNow = currentModeType === 'timeline' && ['staff', 'spiral', 'rings', 'petals', 'polygon'].includes(chronicleMode.layout);
   if (isTimeBasedNow) {
     const context = {
       paintCanvas,
@@ -1878,7 +2104,7 @@ window.keyPressed = function() {
 
     // Temporarily reset blend mode to normal for clearing
     paintCanvas.blendMode(BLEND);
-    paintCanvas.background(BG_COLORS[currentBgColor]);
+    paintCanvas.background(currentBgColor);
     // Restore the current blend mode
     paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
 
@@ -1997,7 +2223,7 @@ window.keyPressed = function() {
       if (confirm('Clear the timeline? This cannot be undone.')) {
         // Reset blend mode temporarily for clearing
         paintCanvas.blendMode(BLEND);
-        paintCanvas.background(BG_COLORS[currentBgColor]);
+        paintCanvas.background(currentBgColor);
         paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
 
         window.currentBgColor = currentBgColor;
@@ -2129,6 +2355,11 @@ function handlePaint(note, velocity, deviceId) {
   const drumName = drumSettings[drumId]?.name || drumId;
   debugLog(`🎵 Paint: Note ${note} (${drumName}), Vel ${velocity.toFixed(2)}`);
 
+  // Record session event if recording is active
+  if (sessionRecorder) {
+    sessionRecorder.recordEvent(note, velocity, deviceId, drumId);
+  }
+
   // Flash MIDI activity indicator
   const activityLight = document.getElementById('midi-activity-light');
   if (activityLight) {
@@ -2160,6 +2391,7 @@ function handlePaint(note, velocity, deviceId) {
     strokeCount++;
   } catch (error) {
     debugError('Error painting:', error);
+    showUserFriendlyError(notificationSystem, 'PAINT_ERROR', error);
   }
 }
 
@@ -2317,7 +2549,7 @@ function switchMode(oldModeIndex) {
   if (freeformStyleSelector) freeformStyleSelector.style.display = mapping.type === 'freeform' ? 'block' : 'none';
 
   // Check if layout is time-based for timeline controls
-  const isTimeBased = mapping.layout === 'staff' || mapping.layout === 'spiral';
+  const isTimeBased = ['staff', 'spiral', 'rings', 'petals', 'polygon'].includes(mapping.layout);
   const timelineControlsEl = document.getElementById('timeline-controls');
   if (timelineControlsEl) {
     timelineControlsEl.style.display = (mapping.type !== 'freeform' && isTimeBased) ? 'block' : 'none';
@@ -2531,13 +2763,23 @@ async function loadSavedSettings() {
       if (blendSelect) blendSelect.value = currentBlendMode.toString();
     }
     if (savedState.globalSettings.bgColor !== undefined) {
-      currentBgColor = savedState.globalSettings.bgColor;
+      // Handle both old integer format and new hex string format
+      if (typeof savedState.globalSettings.bgColor === 'number') {
+        // Convert old integer index to hex color
+        const oldColors = ['#ffffff', '#000000', '#202020', '#f0f0f0', '#c8c8c8'];
+        currentBgColor = oldColors[savedState.globalSettings.bgColor] || '#ffffff';
+      } else {
+        currentBgColor = savedState.globalSettings.bgColor;
+      }
       // Temporarily reset blend mode to normal for clearing
       paintCanvas.blendMode(BLEND);
-      paintCanvas.background(BG_COLORS[currentBgColor]);
+      paintCanvas.background(currentBgColor);
       paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
       // Update global window reference
       window.currentBgColor = currentBgColor;
+      // Update UI color picker
+      const bgColorPicker = document.getElementById('bg-color-picker');
+      if (bgColorPicker) bgColorPicker.value = currentBgColor;
     }
     debugLog('✓ Loaded global settings');
   }
@@ -2858,7 +3100,7 @@ window.mousePressed = function() {
   }
 
   // Handle metronome dragging in time-based layouts
-  const isTimeBased = currentModeType === 'timeline' && (chronicleMode.layout === 'staff' || chronicleMode.layout === 'spiral');
+  const isTimeBased = currentModeType === 'timeline' && ['staff', 'spiral', 'rings', 'petals', 'polygon'].includes(chronicleMode.layout);
   if (isTimeBased && chronicleMode.handleMetronomeMousePressed(mouseX, mouseY)) {
     return; // Metronome was clicked, don't do anything else
   }
@@ -2900,7 +3142,7 @@ window.mousePressed = function() {
 
 window.mouseDragged = function() {
   // Handle metronome dragging in time-based layouts
-  const isTimeBased = currentModeType === 'timeline' && (chronicleMode.layout === 'staff' || chronicleMode.layout === 'spiral');
+  const isTimeBased = currentModeType === 'timeline' && ['staff', 'spiral', 'rings', 'petals', 'polygon'].includes(chronicleMode.layout);
   if (isTimeBased) {
     chronicleMode.handleMetronomeMouseDragged(mouseX, mouseY);
   }
@@ -2965,6 +3207,7 @@ window.mouseDragged = function() {
     strokeCount++;
   } catch (error) {
     debugError('Error painting with mouse:', error);
+    showUserFriendlyError(notificationSystem, 'PAINT_ERROR', error);
   }
 
   // Update previous position
@@ -3014,12 +3257,13 @@ window.mouseClicked = function() {
     strokeCount++;
   } catch (error) {
     debugError('Error painting with mouse:', error);
+    showUserFriendlyError(notificationSystem, 'PAINT_ERROR', error);
   }
 };
 
 window.mouseReleased = function() {
   // Handle metronome release in time-based layouts
-  const isTimeBased = currentModeType === 'timeline' && (chronicleMode.layout === 'staff' || chronicleMode.layout === 'spiral');
+  const isTimeBased = currentModeType === 'timeline' && ['staff', 'spiral', 'rings', 'petals', 'polygon'].includes(chronicleMode.layout);
   if (isTimeBased) {
     chronicleMode.handleMetronomeMouseReleased();
   }

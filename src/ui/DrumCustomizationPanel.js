@@ -10,12 +10,13 @@ import { drawSplatterCanvas, drawBrushStrokeCanvas, drawInkBlotCanvas } from '..
 import { debugLog, debugWarn, debugError, infoLog } from '../utils/debug.js';
 
 export class DrumCustomizationPanel {
-  constructor(drumSettings, midiManager, stateManager, notificationSystem, chronicleMode) {
+  constructor(drumSettings, midiManager, stateManager, notificationSystem, chronicleMode, darkModeManager) {
     this.drumSettings = drumSettings;
     this.midiManager = midiManager;
     this.stateManager = stateManager;
     this.notificationSystem = notificationSystem;
     this.chronicleMode = chronicleMode;
+    this.darkModeManager = darkModeManager;
     this.currentTab = DRUM_KIT_CONFIG[0]?.id || 'kick';
     this.isVisible = false;
     this.draggedTabIndex = null;
@@ -123,6 +124,11 @@ export class DrumCustomizationPanel {
 
     container.appendChild(tabNav);
     container.appendChild(tabContent);
+
+    // Apply dark mode if enabled
+    if (this.darkModeManager) {
+      this.darkModeManager.apply();
+    }
   }
 
   /**

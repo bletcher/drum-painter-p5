@@ -72,7 +72,7 @@ export class TimelineMode {
     this.lastMetronomeSubdivision = 4;
     this.audioContext = null; // Web Audio API context
 
-    // Hit counters for point-based layouts (rings, radial, petals, polygon)
+    // Hit counters for point-based layouts (fibonacci, radial)
     this.globalHitCount = 0; // Total hits across all drums
     this.perDrumHitCount = {}; // Hits per individual drum
 
@@ -336,12 +336,13 @@ export class TimelineMode {
     }
 
     // Determine if this layout is time-based or point-based
-    const isTimeBased = (this.layout === 'staff' || this.layout === 'spiral');
-    const isPointBased = (this.layout === 'rings' || this.layout === 'radial' ||
-                          this.layout === 'petals' || this.layout === 'polygon');
+    // Time-based: position determined by elapsed time, requires Start button, syncs with metronome
+    // Point-based: position determined by hit count, no temporal relationship
+    const isTimeBased = ['staff', 'spiral', 'rings', 'petals', 'polygon'].includes(this.layout);
+    const isPointBased = ['fibonacci', 'radial'].includes(this.layout);
 
-    // Only require recording for time-based layouts (Staff, Spiral)
-    // Point-based layouts (Rings, Petals, Polygon) can paint anytime
+    // Only require recording for time-based layouts
+    // Point-based layouts (fibonacci, radial) can paint anytime
     if (isTimeBased && !this.recording) {
       debugLog('Timeline not recording - press Start button first');
       return;
