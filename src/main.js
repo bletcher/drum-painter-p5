@@ -44,8 +44,9 @@ let scrollbarDragStartY = 0; // Starting Y position of drag
 // Drum settings
 let drumSettings = generateFactorySettings();
 
-// Expose globals for timeline mode to access
+// Expose globals for timeline mode and other modules to access
 window.drumSettings = drumSettings;
+window.stateManager = null; // Will be set after initialization
 
 // System managers
 let midiManager;
@@ -76,6 +77,37 @@ function getCurrentMode() {
   // - Point-based: fibonacci, radial (advance by hits, no temporal relationship)
   // Freeform mode handles random/unpredictable styles
   return currentModeType === 'freeform' ? freeformMode : chronicleMode;
+}
+
+// Helper function to get current app state for saving
+function getAppState() {
+  return {
+    drumSettings,
+    globalSizeMultiplier,
+    currentBlendMode,
+    currentBgColor,
+    currentModeType,
+    freeformStyle: freeformMode.style,
+    chronicleLayout: chronicleMode.layout,
+    spiralSettings: {
+      tightness: chronicleMode.spiralSettings.tightness,
+      rotationsPerMinute: chronicleMode.spiralSettings.rotationsPerMinute,
+      startRadius: chronicleMode.spiralSettings.startRadius,
+      syncToBPM: chronicleMode.spiralSettings.syncToBPM
+    },
+    timelineSettings: {
+      bpm: chronicleMode.bpm,
+      subdivision: chronicleMode.subdivision,
+      beatsPerMeasure: chronicleMode.beatsPerMeasure,
+      metronomeEnabled: chronicleMode.metronomeEnabled,
+      midiLatencyMs: chronicleMode.midiLatencyMs,
+      showGrid: chronicleMode.showGrid,
+      rowSpacing: chronicleMode.rowSpacing,
+      warmupMeasures: chronicleMode.warmupMeasures,
+      measuresPerStaffPreference: chronicleMode.measuresPerStaffPreference
+    },
+    bankModeSettings: midiManager ? midiManager.getState() : {}
+  };
 }
 
 // ===== P5.JS SKETCH =====
@@ -122,6 +154,7 @@ window.setup = async function() {
 
   // Initialize system managers
   stateManager = new StateManager();
+  window.stateManager = stateManager; // Expose globally for other modules
   notificationSystem = new NotificationSystem();
   darkModeManager = new DarkModeManager();
   sessionRecorder = new SessionRecorder(notificationSystem);
@@ -309,6 +342,35 @@ window.setup = async function() {
     timelineControls.syncUI();
   }
 
+  // Set up auto-save system
+  stateManager.setAppStateGetter(getAppState);
+  stateManager.setOnSaveStatusChange((status) => {
+    // Update save indicator in UI
+    const saveIndicator = document.getElementById('save-indicator');
+    if (saveIndicator) {
+      if (status === 'pending') {
+        saveIndicator.textContent = '●';
+        saveIndicator.style.color = '#fbbf24'; // Yellow
+        saveIndicator.title = 'Unsaved changes';
+      } else if (status === 'saving') {
+        saveIndicator.textContent = '●';
+        saveIndicator.style.color = '#60a5fa'; // Blue
+        saveIndicator.title = 'Saving...';
+      } else if (status === 'saved') {
+        saveIndicator.textContent = '●';
+        saveIndicator.style.color = '#10b981'; // Green
+        saveIndicator.title = 'All changes saved';
+        // Fade to grey after 2 seconds
+        setTimeout(() => {
+          if (!stateManager.hasUnsavedChanges()) {
+            saveIndicator.style.color = '#9ca3af'; // Grey
+            saveIndicator.title = 'Saved';
+          }
+        }, 2000);
+      }
+    }
+  });
+
   debugLog('🎨 Drum Painter - Modular Version');
   debugLog('📦 Current mode:', currentModeType, '- Style/Layout:', currentModeType === 'freeform' ? freeformMode.style : chronicleMode.layout);
   debugLog('🥁 Drum kit:', DRUM_KIT_CONFIG.map(d => d.name));
@@ -408,6 +470,7 @@ function initializeUI() {
         // Show different notification based on layout type
         const isTimeBased = ['staff', 'spiral', 'rings', 'petals', 'polygon'].includes(chronicleMode.layout);
         notificationSystem.show(isTimeBased ? 'Timeline Mode (time-based)' : 'Timeline Mode (point-based)');
+        stateManager.scheduleAutoSave();
       }
     });
   }
@@ -420,6 +483,7 @@ function initializeUI() {
         getCurrentMode().onActivate({ paintCanvas, drumSettings });
         updateModeUI();
         notificationSystem.show('Freeform Mode');
+        stateManager.scheduleAutoSave();
       }
     });
   }
@@ -434,6 +498,7 @@ function initializeUI() {
 
       // Update UI visibility based on new layout (time-based vs point-based)
       updateModeUI();
+      stateManager.scheduleAutoSave();
     });
   }
 
@@ -459,6 +524,7 @@ function initializeUI() {
 
       const styleName = e.target.options[e.target.selectedIndex].text.split('—')[0].trim();
       notificationSystem.show(styleName);
+      stateManager.scheduleAutoSave();
     });
   }
 
@@ -476,6 +542,7 @@ function initializeUI() {
       window.currentBlendMode = currentBlendMode; // Update global
       debugLog(`Blend Mode: ${BLEND_MODE_NAMES[currentBlendMode]}`);
       notificationSystem.show(`Blend: ${BLEND_MODE_NAMES[currentBlendMode]}`);
+      stateManager.scheduleAutoSave();
     });
   }
 
@@ -511,6 +578,7 @@ function initializeUI() {
 
       // Save state for undo
       stateManager.saveCanvasState(paintCanvas);
+      stateManager.scheduleAutoSave();
     });
   }
 
@@ -531,6 +599,7 @@ function initializeUI() {
 
       // Save state for undo
       stateManager.saveCanvasState(paintCanvas);
+      stateManager.scheduleAutoSave();
     });
   }
 
@@ -2132,47 +2201,12 @@ window.keyPressed = function() {
     return false;
   }
 
-  // D - save settings as default
+  // D - save settings as default (immediate save)
   if (key === 'd' || key === 'D') {
     // Ensure window.drumSettings is synced before saving
     window.drumSettings = drumSettings;
 
-    // Debug: Check checkbox state vs chronicleMode value
-    const metronomeCheckbox = document.getElementById('metronome-enabled');
-    debugLog('💾 === SAVE DEBUG ===');
-    debugLog('💾 Checkbox checked:', metronomeCheckbox?.checked);
-    debugLog('💾 chronicleMode.metronomeEnabled:', chronicleMode.metronomeEnabled);
-    debugLog('💾 Are they the same?', metronomeCheckbox?.checked === chronicleMode.metronomeEnabled);
-
-    const appState = {
-      drumSettings,
-      globalSizeMultiplier,
-      currentBlendMode,
-      currentBgColor,
-      currentModeType,
-        freeformStyle: freeformMode.style,
-        chronicleLayout: chronicleMode.layout,
-      spiralSettings: {
-        tightness: chronicleMode.spiralSettings.tightness,
-        rotationsPerMinute: chronicleMode.spiralSettings.rotationsPerMinute,
-        startRadius: chronicleMode.spiralSettings.startRadius,
-        syncToBPM: chronicleMode.spiralSettings.syncToBPM
-      },
-      timelineSettings: {
-        bpm: chronicleMode.bpm,
-        subdivision: chronicleMode.subdivision,
-        beatsPerMeasure: chronicleMode.beatsPerMeasure,
-        metronomeEnabled: chronicleMode.metronomeEnabled,
-        midiLatencyMs: chronicleMode.midiLatencyMs,
-        showGrid: chronicleMode.showGrid,
-        rowSpacing: chronicleMode.rowSpacing,
-        warmupMeasures: chronicleMode.warmupMeasures,
-        measuresPerStaffPreference: chronicleMode.measuresPerStaffPreference
-      },
-      bankModeSettings: midiManager.getState()
-    };
-    debugLog('💾 Saving metronomeEnabled value:', appState.timelineSettings.metronomeEnabled);
-    if (stateManager.saveAsDefault(appState)) {
+    if (stateManager.saveNow()) {
       infoLog('✓ Settings saved as default');
       notificationSystem.show('Settings saved');
     }

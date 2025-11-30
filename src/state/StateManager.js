@@ -13,6 +13,121 @@ export class StateManager {
   constructor() {
     this.canvasHistory = [];
     this.historyIndex = -1;
+
+    // Auto-save system
+    this.autoSaveTimeout = null;
+    this.autoSaveDelay = 2000; // 2 seconds debounce
+    this.pendingAutoSave = false;
+    this.lastSaveTime = null;
+    this.getAppState = null; // Function to get current app state (set by main.js)
+    this.onSaveStatusChange = null; // Callback for UI updates
+  }
+
+  /**
+   * Set the function that retrieves current app state
+   * Must be called during initialization
+   * @param {Function} fn - Function that returns current app state object
+   */
+  setAppStateGetter(fn) {
+    this.getAppState = fn;
+  }
+
+  /**
+   * Set callback for save status changes (for UI feedback)
+   * @param {Function} fn - Callback function(status: 'saving'|'saved'|'pending')
+   */
+  setOnSaveStatusChange(fn) {
+    this.onSaveStatusChange = fn;
+  }
+
+  /**
+   * Schedule an auto-save with debouncing
+   * Call this whenever settings change
+   */
+  scheduleAutoSave() {
+    if (!this.getAppState) {
+      debugWarn('⚠️ Auto-save: No app state getter configured');
+      return;
+    }
+
+    // Mark as pending
+    this.pendingAutoSave = true;
+    if (this.onSaveStatusChange) {
+      this.onSaveStatusChange('pending');
+    }
+
+    // Clear existing timeout
+    if (this.autoSaveTimeout) {
+      clearTimeout(this.autoSaveTimeout);
+    }
+
+    // Schedule new save
+    this.autoSaveTimeout = setTimeout(() => {
+      this.performAutoSave();
+    }, this.autoSaveDelay);
+  }
+
+  /**
+   * Perform the actual auto-save
+   */
+  performAutoSave() {
+    if (!this.getAppState) {
+      debugWarn('⚠️ Auto-save: No app state getter configured');
+      return;
+    }
+
+    if (this.onSaveStatusChange) {
+      this.onSaveStatusChange('saving');
+    }
+
+    const appState = this.getAppState();
+    const success = this.saveAsDefault(appState);
+
+    if (success) {
+      this.pendingAutoSave = false;
+      this.lastSaveTime = Date.now();
+      debugLog('🔄 Auto-saved settings');
+      if (this.onSaveStatusChange) {
+        this.onSaveStatusChange('saved');
+      }
+    }
+  }
+
+  /**
+   * Cancel any pending auto-save
+   */
+  cancelAutoSave() {
+    if (this.autoSaveTimeout) {
+      clearTimeout(this.autoSaveTimeout);
+      this.autoSaveTimeout = null;
+    }
+    this.pendingAutoSave = false;
+  }
+
+  /**
+   * Force immediate save (used by 'D' key)
+   */
+  saveNow() {
+    this.cancelAutoSave();
+    if (this.getAppState) {
+      const appState = this.getAppState();
+      const success = this.saveAsDefault(appState);
+      if (success) {
+        this.lastSaveTime = Date.now();
+        if (this.onSaveStatusChange) {
+          this.onSaveStatusChange('saved');
+        }
+      }
+      return success;
+    }
+    return false;
+  }
+
+  /**
+   * Check if there are unsaved changes
+   */
+  hasUnsavedChanges() {
+    return this.pendingAutoSave;
   }
 
   // ===== UNDO/REDO SYSTEM =====

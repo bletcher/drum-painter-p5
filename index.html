@@ -177,6 +177,7 @@
             flex-shrink: 0;
           "></div>
           <div id="midi-device-name" style="font-weight: 500; color: #666; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Checking MIDI...</div>
+          <span id="save-indicator" title="Saved" style="color: #9ca3af; font-size: 10px; margin-left: auto;">●</span>
         </div>
         <div style="display: flex; gap: 10px; font-size: 10px; color: #999;">
           <div>Ch: <span id="midi-channel">-</span></div>
@@ -328,7 +329,7 @@
       <div id="shortcut-clear" data-tooltip="Click to clear canvas" style="cursor: pointer; display: inline-block; padding: 2px 0;"><span class="key">BKSP</span> Clear canvas</div><br>
       <div id="shortcut-record" data-tooltip="Click to start/stop recording" style="cursor: pointer; display: inline-block; padding: 2px 0;"><span class="key">SPACE</span> Record video</div><br>
       <div id="shortcut-save-image" data-tooltip="Click to save image" style="cursor: pointer; display: inline-block; padding: 2px 0;"><span class="key">S</span> Save image</div><br>
-      <div id="shortcut-save-settings" data-tooltip="Click to save settings" style="cursor: pointer; display: inline-block; padding: 2px 0;"><span class="key">D</span> Save settings</div><br>
+      <div id="shortcut-save-settings" data-tooltip="Click to save settings immediately (auto-saves after 2s)" style="cursor: pointer; display: inline-block; padding: 2px 0;"><span class="key">D</span> Save settings (auto-saves)</div><br>
       <div id="shortcut-undo" data-tooltip="Click to undo" style="cursor: pointer; display: inline-block; padding: 2px 0;"><span class="key">Z</span> Undo</div><br>
       <div id="shortcut-redo" data-tooltip="Click to redo" style="cursor: pointer; display: inline-block; padding: 2px 0;"><span class="key">Y</span> Redo</div><br>
       <div id="shortcut-blend-mode" data-tooltip="Click to cycle blend modes" style="cursor: pointer; display: inline-block; padding: 2px 0;"><span class="key">B</span> Cycle blend</div><br>
@@ -1412,7 +1413,7 @@
             <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">S</kbd>
           </div>
           <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
-            <span style="font-size: 13px;">Save settings</span>
+            <span style="font-size: 13px;">Save settings now (auto-saves after 2s)</span>
             <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">D</kbd>
           </div>
           <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
@@ -1663,19 +1664,19 @@
             <strong>Two-Mode System:</strong> Choose mode type (Freeform or Timeline) with radio buttons, then select style/layout from dropdown.
           </p>
 
-          <p style="color: #667eea; margin-top: 16px; margin-bottom: 8px;"><strong>Timeline Mode - Time-Based Layouts (Require Start Button):</strong></p>
+          <p style="color: #667eea; margin-top: 16px; margin-bottom: 8px;"><strong>Timeline Mode - Time-Based Layouts (Sync with Metronome):</strong></p>
           <ul style="line-height: 1.8; color: #444;">
-            <li><strong>Staff Notation:</strong> Traditional horizontal DAW-style sequencer with musical grid. Eighth triplet subdivisions by default.</li>
-            <li><strong>Spiral:</strong> Notes appear exactly where/when played along an expanding spiral. One rotation per measure, smooth continuous flow.</li>
+            <li><strong>Staff:</strong> Traditional horizontal DAW-style sequencer with musical grid. Eighth triplet subdivisions by default.</li>
+            <li><strong>Spiral:</strong> Notes appear exactly where/when played along an expanding spiral. One rotation per measure.</li>
+            <li><strong>Rings:</strong> Concentric circles with angular positioning. Angle corresponds to time like a clock face.</li>
+            <li><strong>Petals:</strong> Organic flower curves where position corresponds to elapsed time. Creates visual rhythm record.</li>
+            <li><strong>Polygon:</strong> Rotating geometric pattern where position along perimeter corresponds to time.</li>
           </ul>
 
           <p style="color: #667eea; margin-top: 16px; margin-bottom: 8px;"><strong>Timeline Mode - Point-Based Layouts (Paint Immediately):</strong></p>
           <ul style="line-height: 1.8; color: #444;">
             <li><strong>Fibonacci:</strong> Golden ratio spiral emanating from center, expanding with each hit</li>
             <li><strong>Radial:</strong> 8-fold mirrored radial patterns, perfect for mandalas</li>
-            <li><strong>Rings:</strong> Drums on spokes radiating from center, distance increases with each hit</li>
-            <li><strong>Petals:</strong> Organic petal curves with sinusoidal oscillation</li>
-            <li><strong>Polygon:</strong> Spiraling geometric pattern - polygon vertices rotate and pulse as they expand</li>
           </ul>
 
           <p style="color: #667eea; margin-top: 16px; margin-bottom: 8px;"><strong>Freeform Mode (Random Placement):</strong></p>
@@ -1811,7 +1812,7 @@
 
           <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Chronicle Mode Advanced (Point-Based Sequential)</h4>
           <p style="color: #444; line-height: 1.7; font-size: 14px;">
-            Chronicle mode has 5 point-based layouts (Fibonacci, Radial, Rings, Petals, Polygon) where position depends on note count, not time. Paint immediately without starting timeline - perfect for debug panel testing.
+            Timeline mode has 5 time-based layouts (Staff, Spiral, Rings, Petals, Polygon) that sync with the metronome, plus 2 point-based layouts (Fibonacci, Radial) where position depends on hit count.
           </p>
 
           <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Keyboard Shortcuts Reference</h4>
@@ -1821,7 +1822,7 @@
             <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">BKSP</kbd> Clear canvas</div>
             <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">F</kbd> Toggle fullscreen</div>
             <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">S</kbd> Save image</div>
-            <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">D</kbd> Save settings</div>
+            <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">D</kbd> Save settings (immediate)</div>
             <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">Z</kbd> Undo</div>
             <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">Y</kbd> Redo</div>
             <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">← →</kbd> Switch Freeform ↔ Timeline</div>
@@ -1837,12 +1838,14 @@
             Press <strong>?</strong> for complete keyboard shortcuts reference.
           </p>
 
-          <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Data Persistence</h4>
+          <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Data Persistence & Auto-Save</h4>
           <p style="color: #444; line-height: 1.7; font-size: 14px;">
-            All settings stored in browser localStorage:
+            All settings stored in browser localStorage with automatic saving:
           </p>
           <ul style="line-height: 1.8; color: #444; font-size: 14px;">
-            <li><strong>Default Settings:</strong> Auto-saved when you press D or Save button</li>
+            <li><strong>Auto-Save:</strong> Settings automatically save 2 seconds after any change</li>
+            <li><strong>Save Indicator:</strong> Dot next to MIDI status shows save state (yellow=pending, green=saved)</li>
+            <li><strong>Manual Save:</strong> Press D for immediate save</li>
             <li><strong>Named Projects:</strong> Save multiple configurations</li>
             <li><strong>Bank Mode State:</strong> Pad/fader assignments persist</li>
             <li><strong>Drum Kit Config:</strong> Custom drum additions persist</li>

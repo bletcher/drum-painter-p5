@@ -23,6 +23,15 @@ export class DrumCustomizationPanel {
   }
 
   /**
+   * Schedule auto-save after a setting change
+   */
+  scheduleAutoSave() {
+    if (this.stateManager && this.stateManager.scheduleAutoSave) {
+      this.stateManager.scheduleAutoSave();
+    }
+  }
+
+  /**
    * Toggle panel visibility
    */
   toggle() {
@@ -319,6 +328,7 @@ export class DrumCustomizationPanel {
       if (label) label.textContent = newName;
 
       debugLog(`✏️ Renamed drum ${drumId} to: ${newName}`);
+      this.scheduleAutoSave();
     };
 
     return group;
@@ -352,6 +362,7 @@ export class DrumCustomizationPanel {
     const input = group.querySelector(`#midinote-${drumId}`);
     input.onchange = () => {
       this.drumSettings[drumId].midiNote = parseInt(input.value);
+      this.scheduleAutoSave();
     };
 
     const learnButton = group.querySelector(`#learn-${drumId}`);
@@ -429,6 +440,8 @@ export class DrumCustomizationPanel {
       if (tabBtn && drumId === this.currentTab) {
         tabBtn.style.borderTopColor = newColor;
       }
+
+      this.scheduleAutoSave();
     };
 
     return group;
@@ -457,6 +470,8 @@ export class DrumCustomizationPanel {
       if (strokeSection) {
         strokeSection.style.display = select.value === 'brushstroke' ? 'none' : 'block';
       }
+
+      this.scheduleAutoSave();
     };
 
     return group;
@@ -555,6 +570,7 @@ export class DrumCustomizationPanel {
       this.drumSettings[drumId].strokeEnabled = checkbox.checked;
       controls.style.display = checkbox.checked ? 'block' : 'none';
       this.updatePreview(drumId);
+      this.scheduleAutoSave();
     };
 
     const controls = document.createElement('div');
@@ -574,6 +590,7 @@ export class DrumCustomizationPanel {
     colorInput.oninput = () => {
       this.drumSettings[drumId].strokeColor = colorInput.value;
       this.updatePreview(drumId);
+      this.scheduleAutoSave();
     };
 
     // Stroke weight
@@ -626,6 +643,7 @@ export class DrumCustomizationPanel {
       if (paramKey === 'rotation' || paramKey === 'strokeWeight') {
         this.updatePreview(drumId);
       }
+      this.scheduleAutoSave();
     };
     controls.appendChild(slider);
 
@@ -670,6 +688,7 @@ export class DrumCustomizationPanel {
       this.drumSettings[drumId][paramKey] = displayVal;
       valueSpan.textContent = `${val}${unit}`;
       this.updatePreview(drumId);
+      this.scheduleAutoSave();
     };
     controls.appendChild(slider);
 
@@ -689,6 +708,7 @@ export class DrumCustomizationPanel {
     ).join('');
     scalingSelect.onchange = () => {
       this.drumSettings[drumId][`${paramKey}Scaling`] = scalingSelect.value;
+      this.scheduleAutoSave();
     };
     controls.appendChild(scalingSelect);
 
@@ -953,6 +973,7 @@ export class DrumCustomizationPanel {
     }
 
     this.notificationSystem.show(`Added ${newDrum.name}`);
+    this.scheduleAutoSave();
   }
 
   /**
@@ -988,5 +1009,6 @@ export class DrumCustomizationPanel {
     }
 
     this.notificationSystem.show('Drum deleted');
+    this.scheduleAutoSave();
   }
 }

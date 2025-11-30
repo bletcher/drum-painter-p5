@@ -14,6 +14,9 @@ Create stunning generative art with your MIDI drums! A browser-based painting ap
 - **Project System** - Save and load complete setups
 - **Blend Modes** - 8 layering effects including Add, Difference, Multiply, Screen
 - **Comprehensive Customization** - Color, size, shape, opacity, hue variation per drum
+- **Auto-Save** - Settings automatically save after changes (2-second debounce)
+- **Dark Mode** - Toggle UI dark mode for comfortable use in any lighting
+- **Session Recording** - Record MIDI events with timing for replay/export
 
 ## Quick Start
 
@@ -82,7 +85,7 @@ Structured visual patterns with precise positioning. Includes both time-based an
 
 #### Time-Based Layouts (Require Start Button)
 
-Position depends on elapsed time with BPM synchronization:
+Position depends on elapsed time with BPM synchronization. All time-based layouts sync with the visual metronome:
 
 **Staff Notation**
 - Traditional horizontal DAW-style sequencer with musical grid
@@ -98,6 +101,24 @@ Position depends on elapsed time with BPM synchronization:
 - Drums offset radially for clarity
 - Smooth continuous flow
 
+**Rings**
+- Concentric circles with angular positioning
+- Angle corresponds to time (like a clock face)
+- Each drum on its own ring radius
+- Creates visual record of rhythm
+
+**Petals**
+- Organic flower-like curves
+- Position along petals corresponds to elapsed time
+- Circular nature maps to cyclical time (measures, bars)
+- Natural flowing patterns
+
+**Polygon**
+- Rotating geometric pattern with breathing effect
+- Position along perimeter corresponds to time
+- Each edge can represent a beat or measure
+- Number of vertices equals number of drums
+
 #### Point-Based Layouts (Paint Immediately)
 
 Position based on hit count, not time. Paint without starting timeline - perfect for live performance:
@@ -111,22 +132,6 @@ Position based on hit count, not time. Paint without starting timeline - perfect
 - 8-fold symmetrical patterns radiating from center
 - Perfect for mandalas
 - Each hit creates 8 mirrored dots simultaneously
-
-**Rings**
-- Drums positioned on spokes radiating from center
-- Distance increases with each hit
-- Creates star/burst patterns
-
-**Petals**
-- Organic flower-like curves
-- Each drum traces a petal path
-- Sinusoidal oscillation for natural flowing patterns
-
-**Polygon**
-- Spiraling geometric pattern with breathing effect
-- Drums at polygon vertices that rotate and pulse
-- One full rotation every 60 hits with subtle pulsing
-- Number of vertices equals number of drums
 
 ### Freeform Mode (Random Patterns)
 
@@ -247,13 +252,20 @@ Press **?** to see all shortcuts, or **U** for the complete User Guide.
 - **SPACE** - Start/stop video recording
 - **BACKSPACE** - Clear canvas
 - **S** - Save image as PNG
-- **D** - Save settings to clipboard
+- **D** - Save settings immediately (settings also auto-save after 2 seconds)
 - **Z** - Undo last action
 - **Y** - Redo
 - **H** - Hide/show UI
 - **F** - Toggle fullscreen
 - **?** - Show keyboard shortcuts
 - **U** - Show user guide
+
+### Save Indicator
+A small dot appears next to the MIDI status showing save state:
+- **Yellow** - Unsaved changes pending
+- **Blue** - Saving in progress
+- **Green** - Just saved
+- **Grey** - All changes saved
 
 ### Navigation
 - **← →** - Switch between Freeform and Timeline modes
@@ -532,7 +544,7 @@ Map any CC parameter in Bank Mode:
 
 ### Creating Animations
 
-Use Timeline Mode's time-based layouts (Staff Notation or Spiral) to record rhythmic patterns with precise timing, then export as video for looping animations. Point-based layouts (Fibonacci, Radial, Rings, Petals, Polygon) create sequential patterns perfect for geometric animations and can be painted during live performance without starting timeline.
+Use Timeline Mode's time-based layouts (Staff, Spiral, Rings, Petals, Polygon) to record rhythmic patterns with precise timing synchronized to the metronome, then export as video for looping animations. Point-based layouts (Fibonacci, Radial) create sequential patterns perfect for geometric animations and can be painted during live performance without starting timeline.
 
 ### Color Palettes
 

@@ -15,6 +15,15 @@ export class TimelineControls {
   }
 
   /**
+   * Schedule auto-save via global stateManager
+   */
+  scheduleAutoSave() {
+    if (window.stateManager && window.stateManager.scheduleAutoSave) {
+      window.stateManager.scheduleAutoSave();
+    }
+  }
+
+  /**
    * Initialize the controls
    */
   initialize() {
@@ -25,6 +34,7 @@ export class TimelineControls {
         const bpm = parseInt(e.target.value);
         this.timelineMode.bpm = Math.max(40, Math.min(240, bpm));
         this.updateBPMDisplay();
+        this.scheduleAutoSave();
       });
     }
 
@@ -34,6 +44,7 @@ export class TimelineControls {
       subdivisionSelect.addEventListener('change', (e) => {
         this.timelineMode.subdivision = parseInt(e.target.value);
         this.timelineMode.lastMetronomeClick = -1; // Reset metronome
+        this.scheduleAutoSave();
       });
     }
 
@@ -43,6 +54,7 @@ export class TimelineControls {
       timeSignatureSelect.addEventListener('change', (e) => {
         this.timelineMode.beatsPerMeasure = parseInt(e.target.value);
         this.timelineMode.lastMetronomeClick = -1; // Reset metronome
+        this.scheduleAutoSave();
       });
     }
 
@@ -52,6 +64,7 @@ export class TimelineControls {
       layoutSelect.addEventListener('change', (e) => {
         this.timelineMode.layout = e.target.value;
         this.notificationSystem.show(`Layout: ${e.target.value.charAt(0).toUpperCase() + e.target.value.slice(1)}`);
+        this.scheduleAutoSave();
       });
     }
 
@@ -65,6 +78,7 @@ export class TimelineControls {
         } else {
           this.notificationSystem.show(`${e.target.value} measure${e.target.value === '1' ? '' : 's'} per row`);
         }
+        this.scheduleAutoSave();
       });
     }
 
@@ -81,6 +95,7 @@ export class TimelineControls {
         } else {
           this.notificationSystem.show('Metronome disabled');
         }
+        this.scheduleAutoSave();
       });
     } else {
       debugWarn('⚠️ Metronome checkbox element not found!');
@@ -91,6 +106,7 @@ export class TimelineControls {
     if (latencyInput) {
       latencyInput.addEventListener('change', (e) => {
         this.timelineMode.midiLatencyMs = Math.max(0, Math.min(200, parseInt(e.target.value)));
+        this.scheduleAutoSave();
       });
     }
 
@@ -99,6 +115,7 @@ export class TimelineControls {
     if (showGridCheckbox) {
       showGridCheckbox.addEventListener('change', (e) => {
         this.timelineMode.showGrid = e.target.checked;
+        this.scheduleAutoSave();
       });
     }
 
@@ -108,6 +125,7 @@ export class TimelineControls {
       rowSpacingSlider.addEventListener('input', (e) => {
         this.timelineMode.rowSpacing = parseInt(e.target.value);
         this.updateRowSpacingDisplay();
+        this.scheduleAutoSave();
       });
     }
 
