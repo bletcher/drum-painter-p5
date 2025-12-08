@@ -1,4 +1,4 @@
-# Drum Painter v2.0
+# Drum Painter v0.2
 
 Create stunning generative art with your MIDI drums! A browser-based painting application where every drum hit becomes a visual element, powered by p5.js and the Web MIDI API.
 

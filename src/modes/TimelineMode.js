@@ -648,9 +648,8 @@ export class TimelineMode {
     // Fill new area with background color
     paintCanvas.push();
     paintCanvas.noStroke();
-    const bgColor = context.currentBgColor !== undefined ? context.currentBgColor : 0;
-    const BG_COLORS = [255, 0, 32, 240, 200];
-    paintCanvas.fill(BG_COLORS[bgColor]);
+    const bgColor = context.currentBgColor || '#ffffff';
+    paintCanvas.fill(bgColor);
     paintCanvas.rect(0, oldHeight, paintCanvas.width, requiredHeight - oldHeight);
     paintCanvas.pop();
   }
@@ -751,14 +750,13 @@ export class TimelineMode {
     this.perDrumHitCount = {};
 
     // Clear canvas
-    const bgColor = context.currentBgColor !== undefined ? context.currentBgColor : 0;
-    const BG_COLORS = [255, 0, 32, 240, 200];
+    const bgColor = context.currentBgColor || '#ffffff';
 
     // Temporarily reset blend mode to normal for clearing
     const BLEND_MODES = window.BLEND_MODES || [window.BLEND];
     const currentBlendMode = window.currentBlendMode || 0;
     paintCanvas.blendMode(window.BLEND);
-    paintCanvas.background(BG_COLORS[bgColor]);
+    paintCanvas.background(bgColor);
     paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
 
     debugLog('Timeline cleared');

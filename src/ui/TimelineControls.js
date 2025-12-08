@@ -272,14 +272,13 @@ export class TimelineControls {
     if (startOver) {
       // Clear canvas if starting over
       const paintCanvas = window.paintCanvas;
-      const currentBgColor = window.currentBgColor || 0;
-      const BG_COLORS = [255, 0, 32, 240, 200];
+      const bgColor = window.currentBgColor || '#ffffff';
       if (paintCanvas) {
         // Get current blend mode and temporarily reset to normal for clearing
         const BLEND_MODES = window.BLEND_MODES || [window.BLEND];
         const currentBlendMode = window.currentBlendMode || 0;
         paintCanvas.blendMode(window.BLEND);
-        paintCanvas.background(BG_COLORS[currentBgColor]);
+        paintCanvas.background(bgColor);
         paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
       }
       // Reset scroll position when starting over
@@ -448,13 +447,12 @@ export class TimelineControls {
 
     // Clear canvas
     const paintCanvas = window.paintCanvas;
-    const currentBgColor = window.currentBgColor || 0;
-    const BG_COLORS = [255, 0, 32, 240, 200];
+    const bgColor = window.currentBgColor || '#ffffff';
     if (paintCanvas) {
       const BLEND_MODES = window.BLEND_MODES || [window.BLEND];
       const currentBlendMode = window.currentBlendMode || 0;
       paintCanvas.blendMode(window.BLEND);
-      paintCanvas.background(BG_COLORS[currentBgColor]);
+      paintCanvas.background(bgColor);
       paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
     }
 
@@ -463,11 +461,9 @@ export class TimelineControls {
       window.resetTimelineScroll();
     }
 
-    // Reset timeline
-    this.timelineMode.startTime = null;
-    this.timelineMode.stopTime = null;
-    this.timelineMode.pausedTime = 0;
-    this.timelineMode.recording = false;
+    // Reset timeline state using the proper clear method
+    // This ensures all state is reset (hit counters, metronome, etc.)
+    this.timelineMode.clear({ currentBgColor: bgColor });
 
     this.notificationSystem.show('Canvas cleared • Ready to start');
     this.updateButtonsUI();
