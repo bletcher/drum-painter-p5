@@ -969,7 +969,7 @@ export class DrumCustomizationPanel {
 
     // Update timeline lanes to match new drum count
     if (this.chronicleMode) {
-      this.chronicleMode.regenerateLanes();
+      this.chronicleMode.regenerateLanes(this.drumSettings);
     }
 
     this.notificationSystem.show(`Added ${newDrum.name}`);
@@ -1005,7 +1005,7 @@ export class DrumCustomizationPanel {
 
     // Update timeline lanes to match new drum count
     if (this.chronicleMode) {
-      this.chronicleMode.regenerateLanes();
+      this.chronicleMode.regenerateLanes(this.drumSettings);
     }
 
     this.notificationSystem.show('Drum deleted');

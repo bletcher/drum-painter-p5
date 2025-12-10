@@ -326,6 +326,10 @@ window.setup = async function() {
   debugLog('Current drumSettings after initialization:', drumSettings);
   debugLog('🔍 After loadSavedSettings - chronicleMode.metronomeEnabled:', chronicleMode.metronomeEnabled);
 
+  // Always regenerate timeline lanes after loading settings
+  // This ensures custom drums are available in timeline mode even if we start in freeform
+  chronicleMode.regenerateLanes(drumSettings);
+
   // Initialize UI controls
   initializeUI();
   debugLog('🔍 After initializeUI - chronicleMode.metronomeEnabled:', chronicleMode.metronomeEnabled);

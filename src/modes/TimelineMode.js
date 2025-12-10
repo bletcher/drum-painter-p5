@@ -1106,7 +1106,7 @@ export class TimelineMode {
   findDrumIdByNote(note, midiDeviceId, drumSettings) {
     for (const drumId in drumSettings) {
       const settings = drumSettings[drumId];
-      if (settings.midiDeviceId === midiDeviceId && settings.midiNote === note) {
+      if (settings.midiDevice === midiDeviceId && settings.midiNote === note) {
         return drumId;
       }
     }
