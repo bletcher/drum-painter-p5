@@ -43,9 +43,11 @@ let scrollbarDragStartY = 0; // Starting Y position of drag
 
 // Drum settings
 let drumSettings = generateFactorySettings();
+let drumOrder = DRUM_KIT_CONFIG.map(d => d.id); // Explicit ordering of drums
 
 // Expose globals for timeline mode and other modules to access
 window.drumSettings = drumSettings;
+window.drumOrder = drumOrder;
 window.stateManager = null; // Will be set after initialization
 
 // System managers
@@ -83,6 +85,7 @@ function getCurrentMode() {
 function getAppState() {
   return {
     drumSettings,
+    drumOrder,
     globalSizeMultiplier,
     currentBlendMode,
     currentBgColor,
@@ -328,14 +331,14 @@ window.setup = async function() {
 
   // Always regenerate timeline lanes after loading settings
   // This ensures custom drums are available in timeline mode even if we start in freeform
-  chronicleMode.regenerateLanes(drumSettings);
+  chronicleMode.regenerateLanes(drumSettings, drumOrder);
 
   // Initialize UI controls
   initializeUI();
   debugLog('🔍 After initializeUI - chronicleMode.metronomeEnabled:', chronicleMode.metronomeEnabled);
 
   // Activate the current mode (important for initializing mode-specific state)
-  getCurrentMode().onActivate({ paintCanvas, drumSettings });
+  getCurrentMode().onActivate({ paintCanvas, drumSettings, drumOrder });
 
   // Rebuild customization panel to reflect loaded settings (including custom drums)
   customizationPanel.build();
@@ -468,7 +471,7 @@ function initializeUI() {
           chronicleMode.layout = 'fibonacci'; // Default fallback
         }
 
-        getCurrentMode().onActivate({ paintCanvas, drumSettings });
+        getCurrentMode().onActivate({ paintCanvas, drumSettings, drumOrder });
         updateModeUI();
 
         // Show different notification based on layout type
@@ -484,7 +487,7 @@ function initializeUI() {
       if (e.target.checked) {
         getCurrentMode().onDeactivate({ paintCanvas });
         currentModeType = 'freeform';
-        getCurrentMode().onActivate({ paintCanvas, drumSettings });
+        getCurrentMode().onActivate({ paintCanvas, drumSettings, drumOrder });
         updateModeUI();
         notificationSystem.show('Freeform Mode');
         stateManager.scheduleAutoSave();
@@ -2578,7 +2581,7 @@ function switchMode(oldModeIndex) {
   }
 
   // Activate new mode
-  getCurrentMode().onActivate({ paintCanvas, drumSettings });
+  getCurrentMode().onActivate({ paintCanvas, drumSettings, drumOrder });
 
   // Update UI visibility
   const timelineLayoutSelector = document.getElementById('timeline-layout-selector');
@@ -2663,6 +2666,19 @@ async function loadSavedSettings() {
     debugLog('✓ Loaded drum settings');
     debugLog('Current drum settings after load:', JSON.stringify(drumSettings, null, 2));
   }
+
+  // Load or migrate drumOrder
+  if (savedState.drumOrder && Array.isArray(savedState.drumOrder)) {
+    // New format: use saved drumOrder
+    drumOrder = savedState.drumOrder;
+    debugLog(`✓ Loaded drumOrder: ${drumOrder.length} drums`);
+  } else {
+    // Migration: generate drumOrder from DRUM_KIT_CONFIG (preserves user's drum order)
+    drumOrder = DRUM_KIT_CONFIG.map(d => d.id);
+    debugLog(`✓ Migrated drumOrder from config: ${drumOrder.length} drums`);
+  }
+  // Update global reference
+  window.drumOrder = drumOrder;
 
   // Load spiral settings BEFORE orphan cleanup (so auto-save has correct values)
   if (savedState.spiralSettings && chronicleMode) {

@@ -239,12 +239,31 @@ export class DrumCustomizationPanel {
     tabButton.ondrop = (e) => {
       e.preventDefault();
       if (this.draggedTabIndex !== null && this.draggedTabIndex !== index) {
-        // Reorder drums
+        // Reorder drums in DRUM_KIT_CONFIG
         const movedDrum = DRUM_KIT_CONFIG.splice(this.draggedTabIndex, 1)[0];
         DRUM_KIT_CONFIG.splice(index, 0, movedDrum);
+
+        // Also reorder in drumOrder to keep them in sync
+        if (window.drumOrder) {
+          const movedDrumId = movedDrum.id;
+          const oldOrderIndex = window.drumOrder.indexOf(movedDrumId);
+          if (oldOrderIndex > -1) {
+            window.drumOrder.splice(oldOrderIndex, 1);
+            window.drumOrder.splice(index, 0, movedDrumId);
+          }
+        }
+
+        // Update timeline lanes with new order
+        if (this.chronicleMode) {
+          this.chronicleMode.regenerateLanes(this.drumSettings, window.drumOrder);
+        }
+
         this.draggedTabIndex = null;
         this.build();
         this.notificationSystem.show('Drum order updated');
+
+        // Save the new order (this was missing before!)
+        this.scheduleAutoSave();
       }
       tabButton.style.background = tabButton.dataset.drumId === this.currentTab ? CUSTOMIZATION_PANEL.tab.active : CUSTOMIZATION_PANEL.tab.inactive;
     };
@@ -964,12 +983,17 @@ export class DrumCustomizationPanel {
       }
     };
 
+    // Add to drumOrder
+    if (window.drumOrder) {
+      window.drumOrder.push(newId);
+    }
+
     this.currentTab = newId;
     this.build();
 
     // Update timeline lanes to match new drum count
     if (this.chronicleMode) {
-      this.chronicleMode.regenerateLanes(this.drumSettings);
+      this.chronicleMode.regenerateLanes(this.drumSettings, window.drumOrder);
     }
 
     this.notificationSystem.show(`Added ${newDrum.name}`);
@@ -995,8 +1019,21 @@ export class DrumCustomizationPanel {
       DRUM_KIT_CONFIG.splice(index, 1);
     }
 
+    // Remove from drumOrder
+    if (window.drumOrder) {
+      const orderIndex = window.drumOrder.indexOf(drumId);
+      if (orderIndex > -1) {
+        window.drumOrder.splice(orderIndex, 1);
+      }
+    }
+
     // Remove settings
     delete this.drumSettings[drumId];
+
+    // Clean up bank pad assignments if midiManager exists
+    if (this.midiManager && this.midiManager.bankPadAssignments && this.midiManager.bankPadAssignments[drumId]) {
+      delete this.midiManager.bankPadAssignments[drumId];
+    }
 
     // Switch to first drum
     this.currentTab = DRUM_KIT_CONFIG[0].id;
@@ -1005,7 +1042,7 @@ export class DrumCustomizationPanel {
 
     // Update timeline lanes to match new drum count
     if (this.chronicleMode) {
-      this.chronicleMode.regenerateLanes(this.drumSettings);
+      this.chronicleMode.regenerateLanes(this.drumSettings, window.drumOrder);
     }
 
     this.notificationSystem.show('Drum deleted');

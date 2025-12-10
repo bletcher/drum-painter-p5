@@ -192,9 +192,10 @@ export class StateManager {
   saveAsDefault(appState) {
     try {
       const state = {
-        version: '2.0',
+        version: '3.0',
         drumKitConfig: DRUM_KIT_CONFIG,
         drumSettings: appState.drumSettings,
+        drumOrder: appState.drumOrder, // Explicit drum ordering
         globalSettings: {
           sizeMultiplier: appState.globalSizeMultiplier,
           blendMode: appState.currentBlendMode,
@@ -288,9 +289,10 @@ export class StateManager {
   exportToFile(appState) {
     try {
       const state = {
-        version: '2.0',
+        version: '3.0',
         drumKitConfig: DRUM_KIT_CONFIG,
         drumSettings: appState.drumSettings,
+        drumOrder: appState.drumOrder, // Explicit drum ordering
         globalSettings: {
           sizeMultiplier: appState.globalSizeMultiplier,
           blendMode: appState.currentBlendMode,

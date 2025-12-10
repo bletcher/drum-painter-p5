@@ -85,21 +85,33 @@ export class TimelineMode {
   /**
    * Regenerate timeline lanes from current drum settings
    * @param {Object} drumSettings - Current drum settings (optional, uses drumKitConfig if not provided)
+   * @param {Array} drumOrder - Explicit drum ordering (optional, falls back to Object.keys or drumKitConfig)
    */
-  regenerateLanes(drumSettings = null) {
+  regenerateLanes(drumSettings = null, drumOrder = null) {
     this.timelineLanes = {};
 
-    if (drumSettings) {
-      // Use actual drum settings as source of truth
-      // Object.keys() preserves insertion order (ES6+)
-      // This matches the order in the Customization Panel
+    if (drumOrder && Array.isArray(drumOrder) && drumOrder.length > 0) {
+      // Use explicit drumOrder as source of truth (preferred)
+      drumOrder.forEach((drumId, index) => {
+        // Only add drums that exist in drumSettings (if provided) or always add if no settings
+        if (!drumSettings || drumId in drumSettings) {
+          this.timelineLanes[drumId] = index;
+        }
+      });
+      this.timelineLaneCount = Object.keys(this.timelineLanes).length;
+
+      debugLog(`📋 Timeline lanes regenerated from drumOrder: ${this.timelineLaneCount} drums`);
+      debugLog('   Drum order:', drumOrder);
+      debugLog('   Lane mapping:', this.timelineLanes);
+    } else if (drumSettings) {
+      // Fallback: Use drum settings keys (maintains insertion order in ES6+)
       const drumIds = Object.keys(drumSettings);
       drumIds.forEach((drumId, index) => {
         this.timelineLanes[drumId] = index;
       });
       this.timelineLaneCount = drumIds.length;
 
-      debugLog(`📋 Timeline lanes regenerated: ${this.timelineLaneCount} drums`);
+      debugLog(`📋 Timeline lanes regenerated from settings: ${this.timelineLaneCount} drums`);
       debugLog('   Drum order:', drumIds);
       debugLog('   Lane mapping:', this.timelineLanes);
     } else {
@@ -118,14 +130,15 @@ export class TimelineMode {
 
   /**
    * Called when timeline mode is activated
-   * @param {Object} context - Context object with paintCanvas and drumSettings
+   * @param {Object} context - Context object with paintCanvas, drumSettings, and drumOrder
    */
-  onActivate({ paintCanvas, drumSettings }) {
+  onActivate({ paintCanvas, drumSettings, drumOrder }) {
     debugLog('Timeline Mode activated');
     debugLog('🎵 Metronome enabled:', this.metronomeEnabled);
     debugLog('🎵 Audio context exists:', !!this.audioContext);
     // Ensure timeline lanes match current drum configuration
-    this.regenerateLanes(drumSettings);
+    // Use drumOrder if available, otherwise fall back to window.drumOrder or drumSettings keys
+    this.regenerateLanes(drumSettings, drumOrder || window.drumOrder);
 
     // Note: Audio context initialization moved to startRecording()
     // because browser autoplay policy requires user interaction

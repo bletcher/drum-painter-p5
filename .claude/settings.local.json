@@ -26,7 +26,8 @@
       "Bash(else echo \"nul does not exist\")",
       "Bash(fi)",
       "Bash(find:*)",
-      "Bash(git config:*)"
+      "Bash(git config:*)",
+      "Bash(timeout 5 npm run dev)"
     ],
     "deny": [],
     "ask": []
