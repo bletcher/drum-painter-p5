@@ -4,6 +4,7 @@
  */
 
 import { debugLog, debugWarn, debugError, infoLog } from '../utils/debug.js';
+import { showUserFriendlyError } from '../utils/errorMessages.js';
 
 export class VideoRecorder {
   constructor(canvas, notificationSystem) {
@@ -134,7 +135,7 @@ export class VideoRecorder {
       // Handle errors
       this.mediaRecorder.onerror = (error) => {
         debugError('MediaRecorder error:', error);
-        this.notificationSystem.show('Recording error occurred', 'error');
+        showUserFriendlyError(this.notificationSystem, 'VIDEO_START_ERROR', error);
         this.stopRecording();
       };
 
@@ -152,7 +153,7 @@ export class VideoRecorder {
       return true;
     } catch (error) {
       debugError('Failed to start recording:', error);
-      this.notificationSystem.show('Failed to start recording', 'error');
+      showUserFriendlyError(this.notificationSystem, 'VIDEO_START_ERROR', error);
       return false;
     }
   }
@@ -182,7 +183,7 @@ export class VideoRecorder {
       return true;
     } catch (error) {
       debugError('Failed to stop recording:', error);
-      this.notificationSystem.show('Failed to stop recording', 'error');
+      showUserFriendlyError(this.notificationSystem, 'VIDEO_SAVE_ERROR', error);
       return false;
     }
   }
@@ -266,7 +267,7 @@ export class VideoRecorder {
       this.cleanup();
     } catch (error) {
       debugError('Failed to save recording:', error);
-      this.notificationSystem.show('Failed to save video', 'error');
+      showUserFriendlyError(this.notificationSystem, 'VIDEO_SAVE_ERROR', error);
       this.cleanup();
     }
   }

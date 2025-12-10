@@ -4,6 +4,7 @@
  */
 
 import { debugLog, debugWarn, infoLog } from '../utils/debug.js';
+import { showUserFriendlyError } from '../utils/errorMessages.js';
 
 export class SessionRecorder {
   constructor(notificationSystem) {
@@ -125,7 +126,7 @@ export class SessionRecorder {
     } catch (error) {
       debugWarn('Failed to export session:', error);
       if (this.notificationSystem) {
-        this.notificationSystem.show('Failed to export session', 'error');
+        showUserFriendlyError(this.notificationSystem, 'FILE_EXPORT_ERROR', error);
       }
     }
   }

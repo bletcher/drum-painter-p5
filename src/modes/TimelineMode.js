@@ -6,7 +6,48 @@
 
 import { FibonacciMode } from './FibonacciMode.js';
 import { RadialMode } from './RadialMode.js';
-import { DEFAULT_TIMELINE_SUBDIVISION } from '../config/constants.js';
+import {
+  DEFAULT_TIMELINE_SUBDIVISION,
+  TIMELINE_ROW_SPACING,
+  TIMELINE_RING_SPACING,
+  TIMELINE_POLYGON_SIDES,
+  TIMELINE_LANE_OFFSET,
+  TIMELINE_SPIRAL_TIGHTNESS,
+  TIMELINE_SPIRAL_ROTATIONS_PER_MIN,
+  TIMELINE_SPIRAL_START_RADIUS,
+  TIMELINE_RING_BASE_RADIUS,
+  TIMELINE_RADIAL_BASE_DISTANCE,
+  TIMELINE_RADIAL_STEP,
+  TIMELINE_PETAL_BASE_RADIUS,
+  TIMELINE_PETAL_STEP,
+  TIMELINE_PETAL_OSCILLATION,
+  TIMELINE_POLYGON_BASE_RADIUS,
+  TIMELINE_POLYGON_STEP,
+  TIMELINE_POLYGON_PULSE,
+  TIMELINE_POLYGON_ROTATION_BEATS,
+  METRONOME_RADIUS,
+  METRONOME_DEFAULT_MARGIN,
+  METRONOME_PULSE_THRESHOLD,
+  METRONOME_MARKER_SIZE_FIRST,
+  METRONOME_MARKER_SIZE_BEAT,
+  METRONOME_MARKER_SIZE_SUB,
+  METRONOME_HAND_OFFSET,
+  METRONOME_FREQ_FIRST_BEAT,
+  METRONOME_FREQ_BEAT,
+  METRONOME_FREQ_SUBDIVISION,
+  METRONOME_GAIN_FIRST,
+  METRONOME_GAIN_BEAT,
+  METRONOME_GAIN_SUB,
+  METRONOME_CLICK_DURATION,
+  TIMELINE_DOT_BASE_SIZE,
+  TIMELINE_DOT_VELOCITY_MULT,
+  TIMELINE_DOT_ALPHA,
+  TIMELINE_PARTICLE_LIFE,
+  TIMELINE_PARTICLE_ALPHA,
+  PLAYHEAD_BASE_WEIGHT,
+  PLAYHEAD_PULSE_WEIGHT,
+  PLAYHEAD_PULSE_DECAY
+} from '../config/constants.js';
 import { debugLog, debugWarn, debugError, infoLog } from '../utils/debug.js';
 
 export class TimelineMode {
@@ -51,16 +92,16 @@ export class TimelineMode {
     this.measuresPerStaff = 4; // Number of complete measures per staff row (calculated dynamically)
     this.measuresPerStaffPreference = 4; // User preference: 0 = auto, or specific number
     this.showGrid = true; // Show/hide grid lines
-    this.rowSpacing = 10; // Vertical spacing between staff rows (pixels)
+    this.rowSpacing = TIMELINE_ROW_SPACING; // Vertical spacing between staff rows (pixels)
 
     // Layout-specific parameters
-    this.ringSpacing = 40; // Spacing between concentric rings
+    this.ringSpacing = TIMELINE_RING_SPACING; // Spacing between concentric rings
     this.petalCount = 0; // Auto-calculated from drum count
-    this.polygonSides = 6; // Number of sides for polygon layout
+    this.polygonSides = TIMELINE_POLYGON_SIDES; // Number of sides for polygon layout
     this.spiralSettings = {
-      tightness: 15,         // Space between rotations (pixels per rotation)
-      rotationsPerMinute: 4, // How fast the spiral rotates (visual speed)
-      startRadius: 50,       // Initial radius at center
+      tightness: TIMELINE_SPIRAL_TIGHTNESS,         // Space between rotations (pixels per rotation)
+      rotationsPerMinute: TIMELINE_SPIRAL_ROTATIONS_PER_MIN, // How fast the spiral rotates (visual speed)
+      startRadius: TIMELINE_SPIRAL_START_RADIUS,       // Initial radius at center
       syncToBPM: false,      // Whether to sync rotation speed to BPM
       pattern: 'spiral'      // Pattern type (for future expansion)
     };
@@ -149,6 +190,16 @@ export class TimelineMode {
    */
   onDeactivate({ paintCanvas }) {
     this.stopRecording();
+
+    // Close audio context to prevent memory leak
+    if (this.audioContext) {
+      this.audioContext.close().then(() => {
+        debugLog('🎵 Audio context closed');
+      }).catch(err => {
+        debugWarn('⚠️ Error closing audio context:', err);
+      });
+      this.audioContext = null;
+    }
   }
 
   /**
@@ -187,7 +238,7 @@ export class TimelineMode {
     switch (this.layout) {
       case 'rings':
         // Concentric circles - each drum gets a ring, angle represents time
-        const ringRadius = 100 + (laneIndex * this.ringSpacing);
+        const ringRadius = TIMELINE_RING_BASE_RADIUS + (laneIndex * this.ringSpacing);
         const angle = (beatCount / this.beatsPerMeasure) * Math.PI * 2;
         return {
           x: centerX + ringRadius * Math.cos(angle),
@@ -197,7 +248,7 @@ export class TimelineMode {
       case 'radial':
         // Spokes/rays - each drum gets a spoke, distance from center represents time
         const spokeAngle = (laneIndex / this.timelineLaneCount) * Math.PI * 2;
-        const distance = 50 + (beatCount * 30); // Distance increases with beats
+        const distance = TIMELINE_RADIAL_BASE_DISTANCE + (beatCount * TIMELINE_RADIAL_STEP);
         return {
           x: centerX + distance * Math.cos(spokeAngle),
           y: centerY + distance * Math.sin(spokeAngle)
@@ -206,8 +257,8 @@ export class TimelineMode {
       case 'petals':
         // Flower petals - each drum traces a petal curve
         const petalAngle = (laneIndex / this.timelineLaneCount) * Math.PI * 2;
-        const petalRadius = 100 + (beatCount * 20);
-        const petalOscillation = Math.sin(beatCount * 0.5) * 40;
+        const petalRadius = TIMELINE_PETAL_BASE_RADIUS + (beatCount * TIMELINE_PETAL_STEP);
+        const petalOscillation = Math.sin(beatCount * 0.5) * TIMELINE_PETAL_OSCILLATION;
         const petalX = centerX + (petalRadius + petalOscillation) * Math.cos(petalAngle);
         const petalY = centerY + (petalRadius + petalOscillation) * Math.sin(petalAngle);
         return { x: petalX, y: petalY };
@@ -220,16 +271,15 @@ export class TimelineMode {
         const baseVertexAngle = (laneIndex / this.timelineLaneCount) * Math.PI * 2;
 
         // Add rotation that increases with each beat (creates spiral effect)
-        // Rotation speed: complete one full rotation every ~60 beats
-        const rotationOffset = (beatCount * Math.PI * 2) / 60;
+        const rotationOffset = (beatCount * Math.PI * 2) / TIMELINE_POLYGON_ROTATION_BEATS;
         const rotatedVertexAngle = baseVertexAngle + rotationOffset;
 
-        // Base radius expands more slowly than before (15px per beat instead of 25px)
-        const baseRadius = 80 + (beatCount * 15);
+        // Base radius expands with each beat
+        const baseRadius = TIMELINE_POLYGON_BASE_RADIUS + (beatCount * TIMELINE_POLYGON_STEP);
 
         // Add subtle pulsing effect (breathing)
         // Slower oscillation than flower mode for more geometric feel
-        const pulseAmount = Math.sin(beatCount * 0.25) * 20;
+        const pulseAmount = Math.sin(beatCount * 0.25) * TIMELINE_POLYGON_PULSE;
         const polygonRadius = baseRadius + pulseAmount;
 
         return {
@@ -254,7 +304,7 @@ export class TimelineMode {
                            (measureNumber * this.spiralSettings.tightness);
 
         // Offset each drum slightly radially based on lane
-        const laneOffset = (laneIndex - this.timelineLaneCount / 2) * 8;
+        const laneOffset = (laneIndex - this.timelineLaneCount / 2) * TIMELINE_LANE_OFFSET;
         const finalRadius = spiralRadius + laneOffset;
 
         return {
@@ -427,8 +477,8 @@ export class TimelineMode {
     const rotation = settings?.rotation || 0;
 
     // Size based on velocity
-    const size = (8 + scaledVelSize * 15) * sizeMultiplier * context.globalSizeMultiplier;
-    const alpha = 200 * scaledVelOpacity * opacityMult;
+    const size = (TIMELINE_DOT_BASE_SIZE + scaledVelSize * TIMELINE_DOT_VELOCITY_MULT) * sizeMultiplier * context.globalSizeMultiplier;
+    const alpha = TIMELINE_DOT_ALPHA * scaledVelOpacity * opacityMult;
 
     // Paint the dot
     paintCanvas.push();
@@ -442,12 +492,12 @@ export class TimelineMode {
         y: y,
         size: size,
         color: col,
-        life: 30,
-        maxLife: 30,
+        life: TIMELINE_PARTICLE_LIFE,
+        maxLife: TIMELINE_PARTICLE_LIFE,
         update: function() { this.life--; },
         display: function(offsetX, offsetY, scale) {
           if (this.life > 0) {
-            const alpha = (this.life / this.maxLife) * 150;
+            const alpha = (this.life / this.maxLife) * TIMELINE_PARTICLE_ALPHA;
             window.push();
             window.fill(window.red(this.color), window.green(this.color), window.blue(this.color), alpha);
             window.noStroke();
@@ -501,11 +551,11 @@ export class TimelineMode {
     const subdivisionsPerMeasure = this.subdivision * (this.beatsPerMeasure / 4);
 
     // Position (use custom position if set, otherwise default to bottom right)
-    const defaultX = canvasWidth - 100;
-    const defaultY = canvasHeight - 100;
+    const defaultX = canvasWidth - METRONOME_DEFAULT_MARGIN;
+    const defaultY = canvasHeight - METRONOME_DEFAULT_MARGIN;
     const centerX = this.metronomeX !== null ? this.metronomeX : defaultX;
     const centerY = this.metronomeY !== null ? this.metronomeY : defaultY;
-    const radius = 60;
+    const radius = METRONOME_RADIUS;
 
     // Check if mouse is over metronome (for drag detection)
     const mouseX = p5Instance.mouseX;
@@ -544,23 +594,23 @@ export class TimelineMode {
       const isBeat = (i % subdivisionsPerQuarter) === 0;
       const isFirstBeat = i === 0;
 
-      // Check if marker should pulse (within 0.15 subdivisions of current position)
+      // Check if marker should pulse (within threshold subdivisions of current position)
       const distance = Math.abs(subdivisionInMeasure - i);
       const wrappedDistance = Math.min(distance, subdivisionsPerMeasure - distance);
-      const isPulsing = wrappedDistance < 0.15;
+      const isPulsing = wrappedDistance < METRONOME_PULSE_THRESHOLD;
 
       // Size and color based on type and pulse
-      let markerSize = 4;
+      let markerSize = METRONOME_MARKER_SIZE_SUB;
       let markerAlpha = 150;
 
       if (isFirstBeat) {
-        markerSize = 10;
+        markerSize = METRONOME_MARKER_SIZE_FIRST;
         p5Instance.fill(255, 100, 100, isPulsing ? 255 : markerAlpha);
       } else if (isBeat) {
-        markerSize = 7;
+        markerSize = METRONOME_MARKER_SIZE_BEAT;
         p5Instance.fill(100, 150, 255, isPulsing ? 255 : markerAlpha);
       } else {
-        markerSize = 4;
+        markerSize = METRONOME_MARKER_SIZE_SUB;
         p5Instance.fill(150, 150, 150, isPulsing ? 220 : markerAlpha);
       }
 
@@ -577,7 +627,7 @@ export class TimelineMode {
 
     // Draw sweeping hand
     const handAngle = (subdivisionInMeasure / subdivisionsPerMeasure) * Math.PI * 2 - Math.PI / 2;
-    const handLength = radius - 10;
+    const handLength = radius - METRONOME_HAND_OFFSET;
     const handX = centerX + Math.cos(handAngle) * handLength;
     const handY = centerY + Math.sin(handAngle) * handLength;
 
@@ -614,9 +664,9 @@ export class TimelineMode {
     if (!this.metronomeEnabled) return false;
 
     // Use default position if not set
-    const centerX = this.metronomeX !== null ? this.metronomeX : (window.width - 100);
-    const centerY = this.metronomeY !== null ? this.metronomeY : (window.height - 100);
-    const radius = 60;
+    const centerX = this.metronomeX !== null ? this.metronomeX : (window.width - METRONOME_DEFAULT_MARGIN);
+    const centerY = this.metronomeY !== null ? this.metronomeY : (window.height - METRONOME_DEFAULT_MARGIN);
+    const radius = METRONOME_RADIUS;
 
     const distFromCenter = Math.sqrt(Math.pow(mouseX - centerX, 2) + Math.pow(mouseY - centerY, 2));
     if (distFromCenter < radius) {
@@ -860,18 +910,18 @@ export class TimelineMode {
 
     // Different tones for different beats
     if (isFirstBeat) {
-      oscillator.frequency.value = 1200; // High pitch for first beat
-      gainNode.gain.value = 0.3;
+      oscillator.frequency.value = METRONOME_FREQ_FIRST_BEAT;
+      gainNode.gain.value = METRONOME_GAIN_FIRST;
     } else if (isBeat) {
-      oscillator.frequency.value = 800; // Medium pitch for beats
-      gainNode.gain.value = 0.2;
+      oscillator.frequency.value = METRONOME_FREQ_BEAT;
+      gainNode.gain.value = METRONOME_GAIN_BEAT;
     } else {
-      oscillator.frequency.value = 600; // Low pitch for subdivisions
-      gainNode.gain.value = 0.1;
+      oscillator.frequency.value = METRONOME_FREQ_SUBDIVISION;
+      gainNode.gain.value = METRONOME_GAIN_SUB;
     }
 
     oscillator.start(this.audioContext.currentTime);
-    oscillator.stop(this.audioContext.currentTime + 0.05);
+    oscillator.stop(this.audioContext.currentTime + METRONOME_CLICK_DURATION);
   }
 
   /**
@@ -1081,9 +1131,9 @@ export class TimelineMode {
         const beatProgress = (timeElapsed % secondsPerBeat) / secondsPerBeat;
 
         // Create a sharp pulse at the start of each beat that decays quickly
-        // Pulse is strongest at beat (0) and decays over first 20% of the beat
-        if (beatProgress < 0.2) {
-          pulseAmount = 1 - (beatProgress / 0.2); // 1.0 at beat start, 0.0 at 20%
+        // Pulse is strongest at beat (0) and decays over first portion of the beat
+        if (beatProgress < PLAYHEAD_PULSE_DECAY) {
+          pulseAmount = 1 - (beatProgress / PLAYHEAD_PULSE_DECAY); // 1.0 at beat start, 0.0 at decay point
         }
       }
 
@@ -1100,8 +1150,7 @@ export class TimelineMode {
       }
 
       // Add pulse effect to line thickness
-      const baseWeight = 3;
-      const pulseWeight = baseWeight + (pulseAmount * 4); // Pulses from 3 to 7
+      const pulseWeight = PLAYHEAD_BASE_WEIGHT + (pulseAmount * PLAYHEAD_PULSE_WEIGHT);
       p5Instance.strokeWeight(pulseWeight);
 
       const x = offsetX + xInStaff * scale;

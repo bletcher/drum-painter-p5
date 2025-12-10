@@ -6,6 +6,7 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile, toBlobURL } from '@ffmpeg/util';
 import { debugLog, debugWarn, debugError, infoLog } from './debug.js';
+import { showUserFriendlyError } from './errorMessages.js';
 
 export class AudioVideoMerger {
   constructor(notificationSystem) {
@@ -49,7 +50,7 @@ export class AudioVideoMerger {
     } catch (error) {
       this.isLoading = false;
       debugError('Failed to load FFmpeg:', error);
-      this.notificationSystem.show('Failed to load FFmpeg', 'error');
+      showUserFriendlyError(this.notificationSystem, 'VIDEO_MERGE_ERROR', error);
       return false;
     }
   }
@@ -121,7 +122,7 @@ export class AudioVideoMerger {
       return mergedBlob;
     } catch (error) {
       debugError('Merge failed:', error);
-      this.notificationSystem.show('Failed to merge audio and video', 'error');
+      showUserFriendlyError(this.notificationSystem, 'VIDEO_MERGE_ERROR', error);
       throw error;
     }
   }

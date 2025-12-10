@@ -6,6 +6,7 @@
 import { DRUM_KIT_CONFIG } from '../config/drumKit.js';
 import { DeviceRegistry } from './DeviceRegistry.js';
 import { debugLog, debugWarn, debugError, infoLog } from '../utils/debug.js';
+import { showUserFriendlyError } from '../utils/errorMessages.js';
 
 export class MidiManager {
   constructor(onPaintCallback) {
@@ -208,6 +209,10 @@ export class MidiManager {
     debugError('MIDI Access failed:', error);
     if (this.onMidiStatusChange) {
       this.onMidiStatusChange(false, 'MIDI: Access failed');
+    }
+    // Show user-visible error notification with helpful suggestions
+    if (window.notificationSystem) {
+      showUserFriendlyError(window.notificationSystem, 'MIDI_ACCESS_DENIED', error);
     }
   }
 

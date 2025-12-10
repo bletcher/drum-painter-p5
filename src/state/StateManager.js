@@ -6,6 +6,7 @@
 import { MAX_HISTORY } from '../config/constants.js';
 import { DRUM_KIT_CONFIG } from '../config/drumKit.js';
 import { debugLog, debugWarn, debugError, infoLog } from '../utils/debug.js';
+import { showUserFriendlyError } from '../utils/errorMessages.js';
 
 const STORAGE_KEY = 'drumPainterSettings';
 
@@ -252,6 +253,9 @@ export class StateManager {
       return true;
     } catch (error) {
       debugError('❌ Error saving settings:', error);
+      if (window.notificationSystem) {
+        showUserFriendlyError(window.notificationSystem, 'STORAGE_SAVE_FAILED', error);
+      }
       return false;
     }
   }
@@ -278,6 +282,9 @@ export class StateManager {
       return state;
     } catch (error) {
       debugError('❌ Error loading settings:', error);
+      if (window.notificationSystem) {
+        showUserFriendlyError(window.notificationSystem, 'STORAGE_LOAD_FAILED', error);
+      }
       return null;
     }
   }

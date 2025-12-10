@@ -3,7 +3,29 @@
  * Modular version with ES6 modules
  */
 
-import { PAINT_CANVAS_WIDTH, PAINT_CANVAS_HEIGHT, BG_COLORS, BLEND_MODE_NAMES } from './config/constants.js';
+import {
+  PAINT_CANVAS_WIDTH,
+  PAINT_CANVAS_HEIGHT,
+  BG_COLORS,
+  BLEND_MODE_NAMES,
+  SCROLLBAR_WIDTH,
+  SCROLLBAR_TRACK_PADDING,
+  SCROLLBAR_THUMB_MIN_HEIGHT,
+  SCROLL_SPEED,
+  CANVAS_FIT_SCALE,
+  VIEWPORT_MARGIN_BOTTOM,
+  VIEWPORT_MARGIN_TOP,
+  AUTO_SCROLL_PADDING,
+  SCROLL_MAX_PADDING,
+  MODE_DISPLAY_FRAMES,
+  MODE_OVERLAY_TEXT_SIZE,
+  UI_DEBOUNCE_SHORT,
+  UI_NOTIFICATION_DURATION,
+  URL_REVOKE_DELAY,
+  CLICK_PAINT_VELOCITY_MAP_MIN,
+  CLICK_PAINT_VELOCITY_MAP_MAX,
+  CLICK_PAINT_SPEED_MAX
+} from './config/constants.js';
 import { DRUM_KIT_CONFIG, generateFactorySettings } from './config/drumKit.js';
 import { FreeformMode } from './modes/FreeformMode.js';
 import { TimelineMode } from './modes/TimelineMode.js';
@@ -54,6 +76,7 @@ window.stateManager = null; // Will be set after initialization
 let midiManager;
 let stateManager;
 let notificationSystem;
+window.notificationSystem = null; // Expose globally for error reporting from other modules
 let customizationPanel;
 let midiMappingPanel;
 let timelineControls;
@@ -159,6 +182,7 @@ window.setup = async function() {
   stateManager = new StateManager();
   window.stateManager = stateManager; // Expose globally for other modules
   notificationSystem = new NotificationSystem();
+  window.notificationSystem = notificationSystem; // Expose globally for error reporting
   darkModeManager = new DarkModeManager();
   sessionRecorder = new SessionRecorder(notificationSystem);
   postProcessing = new PostProcessing();
@@ -486,6 +510,10 @@ function initializeUI() {
     freeformRadio.addEventListener('change', (e) => {
       if (e.target.checked) {
         getCurrentMode().onDeactivate({ paintCanvas });
+        // Stop timeline controls interval to prevent memory leak
+        if (timelineControls) {
+          timelineControls.stopUpdateLoop();
+        }
         currentModeType = 'freeform';
         getCurrentMode().onActivate({ paintCanvas, drumSettings, drumOrder });
         updateModeUI();
@@ -1873,7 +1901,7 @@ function updateRecordingsList() {
           document.body.appendChild(a);
           a.click();
           document.body.removeChild(a);
-          setTimeout(() => URL.revokeObjectURL(url), 1000);
+          setTimeout(() => URL.revokeObjectURL(url), URL_REVOKE_DELAY);
 
           // Hide progress after download
           setTimeout(() => {
@@ -1908,16 +1936,15 @@ function updateRecordingsList() {
  * Draw scrollbar for timeline mode
  */
 function drawTimelineScrollbar(displayWidth, displayHeight, offsetX) {
-  const scrollbarWidth = 12;
   const scrollbarX = offsetX + displayWidth + 5;
-  const scrollbarTrackHeight = height - 20;
-  const scrollbarY = 10;
+  const scrollbarTrackHeight = height - (SCROLLBAR_TRACK_PADDING * 2);
+  const scrollbarY = SCROLLBAR_TRACK_PADDING;
 
   // Only show scrollbar if content is larger than viewport
   if (displayHeight > height) {
     // Calculate scrollbar thumb size and position
     const visibleRatio = height / displayHeight;
-    const thumbHeight = Math.max(30, scrollbarTrackHeight * visibleRatio);
+    const thumbHeight = Math.max(SCROLLBAR_THUMB_MIN_HEIGHT, scrollbarTrackHeight * visibleRatio);
     const scrollRange = displayHeight - height;
     const scrollRatio = Math.abs(timelineScrollY) / scrollRange;
     const thumbY = scrollbarY + scrollRatio * (scrollbarTrackHeight - thumbHeight);
@@ -1926,22 +1953,22 @@ function drawTimelineScrollbar(displayWidth, displayHeight, offsetX) {
     push();
     fill(220);
     noStroke();
-    rect(scrollbarX, scrollbarY, scrollbarWidth, scrollbarTrackHeight, 6);
+    rect(scrollbarX, scrollbarY, SCROLLBAR_WIDTH, scrollbarTrackHeight, 6);
 
     // Draw scrollbar thumb
-    if (isDraggingScrollbar || isMouseOverScrollbar(scrollbarX, thumbY, scrollbarWidth, thumbHeight)) {
+    if (isDraggingScrollbar || isMouseOverScrollbar(scrollbarX, thumbY, SCROLLBAR_WIDTH, thumbHeight)) {
       fill(100);
     } else {
       fill(150);
     }
-    rect(scrollbarX, thumbY, scrollbarWidth, thumbHeight, 6);
+    rect(scrollbarX, thumbY, SCROLLBAR_WIDTH, thumbHeight, 6);
     pop();
 
     // Store scrollbar bounds for mouse interaction
     window.scrollbarBounds = {
       x: scrollbarX,
       y: scrollbarY,
-      width: scrollbarWidth,
+      width: SCROLLBAR_WIDTH,
       trackHeight: scrollbarTrackHeight,
       thumbY: thumbY,
       thumbHeight: thumbHeight,
@@ -1970,14 +1997,14 @@ window.draw = function() {
 
   if (isTimeBased) {
     // Time-based layouts: scale based on width only, allow vertical scrolling
-    scaleFactor = (width / paintCanvas.width) * 0.95;
+    scaleFactor = (width / paintCanvas.width) * CANVAS_FIT_SCALE;
     displayWidth = paintCanvas.width * scaleFactor;
     displayHeight = paintCanvas.height * scaleFactor;
     offsetX = (width - displayWidth) / 2;
     offsetY = timelineScrollY; // Apply scroll offset
   } else {
     // Other modes: scale based on width, allow vertical scrolling if canvas is tall
-    scaleFactor = (width / paintCanvas.width) * 0.95;
+    scaleFactor = (width / paintCanvas.width) * CANVAS_FIT_SCALE;
     displayWidth = paintCanvas.width * scaleFactor;
     displayHeight = paintCanvas.height * scaleFactor;
     offsetX = (width - displayWidth) / 2;
@@ -2021,20 +2048,20 @@ window.draw = function() {
       const currentStaffBottomY = (staffIndex + 1) * chronicleMode.staffHeight * scaleFactor;
 
       // Auto-scroll if playhead is below viewport
-      const viewportBottom = -timelineScrollY + height - 100; // Leave some margin
-      const viewportTop = -timelineScrollY + 50;
+      const viewportBottom = -timelineScrollY + height - VIEWPORT_MARGIN_BOTTOM;
+      const viewportTop = -timelineScrollY + VIEWPORT_MARGIN_TOP;
 
       if (currentStaffBottomY > viewportBottom) {
         // Scroll down to show current staff
-        timelineScrollY = -(currentStaffBottomY - height + 150);
+        timelineScrollY = -(currentStaffBottomY - height + AUTO_SCROLL_PADDING);
       } else if (currentStaffY < viewportTop) {
         // Scroll up to show current staff
-        timelineScrollY = -currentStaffY + 100;
+        timelineScrollY = -currentStaffY + VIEWPORT_MARGIN_BOTTOM;
       }
 
       // Clamp auto-scroll to valid range
-      const maxScroll = Math.max(0, displayHeight - height + 50);
-      timelineScrollY = Math.max(-maxScroll, Math.min(10, timelineScrollY));
+      const maxScroll = Math.max(0, displayHeight - height + SCROLL_MAX_PADDING);
+      timelineScrollY = Math.max(-maxScroll, Math.min(SCROLLBAR_TRACK_PADDING, timelineScrollY));
     }
 
   }
@@ -2073,13 +2100,13 @@ window.draw = function() {
   notificationSystem.draw(width, height);
 
   // Show mode name briefly
-  if (frameCount < 180) {
+  if (frameCount < MODE_DISPLAY_FRAMES) {
     push();
     fill(0, 150);
     noStroke();
     textAlign(CENTER, CENTER);
-    textSize(24);
-    text(getCurrentMode().name, width / 2, 50);
+    textSize(MODE_OVERLAY_TEXT_SIZE);
+    text(getCurrentMode().name, width / 2, VIEWPORT_MARGIN_TOP);
     pop();
   }
 };
@@ -3211,7 +3238,7 @@ window.mouseDragged = function() {
     timelineScrollY -= scrollDelta;
 
     // Clamp scroll to valid range
-    timelineScrollY = Math.max(-sb.scrollRange, Math.min(10, timelineScrollY));
+    timelineScrollY = Math.max(-sb.scrollRange, Math.min(SCROLLBAR_TRACK_PADDING, timelineScrollY));
 
     scrollbarDragStartY = mouseY;
     return;
@@ -3234,7 +3261,7 @@ window.mouseDragged = function() {
 
   // Calculate velocity based on mouse speed
   const speed = dist(mouseX, mouseY, prevMouseX, prevMouseY);
-  const testVelocity = constrain(map(speed, 0, 50, 0.3, 1.0), 0.3, 1.0);
+  const testVelocity = constrain(map(speed, 0, CLICK_PAINT_SPEED_MAX, CLICK_PAINT_VELOCITY_MAP_MIN, CLICK_PAINT_VELOCITY_MAP_MAX), CLICK_PAINT_VELOCITY_MAP_MIN, CLICK_PAINT_VELOCITY_MAP_MAX);
 
   // Use first drum for testing (bypass MIDI mapping check)
   const drumId = DRUM_KIT_CONFIG[0].id;
@@ -3329,20 +3356,19 @@ window.mouseReleased = function() {
 // Mouse wheel handler for vertical scrolling
 window.mouseWheel = function(event) {
   // Calculate display dimensions
-  const scaleFactor = (width / paintCanvas.width) * 0.95;
+  const scaleFactor = (width / paintCanvas.width) * CANVAS_FIT_SCALE;
   const displayHeight = paintCanvas.height * scaleFactor;
 
   // Only scroll if canvas is taller than viewport
   if (displayHeight > height) {
     // Scroll vertically
-    const scrollSpeed = 30;
-    timelineScrollY -= event.delta * scrollSpeed;
+    timelineScrollY -= event.delta * SCROLL_SPEED;
 
     // Calculate maximum scroll (keep at least some content visible)
-    const maxScroll = Math.max(0, displayHeight - height + 50);
+    const maxScroll = Math.max(0, displayHeight - height + SCROLL_MAX_PADDING);
 
     // Clamp scroll to valid range
-    timelineScrollY = Math.max(-maxScroll, Math.min(10, timelineScrollY));
+    timelineScrollY = Math.max(-maxScroll, Math.min(SCROLLBAR_TRACK_PADDING, timelineScrollY));
 
     return false; // Prevent default scrolling
   }

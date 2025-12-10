@@ -1,6 +1,40 @@
 /**
  * Configuration Constants
  * All constant values used throughout the application
+ *
+ * TABLE OF CONTENTS
+ * =================
+ * Line   Section
+ * ----   -------
+ *  30    CANVAS SETTINGS - Canvas dimensions
+ *  34    PARTICLE SETTINGS - Visual feedback particles
+ *  38    PAINT SIZE SETTINGS - Brush sizes per mode
+ *  52    ALPHA/OPACITY SETTINGS - Transparency values
+ *  60    MODE-SPECIFIC SETTINGS - Freeform paint modes
+ *  76    DENDRITIC SETTINGS - Branching pattern config
+ *  81    SYMMETRY SETTINGS - Radial symmetry bounds
+ *  85    BLEND MODE SETTINGS - Available blend modes
+ *  88    BACKGROUND COLOR SETTINGS - Canvas backgrounds
+ *  92    UNDO/REDO SETTINGS - History limits
+ * 108    SCALING CURVES - Velocity response curves
+ * 127    BRUSHSTROKE SETTINGS - Realistic brush texture
+ * 166    SPLATTER SETTINGS - Paint splatter effect
+ * 206    INK BLOT SETTINGS - Ink blot/watercolor effect
+ * 232    UI SETTINGS - Shape options, mode names
+ * 246    TIMELINE SETTINGS - BPM, subdivision defaults
+ * 256    UI LAYOUT - Scrollbar dimensions
+ * 262    TIMELINE MODE VISUALS - Staff/spiral layouts
+ * 285    METRONOME SETTINGS - Visual & audio metronome
+ * 303    TIMELINE PAINT - Dot sizing and particles
+ * 310    PLAYHEAD SETTINGS - Recording indicator
+ * 315    MAIN UI - Canvas scaling, viewport margins
+ * 325    AUTO-SAVE & TIMING - Debounce delays
+ * 334    DRUM CUSTOMIZATION PANEL - Slider ranges
+ * 347    DRAWING UTILS - Bezier segments, vertices
+ * 351    BRUSH TEXTURE CACHE - Cache limits
+ * 357    POST PROCESSING - Bloom effect settings
+ * 361    CLICK PAINT MODE - Mouse velocity mapping
+ * 366    DEBUGGING - Debug flags
  */
 
 // ===== CANVAS SETTINGS =====
@@ -49,10 +83,68 @@ export const ORGANIC_DISTANCE_SPREAD = 40;
 export const ORGANIC_MOVE_PROBABILITY = 0.1;
 export const ORGANIC_MOVE_RANGE = 100;
 
+// ===== LIGHTNING SETTINGS =====
+// Origin bounds (cloud layer position)
+export const LIGHTNING_ORIGIN_X_MIN = 0.1;          // Min X as fraction of canvas width
+export const LIGHTNING_ORIGIN_X_MAX = 0.9;          // Max X as fraction of canvas width
+export const LIGHTNING_ORIGIN_Y_MIN = 0.1;          // Min Y as fraction of canvas height
+export const LIGHTNING_ORIGIN_Y_MAX = 0.4;          // Max Y as fraction of canvas height (upper 40%)
+
+// Strike angle (downward direction)
+export const LIGHTNING_ANGLE_VARIATION = 0.349;     // ±20 degrees in radians (PI/9)
+
+// Stepped leader physics
+export const LIGHTNING_STEP_LENGTH_MIN = 8;         // Min step length in pixels
+export const LIGHTNING_STEP_LENGTH_MAX = 20;        // Max step length in pixels
+export const LIGHTNING_ANGLE_JITTER = 1.047;        // Max angle change per step (PI/3 = 60 degrees)
+
+// Branching behavior
+export const LIGHTNING_BRANCH_PROB_BASE = 0.15;     // Base probability of branching
+export const LIGHTNING_BRANCH_PROB_VELOCITY = 0.15; // Additional probability from velocity
+export const LIGHTNING_BRANCH_COUNT_SINGLE = 0.7;   // Probability of single branch
+export const LIGHTNING_BRANCH_COUNT_DOUBLE = 0.6;   // Probability of double (vs triple) when not single
+export const LIGHTNING_BRANCH_ANGLE_MIN = 0.785;    // Min branch angle (PI/4 = 45 degrees)
+export const LIGHTNING_BRANCH_ANGLE_MAX = 1.571;    // Max branch angle (HALF_PI = 90 degrees)
+export const LIGHTNING_ENERGY_SPLIT_MIN = 0.5;      // Min energy retained by branch
+export const LIGHTNING_ENERGY_SPLIT_MAX = 0.75;     // Max energy retained by branch
+export const LIGHTNING_STEP_REDUCTION_MIN = 0.4;    // Min step reduction for branches
+export const LIGHTNING_STEP_REDUCTION_MAX = 0.7;    // Max step reduction for branches
+
+// Path length and generations
+export const LIGHTNING_STEPS_BASE = 15;             // Base number of steps
+export const LIGHTNING_STEPS_VELOCITY = 25;         // Additional steps from velocity
+export const LIGHTNING_GENERATIONS_BASE = 2;        // Base number of branch generations
+export const LIGHTNING_GENERATIONS_VELOCITY = 3;    // Additional generations from velocity
+
+// Size and rendering
+export const LIGHTNING_BASE_SIZE_MIN = 3;           // Min base size
+export const LIGHTNING_BASE_SIZE_VELOCITY = 10;     // Size multiplier from velocity
+export const LIGHTNING_WIDTH_DECAY = 0.65;          // Width reduction per generation
+export const LIGHTNING_GLOW_SIZE_MULT = 3;          // Glow size relative to core
+export const LIGHTNING_GLOW_ALPHA = 80;             // Base glow opacity
+export const LIGHTNING_CORE_ALPHA = 240;            // Base core opacity
+export const LIGHTNING_FLASH_SIZE_MULT = 2.5;       // Origin flash size multiplier
+export const LIGHTNING_FLASH_ALPHA = 255;           // Origin flash opacity
+
 // ===== DENDRITIC SETTINGS =====
 export const DENDRITIC_BRANCH_BASE = 2.5; // Base number of main branches
 export const DENDRITIC_BRANCH_VELOCITY_MULT = 1.0; // Multiplier for velocity's effect on branch count
 export const DENDRITIC_MAINSTEM_LENGTH_MULT = 0.33; // Multiplier for main stem length (0.5-2.0)
+
+// Stream width sizing (Horton's width ratio)
+export const DENDRITIC_STREAM_BASE_SIZE = 0;        // Minimum stream width
+export const DENDRITIC_STREAM_VELOCITY_MULT = 2;    // Velocity multiplier for stream width
+export const DENDRITIC_STREAM_WIDTH_RATIO = 1.8;    // Width increase per stream order
+
+// Stream opacity
+export const DENDRITIC_STREAM_ALPHA_BASE = 180;     // Base opacity for stream segments
+export const DENDRITIC_STREAM_ALPHA_ORDER = 20;     // Opacity increase per stream order
+export const DENDRITIC_STREAM_ALPHA_DOWNSTREAM = 40; // Opacity increase toward downstream
+
+// Outlet (river mouth) sizing
+export const DENDRITIC_OUTLET_BASE_SIZE = 2;        // Minimum outlet size
+export const DENDRITIC_OUTLET_VELOCITY_MULT = 4;    // Velocity multiplier for outlet size
+export const DENDRITIC_OUTLET_ALPHA = 240;          // Base opacity for outlet
 
 // ===== SYMMETRY SETTINGS =====
 export const SYMMETRY_RADIUS_MIN = 100;
@@ -228,6 +320,116 @@ export const DEFAULT_STAFF_HEIGHT = 80;
 export const DEFAULT_DRUM_LINE_SPACING = 15;
 export const DEFAULT_STAFF_WIDTH = 1800;
 export const DEFAULT_MIDI_LATENCY_MS = 70;
+
+// ===== UI LAYOUT =====
+export const SCROLLBAR_WIDTH = 12;
+export const SCROLLBAR_TRACK_PADDING = 10;
+export const SCROLLBAR_THUMB_MIN_HEIGHT = 30;
+export const SCROLL_SPEED = 30;
+
+// ===== TIMELINE MODE VISUALS =====
+export const TIMELINE_ROW_SPACING = 10;           // Vertical spacing between staff rows (pixels)
+export const TIMELINE_RING_SPACING = 40;          // Spacing between concentric rings
+export const TIMELINE_POLYGON_SIDES = 6;          // Number of sides for polygon layout
+export const TIMELINE_LANE_OFFSET = 8;            // Radial offset per drum in spiral mode
+
+// Timeline spiral defaults
+export const TIMELINE_SPIRAL_TIGHTNESS = 15;
+export const TIMELINE_SPIRAL_ROTATIONS_PER_MIN = 4;
+export const TIMELINE_SPIRAL_START_RADIUS = 50;
+
+// Timeline layout magic numbers
+export const TIMELINE_RING_BASE_RADIUS = 100;     // Base radius for rings layout
+export const TIMELINE_RADIAL_BASE_DISTANCE = 50;  // Starting distance for radial spokes
+export const TIMELINE_RADIAL_STEP = 30;           // Distance increase per beat
+export const TIMELINE_PETAL_BASE_RADIUS = 100;
+export const TIMELINE_PETAL_STEP = 20;
+export const TIMELINE_PETAL_OSCILLATION = 40;
+export const TIMELINE_POLYGON_BASE_RADIUS = 80;
+export const TIMELINE_POLYGON_STEP = 15;
+export const TIMELINE_POLYGON_PULSE = 20;
+export const TIMELINE_POLYGON_ROTATION_BEATS = 60; // Beats per full rotation
+
+// Metronome visual settings
+export const METRONOME_RADIUS = 60;
+export const METRONOME_DEFAULT_MARGIN = 100;      // Margin from canvas edge
+export const METRONOME_PULSE_THRESHOLD = 0.15;    // Subdivision threshold for pulse
+export const METRONOME_MARKER_SIZE_FIRST = 10;
+export const METRONOME_MARKER_SIZE_BEAT = 7;
+export const METRONOME_MARKER_SIZE_SUB = 4;
+export const METRONOME_HAND_OFFSET = 10;          // Hand length offset from edge
+
+// Metronome audio frequencies
+export const METRONOME_FREQ_FIRST_BEAT = 1200;
+export const METRONOME_FREQ_BEAT = 800;
+export const METRONOME_FREQ_SUBDIVISION = 600;
+export const METRONOME_GAIN_FIRST = 0.3;
+export const METRONOME_GAIN_BEAT = 0.2;
+export const METRONOME_GAIN_SUB = 0.1;
+export const METRONOME_CLICK_DURATION = 0.05;     // Click duration in seconds
+
+// Timeline paint settings
+export const TIMELINE_DOT_BASE_SIZE = 8;
+export const TIMELINE_DOT_VELOCITY_MULT = 15;
+export const TIMELINE_DOT_ALPHA = 200;
+export const TIMELINE_PARTICLE_LIFE = 30;
+export const TIMELINE_PARTICLE_ALPHA = 150;
+
+// Playhead visual settings
+export const PLAYHEAD_BASE_WEIGHT = 3;
+export const PLAYHEAD_PULSE_WEIGHT = 4;
+export const PLAYHEAD_PULSE_DECAY = 0.2;          // Beat fraction for pulse decay
+
+// ===== MAIN.JS UI =====
+export const CANVAS_FIT_SCALE = 0.95;             // Scale factor when fitting canvas to window
+export const VIEWPORT_MARGIN_BOTTOM = 100;        // Margin for auto-scroll
+export const VIEWPORT_MARGIN_TOP = 50;
+export const AUTO_SCROLL_PADDING = 150;
+export const SCROLL_MAX_PADDING = 50;
+export const MODE_DISPLAY_FRAMES = 180;           // Frames to show mode name overlay
+export const MODE_OVERLAY_TEXT_SIZE = 24;
+
+// Auto-save timing
+export const AUTO_SAVE_DELAY = 2000;              // 2 seconds debounce
+
+// UI debounce/delay timings
+export const UI_DEBOUNCE_SHORT = 100;
+export const UI_DEBOUNCE_MEDIUM = 500;
+export const UI_NOTIFICATION_DURATION = 2000;
+export const UI_NOTIFICATION_FADE = 3000;
+export const URL_REVOKE_DELAY = 1000;
+
+// ===== DRUM CUSTOMIZATION PANEL =====
+export const PANEL_PREVIEW_SIZE = 80;             // Canvas size for shape preview
+export const PANEL_PREVIEW_BASE_SIZE = 40;        // Base shape size in preview
+export const MIDI_NOTE_MAX = 127;
+export const MIDI_CC_MAX = 127;
+export const SLIDER_SIZE_MIN = 30;
+export const SLIDER_SIZE_MAX = 300;
+export const SLIDER_OPACITY_MIN = 10;
+export const SLIDER_OPACITY_MAX = 100;
+export const SLIDER_ROTATION_MAX = 360;
+export const SLIDER_STROKE_MAX = 10;
+export const CC_LEARN_TIMEOUT = 4000;             // Timeout for CC learning mode
+
+// ===== DRAWING UTILS =====
+export const BEZIER_SEGMENTS = 15;                // Segments for curved brush strokes
+export const ORGANIC_CORE_POINTS = 20;            // Vertices for organic shapes
+
+// ===== BRUSH TEXTURE CACHE =====
+export const TEXTURE_CACHE_MAX_SIZE = 50;
+export const TEXTURE_NOISE_STRENGTH = 30;
+export const TEXTURE_ORGANIC_POINTS = 20;
+export const TEXTURE_CURVE_SEGMENTS = 15;
+
+// ===== POST PROCESSING =====
+export const BLOOM_THRESHOLD = 180;               // Brightness threshold (0-255)
+export const BLOOM_RADIUS = 15;                   // Blur radius in pixels
+
+// ===== CLICK PAINT MODE =====
+export const CLICK_PAINT_VELOCITY_MAP_MIN = 0.3;
+export const CLICK_PAINT_VELOCITY_MAP_MAX = 1.0;
+export const CLICK_PAINT_SPEED_MAX = 50;
 
 // ===== DEBUGGING =====
 // Set to true to enable verbose console logging

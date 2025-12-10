@@ -7,6 +7,38 @@
 import { ModeBase } from './ModeBase.js';
 import { applyScalingCurve } from '../utils/scaling.js';
 import {
+  LIGHTNING_ORIGIN_X_MIN,
+  LIGHTNING_ORIGIN_X_MAX,
+  LIGHTNING_ORIGIN_Y_MIN,
+  LIGHTNING_ORIGIN_Y_MAX,
+  LIGHTNING_ANGLE_VARIATION,
+  LIGHTNING_STEP_LENGTH_MIN,
+  LIGHTNING_STEP_LENGTH_MAX,
+  LIGHTNING_ANGLE_JITTER,
+  LIGHTNING_BRANCH_PROB_BASE,
+  LIGHTNING_BRANCH_PROB_VELOCITY,
+  LIGHTNING_BRANCH_COUNT_SINGLE,
+  LIGHTNING_BRANCH_COUNT_DOUBLE,
+  LIGHTNING_BRANCH_ANGLE_MIN,
+  LIGHTNING_BRANCH_ANGLE_MAX,
+  LIGHTNING_ENERGY_SPLIT_MIN,
+  LIGHTNING_ENERGY_SPLIT_MAX,
+  LIGHTNING_STEP_REDUCTION_MIN,
+  LIGHTNING_STEP_REDUCTION_MAX,
+  LIGHTNING_STEPS_BASE,
+  LIGHTNING_STEPS_VELOCITY,
+  LIGHTNING_GENERATIONS_BASE,
+  LIGHTNING_GENERATIONS_VELOCITY,
+  LIGHTNING_BASE_SIZE_MIN,
+  LIGHTNING_BASE_SIZE_VELOCITY,
+  LIGHTNING_WIDTH_DECAY,
+  LIGHTNING_GLOW_SIZE_MULT,
+  LIGHTNING_GLOW_ALPHA,
+  LIGHTNING_CORE_ALPHA,
+  LIGHTNING_FLASH_SIZE_MULT,
+  LIGHTNING_FLASH_ALPHA
+} from '../config/constants.js';
+import {
   getDrumColor,
   getDrumSize,
   getDrumShape,
@@ -37,12 +69,12 @@ export class LightningMode extends ModeBase {
     let scaledVelOpacity = applyScalingCurve(velocity, settings?.opacityScaling || 'linear');
 
     // Lightning origin - starts in upper area (cloud layer)
-    const originX = random(paintCanvas.width * 0.1, paintCanvas.width * 0.9);
-    const originY = random(paintCanvas.height * 0.1, paintCanvas.height * 0.4);
+    const originX = random(paintCanvas.width * LIGHTNING_ORIGIN_X_MIN, paintCanvas.width * LIGHTNING_ORIGIN_X_MAX);
+    const originY = random(paintCanvas.height * LIGHTNING_ORIGIN_Y_MIN, paintCanvas.height * LIGHTNING_ORIGIN_Y_MAX);
 
     // Strike downward like cloud-to-ground lightning (with slight variation)
     // HALF_PI = straight down, add variation of ±20 degrees
-    const strikeAngle = HALF_PI + random(-PI/9, PI/9);
+    const strikeAngle = HALF_PI + random(-LIGHTNING_ANGLE_VARIATION, LIGHTNING_ANGLE_VARIATION);
 
     let col = getDrumColor(note, midiDeviceId, scaledVelOpacity, drumSettings);
     if (!col) return;
@@ -82,8 +114,8 @@ export class LightningMode extends ModeBase {
         if (stepsRemaining <= 0 || parent.energy < 0.1) return;
 
         // Stepped leader - create zigzag path with sudden direction changes
-        const stepLength = random(8, 20); // Realistic step length
-        const angleJitter = random(-PI/3, PI/3); // Sharp angular changes
+        const stepLength = random(LIGHTNING_STEP_LENGTH_MIN, LIGHTNING_STEP_LENGTH_MAX);
+        const angleJitter = random(-LIGHTNING_ANGLE_JITTER, LIGHTNING_ANGLE_JITTER);
         const newAngle = parent.angle + angleJitter;
 
         const newX = parent.x + cos(newAngle) * stepLength;
@@ -99,17 +131,17 @@ export class LightningMode extends ModeBase {
         allSegments.push(segment);
 
         // Branch probability increases with energy and velocity
-        const branchProbability = 0.15 + scaledVelOpacity * 0.15;
+        const branchProbability = LIGHTNING_BRANCH_PROB_BASE + scaledVelOpacity * LIGHTNING_BRANCH_PROB_VELOCITY;
 
         // Create side branches (lightning can split multiple times from same point)
         if (random() < branchProbability && parent.generation < maxGenerations) {
           // Can create 1-3 branches from same point
-          const numBranches = random() < 0.7 ? 1 : (random() < 0.6 ? 2 : 3);
+          const numBranches = random() < LIGHTNING_BRANCH_COUNT_SINGLE ? 1 : (random() < LIGHTNING_BRANCH_COUNT_DOUBLE ? 2 : 3);
 
           for (let i = 0; i < numBranches; i++) {
             // Branch at wider angles (45-90 degrees from main)
-            const branchAngle = newAngle + random(PI/4, HALF_PI) * (random() < 0.5 ? 1 : -1);
-            const branchEnergy = parent.energy * random(0.5, 0.75); // Energy splits
+            const branchAngle = newAngle + random(LIGHTNING_BRANCH_ANGLE_MIN, LIGHTNING_BRANCH_ANGLE_MAX) * (random() < 0.5 ? 1 : -1);
+            const branchEnergy = parent.energy * random(LIGHTNING_ENERGY_SPLIT_MIN, LIGHTNING_ENERGY_SPLIT_MAX);
             const branchSegment = new LightningSegment(
               newX,
               newY,
@@ -121,7 +153,7 @@ export class LightningMode extends ModeBase {
             allSegments.push(branchSegment);
 
             // Continue branch with reduced steps
-            growBranch(branchSegment, floor(stepsRemaining * random(0.4, 0.7)));
+            growBranch(branchSegment, floor(stepsRemaining * random(LIGHTNING_STEP_REDUCTION_MIN, LIGHTNING_STEP_REDUCTION_MAX)));
           }
         }
 
@@ -130,34 +162,34 @@ export class LightningMode extends ModeBase {
       }
 
       // Start growing from origin
-      const totalSteps = floor(15 + scaledVelOpacity * 25);
-      const maxGen = floor(2 + scaledVelOpacity * 3);
+      const totalSteps = floor(LIGHTNING_STEPS_BASE + scaledVelOpacity * LIGHTNING_STEPS_VELOCITY);
+      const maxGen = floor(LIGHTNING_GENERATIONS_BASE + scaledVelOpacity * LIGHTNING_GENERATIONS_VELOCITY);
       growBranch(root, totalSteps, maxGen);
 
       return allSegments;
     }
 
     // Create the lightning tree
-    const maxGenerations = floor(2 + scaledVelOpacity * 3);
+    const maxGenerations = floor(LIGHTNING_GENERATIONS_BASE + scaledVelOpacity * LIGHTNING_GENERATIONS_VELOCITY);
     const segments = createLightningTree(originX, originY, strikeAngle, maxGenerations);
 
     // Draw glow (corona) first - larger, fainter
-    const baseSize = (3 + scaledVelSize * 10) * globalSizeMultiplier * getDrumSize(note, midiDeviceId, drumSettings);
+    const baseSize = (LIGHTNING_BASE_SIZE_MIN + scaledVelSize * LIGHTNING_BASE_SIZE_VELOCITY) * globalSizeMultiplier * getDrumSize(note, midiDeviceId, drumSettings);
 
     for (let segment of segments) {
       // Width decreases with generation (main bolt thickest)
-      const widthScale = pow(0.65, segment.generation);
-      const glowSize = baseSize * widthScale * 3;
-      const glowAlpha = (80 * segment.energy * scaledVelOpacity * opacityMult);
+      const widthScale = pow(LIGHTNING_WIDTH_DECAY, segment.generation);
+      const glowSize = baseSize * widthScale * LIGHTNING_GLOW_SIZE_MULT;
+      const glowAlpha = (LIGHTNING_GLOW_ALPHA * segment.energy * scaledVelOpacity * opacityMult);
 
       paintDot(paintCanvas, segment.x, segment.y, glowSize, col, glowAlpha, 'circle', null, 0);
     }
 
     // Draw bright core
     for (let segment of segments) {
-      const widthScale = pow(0.65, segment.generation);
+      const widthScale = pow(LIGHTNING_WIDTH_DECAY, segment.generation);
       const segmentSize = baseSize * widthScale;
-      const segmentAlpha = (240 * segment.energy * scaledVelOpacity * opacityMult);
+      const segmentAlpha = (LIGHTNING_CORE_ALPHA * segment.energy * scaledVelOpacity * opacityMult);
 
       paintDot(paintCanvas, segment.x, segment.y, segmentSize, col, segmentAlpha, shape, stroke, rotation);
 
@@ -170,8 +202,8 @@ export class LightningMode extends ModeBase {
             const t = i / (numInterps + 1);
             const interpX = lerp(segment.x, child.x, t);
             const interpY = lerp(segment.y, child.y, t);
-            const interpSize = lerp(segmentSize, baseSize * pow(0.65, child.generation), t);
-            const interpAlpha = lerp(segmentAlpha, 240 * child.energy * scaledVelOpacity * opacityMult, t);
+            const interpSize = lerp(segmentSize, baseSize * pow(LIGHTNING_WIDTH_DECAY, child.generation), t);
+            const interpAlpha = lerp(segmentAlpha, LIGHTNING_CORE_ALPHA * child.energy * scaledVelOpacity * opacityMult, t);
 
             paintDot(paintCanvas, interpX, interpY, interpSize, col, interpAlpha, shape, stroke, rotation);
           }
@@ -180,8 +212,8 @@ export class LightningMode extends ModeBase {
     }
 
     // Add extra bright flash at origin
-    const flashSize = baseSize * 2.5;
-    paintDot(paintCanvas, originX, originY, flashSize, col, 255 * scaledVelOpacity * opacityMult, 'circle', null, 0);
+    const flashSize = baseSize * LIGHTNING_FLASH_SIZE_MULT;
+    paintDot(paintCanvas, originX, originY, flashSize, col, LIGHTNING_FLASH_ALPHA * scaledVelOpacity * opacityMult, 'circle', null, 0);
 
     paintCanvas.pop();
     particles.push(new Particle(originX, originY, baseSize, col));
@@ -190,7 +222,7 @@ export class LightningMode extends ModeBase {
     if (debugPanel && actualDrumId) {
       debugPanel.recordPaint(actualDrumId, note, velocity, {
         size: baseSize,
-        opacity: (240 * scaledVelOpacity * opacityMult) / 255,
+        opacity: (LIGHTNING_CORE_ALPHA * scaledVelOpacity * opacityMult) / 255,
         color: col.toString('#rrggbb'),
         rotation: rotation,
         strokeColor: stroke?.enabled ? stroke.color : null,

@@ -8,7 +8,16 @@ import { applyScalingCurve } from '../utils/scaling.js';
 import {
   DENDRITIC_BRANCH_BASE,
   DENDRITIC_BRANCH_VELOCITY_MULT,
-  DENDRITIC_MAINSTEM_LENGTH_MULT
+  DENDRITIC_MAINSTEM_LENGTH_MULT,
+  DENDRITIC_STREAM_BASE_SIZE,
+  DENDRITIC_STREAM_VELOCITY_MULT,
+  DENDRITIC_STREAM_WIDTH_RATIO,
+  DENDRITIC_STREAM_ALPHA_BASE,
+  DENDRITIC_STREAM_ALPHA_ORDER,
+  DENDRITIC_STREAM_ALPHA_DOWNSTREAM,
+  DENDRITIC_OUTLET_BASE_SIZE,
+  DENDRITIC_OUTLET_VELOCITY_MULT,
+  DENDRITIC_OUTLET_ALPHA
 } from '../config/constants.js';
 import {
   getDrumColor,
@@ -166,8 +175,8 @@ export class DendriticMode extends ModeBase {
       const numSteps = max(3, ceil(segmentLength / 4));
 
       // Width increases with stream order (Horton's width ratio)
-      const baseSize = (2 + scaledVelSize * 10) * globalSizeMultiplier * getDrumSize(note, midiDeviceId, drumSettings);
-      const streamWidth = baseSize * pow(1.8, segment.order - 1);
+      const baseSize = (DENDRITIC_STREAM_BASE_SIZE + scaledVelSize * DENDRITIC_STREAM_VELOCITY_MULT) * globalSizeMultiplier * getDrumSize(note, midiDeviceId, drumSettings);
+      const streamWidth = baseSize * pow(DENDRITIC_STREAM_WIDTH_RATIO, segment.order - 1);
 
       // Calculate perpendicular for meandering
       const flowAngle = atan2(segment.endY - segment.startY, segment.endX - segment.startX);
@@ -206,7 +215,7 @@ export class DendriticMode extends ModeBase {
         const size = streamWidth * (1 + t * 0.15);
 
         // Opacity increases slightly downstream
-        const alpha = (180 + segment.order * 20 + t * 40) * scaledVelOpacity * opacityMult;
+        const alpha = (DENDRITIC_STREAM_ALPHA_BASE + segment.order * DENDRITIC_STREAM_ALPHA_ORDER + t * DENDRITIC_STREAM_ALPHA_DOWNSTREAM) * scaledVelOpacity * opacityMult;
 
         paintDot(paintCanvas, x, y, size, col, alpha, shape, stroke, rotation);
       }
@@ -225,8 +234,8 @@ export class DendriticMode extends ModeBase {
     }
 
     // Draw the outlet (river mouth)
-    const outletSize = (12 + scaledVelSize * 20) * globalSizeMultiplier * getDrumSize(note, midiDeviceId, drumSettings);
-    paintDot(paintCanvas, outletX, outletY, outletSize, col, 240 * scaledVelOpacity * opacityMult, shape, stroke, rotation);
+    const outletSize = (DENDRITIC_OUTLET_BASE_SIZE + scaledVelSize * DENDRITIC_OUTLET_VELOCITY_MULT) * globalSizeMultiplier * getDrumSize(note, midiDeviceId, drumSettings);
+    paintDot(paintCanvas, outletX, outletY, outletSize, col, DENDRITIC_OUTLET_ALPHA * scaledVelOpacity * opacityMult, shape, stroke, rotation);
 
     // Add outlet delta
     for (let i = 0; i < 3; i++) {
