@@ -622,9 +622,25 @@
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>
       </svg>
-      Quick Settings
+      <span style="flex: 1;">Quick Settings</span>
+      <button id="quick-settings-collapse-btn" title="Collapse/Expand" style="
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 2px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0.6;
+        transition: opacity 0.2s;
+      " onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.6'">
+        <svg id="quick-settings-collapse-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="18 15 12 9 6 15"/>
+        </svg>
+      </button>
     </h3>
 
+    <div id="quick-settings-content">
     <!-- Global Controls -->
     <div style="margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid #ddd;">
       <strong>Global Size:</strong>
@@ -980,6 +996,7 @@
         </div>
       </div>
     </div>
+    </div><!-- End quick-settings-content -->
   </div>
 
   <!-- Customization Panel Modal -->
@@ -1201,6 +1218,12 @@
         initialX = e.clientX - xOffset;
         initialY = e.clientY - yOffset;
 
+        // Don't start drag if clicking on collapse button
+        const collapseBtn = document.getElementById('quick-settings-collapse-btn');
+        if (collapseBtn && (e.target === collapseBtn || collapseBtn.contains(e.target))) {
+          return;
+        }
+
         if (e.target === header || header.contains(e.target)) {
           isDragging = true;
           window.isDraggingControls = true;
@@ -1231,6 +1254,44 @@
       function setTranslate(xPos, yPos, el) {
         el.style.transform = `translate(${xPos}px, ${yPos}px)`;
       }
+    })();
+
+    // Quick settings collapse/expand functionality
+    (function() {
+      const collapseBtn = document.getElementById('quick-settings-collapse-btn');
+      const content = document.getElementById('quick-settings-content');
+      const icon = document.getElementById('quick-settings-collapse-icon');
+      const panel = document.getElementById('drum-settings');
+
+      if (!collapseBtn || !content || !icon) return;
+
+      // Check localStorage for saved state
+      const isCollapsed = localStorage.getItem('quickSettingsCollapsed') === 'true';
+
+      function updateCollapseState(collapsed) {
+        if (collapsed) {
+          content.style.display = 'none';
+          icon.innerHTML = '<polyline points="6 9 12 15 18 9"/>';
+          panel.style.maxHeight = 'none';
+          panel.style.overflowY = 'visible';
+        } else {
+          content.style.display = 'block';
+          icon.innerHTML = '<polyline points="18 15 12 9 6 15"/>';
+          panel.style.maxHeight = '90vh';
+          panel.style.overflowY = 'auto';
+        }
+        localStorage.setItem('quickSettingsCollapsed', collapsed);
+      }
+
+      // Apply initial state
+      updateCollapseState(isCollapsed);
+
+      // Toggle on button click
+      collapseBtn.addEventListener('click', (e) => {
+        e.stopPropagation(); // Prevent drag from starting
+        const currentlyCollapsed = content.style.display === 'none';
+        updateCollapseState(!currentlyCollapsed);
+      });
     })();
 
     // Prevent clicks on panels from going through to canvas

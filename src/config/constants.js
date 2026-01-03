@@ -96,44 +96,44 @@ export const LIGHTNING_ANGLE_VARIATION = 0.349;     // ±20 degrees in radians (
 // Stepped leader physics
 export const LIGHTNING_STEP_LENGTH_MIN = 8;         // Min step length in pixels
 export const LIGHTNING_STEP_LENGTH_MAX = 20;        // Max step length in pixels
-export const LIGHTNING_ANGLE_JITTER = 1.047;        // Max angle change per step (PI/3 = 60 degrees)
+export const LIGHTNING_ANGLE_JITTER = 1.047/2;        // Max angle change per step (PI/3 = 60 degrees)
 
 // Branching behavior
-export const LIGHTNING_BRANCH_PROB_BASE = 0.15;     // Base probability of branching
-export const LIGHTNING_BRANCH_PROB_VELOCITY = 0.15; // Additional probability from velocity
+export const LIGHTNING_BRANCH_PROB_BASE = 0.1;     // Base probability of branching
+export const LIGHTNING_BRANCH_PROB_VELOCITY = 0.1; // Additional probability from velocity
 export const LIGHTNING_BRANCH_COUNT_SINGLE = 0.7;   // Probability of single branch
 export const LIGHTNING_BRANCH_COUNT_DOUBLE = 0.6;   // Probability of double (vs triple) when not single
-export const LIGHTNING_BRANCH_ANGLE_MIN = 0.785;    // Min branch angle (PI/4 = 45 degrees)
-export const LIGHTNING_BRANCH_ANGLE_MAX = 1.571;    // Max branch angle (HALF_PI = 90 degrees)
+export const LIGHTNING_BRANCH_ANGLE_MIN = 0.785/2;    // Min branch angle (PI/4 = 45 degrees)
+export const LIGHTNING_BRANCH_ANGLE_MAX = 1.571/2;    // Max branch angle (HALF_PI = 90 degrees)
 export const LIGHTNING_ENERGY_SPLIT_MIN = 0.5;      // Min energy retained by branch
 export const LIGHTNING_ENERGY_SPLIT_MAX = 0.75;     // Max energy retained by branch
 export const LIGHTNING_STEP_REDUCTION_MIN = 0.4;    // Min step reduction for branches
 export const LIGHTNING_STEP_REDUCTION_MAX = 0.7;    // Max step reduction for branches
 
 // Path length and generations
-export const LIGHTNING_STEPS_BASE = 15;             // Base number of steps
-export const LIGHTNING_STEPS_VELOCITY = 25;         // Additional steps from velocity
+export const LIGHTNING_STEPS_BASE = 4;             // Base number of steps
+export const LIGHTNING_STEPS_VELOCITY = 2;         // Additional steps from velocity
 export const LIGHTNING_GENERATIONS_BASE = 2;        // Base number of branch generations
-export const LIGHTNING_GENERATIONS_VELOCITY = 3;    // Additional generations from velocity
+export const LIGHTNING_GENERATIONS_VELOCITY = 1;    // Additional generations from velocity
 
 // Size and rendering
 export const LIGHTNING_BASE_SIZE_MIN = 3;           // Min base size
-export const LIGHTNING_BASE_SIZE_VELOCITY = 10;     // Size multiplier from velocity
-export const LIGHTNING_WIDTH_DECAY = 0.65;          // Width reduction per generation
-export const LIGHTNING_GLOW_SIZE_MULT = 3;          // Glow size relative to core
+export const LIGHTNING_BASE_SIZE_VELOCITY = 10/5;     // Size multiplier from velocity
+export const LIGHTNING_WIDTH_DECAY = 0.65*2;          // Width reduction per generation
+export const LIGHTNING_GLOW_SIZE_MULT = 3/3;          // Glow size relative to core
 export const LIGHTNING_GLOW_ALPHA = 80;             // Base glow opacity
 export const LIGHTNING_CORE_ALPHA = 240;            // Base core opacity
 export const LIGHTNING_FLASH_SIZE_MULT = 2.5;       // Origin flash size multiplier
 export const LIGHTNING_FLASH_ALPHA = 255;           // Origin flash opacity
 
 // ===== DENDRITIC SETTINGS =====
-export const DENDRITIC_BRANCH_BASE = 2.5; // Base number of main branches
-export const DENDRITIC_BRANCH_VELOCITY_MULT = 1.0; // Multiplier for velocity's effect on branch count
-export const DENDRITIC_MAINSTEM_LENGTH_MULT = 0.33; // Multiplier for main stem length (0.5-2.0)
+export const DENDRITIC_BRANCH_BASE = 1; // Base number of main branches
+export const DENDRITIC_BRANCH_VELOCITY_MULT = 0.5; // Multiplier for velocity's effect on branch count
+export const DENDRITIC_MAINSTEM_LENGTH_MULT = 0.066; // Multiplier for main stem length (0.5-2.0)
 
 // Stream width sizing (Horton's width ratio)
 export const DENDRITIC_STREAM_BASE_SIZE = 0;        // Minimum stream width
-export const DENDRITIC_STREAM_VELOCITY_MULT = 2;    // Velocity multiplier for stream width
+export const DENDRITIC_STREAM_VELOCITY_MULT = 1.5;    // Velocity multiplier for stream width
 export const DENDRITIC_STREAM_WIDTH_RATIO = 1.8;    // Width increase per stream order
 
 // Stream opacity
@@ -337,6 +337,7 @@ export const TIMELINE_LANE_OFFSET = 8;            // Radial offset per drum in s
 export const TIMELINE_SPIRAL_TIGHTNESS = 15;
 export const TIMELINE_SPIRAL_ROTATIONS_PER_MIN = 4;
 export const TIMELINE_SPIRAL_START_RADIUS = 50;
+export const TIMELINE_SPIRAL_MAX_RADIUS_MULT = 0.85; // Max radius as fraction of min(width,height)/2
 
 // Timeline layout magic numbers
 export const TIMELINE_RING_BASE_RADIUS = 100;     // Base radius for rings layout

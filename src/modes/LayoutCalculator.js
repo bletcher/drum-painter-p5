@@ -14,7 +14,8 @@ import {
   TIMELINE_POLYGON_STEP,
   TIMELINE_POLYGON_PULSE,
   TIMELINE_POLYGON_ROTATION_BEATS,
-  TIMELINE_LANE_OFFSET
+  TIMELINE_LANE_OFFSET,
+  TIMELINE_SPIRAL_MAX_RADIUS_MULT
 } from '../config/constants.js';
 
 /**
@@ -88,7 +89,7 @@ export class LayoutCalculator {
 
   /**
    * Calculate position for spiral layout
-   * Archimedean spiral - one full rotation per measure
+   * Archimedean spiral - one full rotation per measure, wraps back to center at edge
    */
   static calculateSpiralPosition(laneIndex, laneCount, beatCount, beatsPerMeasure, spiralSettings, centerX, centerY) {
     const { tightness, startRadius } = spiralSettings;
@@ -102,13 +103,29 @@ export class LayoutCalculator {
     // Add full rotations for completed measures
     const totalTheta = theta + (measureNumber * Math.PI * 2);
 
-    // Archimedean spiral: r = a + b*θ
-    const baseRadius = startRadius;
-    const growthRate = tightness / (Math.PI * 2);
-    const spiralRadius = baseRadius + (growthRate * totalTheta);
+    // Calculate max radius based on canvas size (derived from center coordinates)
+    const canvasWidth = centerX * 2;
+    const canvasHeight = centerY * 2;
+    const maxRadius = Math.min(canvasWidth, canvasHeight) / 2 * TIMELINE_SPIRAL_MAX_RADIUS_MULT;
+    const radiusRange = maxRadius - startRadius;
+
+    // Calculate how many measures fit in one cycle (out and back)
+    const measuresPerCycle = Math.max(1, Math.floor(radiusRange / tightness) * 2);
+
+    // Cycle the measure number to create out-and-back pattern
+    const cycledMeasure = measureNumber % measuresPerCycle;
+    const halfCycle = measuresPerCycle / 2;
+
+    // Go outward for first half, inward for second half
+    const effectiveMeasure = cycledMeasure < halfCycle
+      ? cycledMeasure
+      : measuresPerCycle - cycledMeasure;
+
+    // Archimedean spiral with wrapping: r = a + b*measure
+    const spiralRadius = startRadius + (effectiveMeasure * tightness);
 
     // Add lane offset for multiple drums
-    const laneOffset = (laneIndex - (laneCount - 1) / 2) * 8;
+    const laneOffset = (laneIndex - (laneCount - 1) / 2) * TIMELINE_LANE_OFFSET;
 
     return {
       x: centerX + (spiralRadius + laneOffset) * Math.cos(totalTheta - Math.PI / 2),

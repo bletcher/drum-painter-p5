@@ -15,6 +15,7 @@ import {
   TIMELINE_SPIRAL_TIGHTNESS,
   TIMELINE_SPIRAL_ROTATIONS_PER_MIN,
   TIMELINE_SPIRAL_START_RADIUS,
+  TIMELINE_SPIRAL_MAX_RADIUS_MULT,
   TIMELINE_RING_BASE_RADIUS,
   TIMELINE_RADIAL_BASE_DISTANCE,
   TIMELINE_RADIAL_STEP,
@@ -289,7 +290,7 @@ export class TimelineMode {
 
       case 'spiral':
         // Archimedean spiral - notes appear exactly where/when played
-        // One full rotation per measure
+        // One full rotation per measure, wraps back to center when reaching edge
 
         // Complete one rotation per measure to match metronome pattern
         const measurePosition = beatCount % this.beatsPerMeasure;
@@ -299,9 +300,26 @@ export class TimelineMode {
         // Uses exact beatCount for precise positioning along the spiral
         const theta = (measurePosition / this.beatsPerMeasure) * Math.PI * 2;
 
-        // Radius increases with each complete measure
+        // Calculate max radius based on canvas size
+        const canvasHeight = centerY * 2;
+        const maxRadius = Math.min(canvasWidth, canvasHeight) / 2 * TIMELINE_SPIRAL_MAX_RADIUS_MULT;
+        const radiusRange = maxRadius - this.spiralSettings.startRadius;
+
+        // Calculate how many measures fit in one cycle (out and back)
+        const measuresPerCycle = Math.max(1, Math.floor(radiusRange / this.spiralSettings.tightness) * 2);
+
+        // Cycle the measure number to create out-and-back pattern
+        const cycledMeasure = measureNumber % measuresPerCycle;
+        const halfCycle = measuresPerCycle / 2;
+
+        // Go outward for first half, inward for second half
+        const effectiveMeasure = cycledMeasure < halfCycle
+          ? cycledMeasure
+          : measuresPerCycle - cycledMeasure;
+
+        // Radius increases with each complete measure (now cycled)
         const spiralRadius = this.spiralSettings.startRadius +
-                           (measureNumber * this.spiralSettings.tightness);
+                           (effectiveMeasure * this.spiralSettings.tightness);
 
         // Offset each drum slightly radially based on lane
         const laneOffset = (laneIndex - this.timelineLaneCount / 2) * TIMELINE_LANE_OFFSET;
