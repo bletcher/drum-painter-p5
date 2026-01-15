@@ -95,10 +95,59 @@ export class TimelineControls {
         } else {
           this.notificationSystem.show('Metronome disabled');
         }
+        // Show/hide tempo automation section
+        this.updateTempoAutomationVisibility();
         this.scheduleAutoSave();
       });
     } else {
       debugWarn('⚠️ Metronome checkbox element not found!');
+    }
+
+    // Tempo automation checkbox
+    const tempoAutoCheckbox = document.getElementById('tempo-automation-enabled');
+    if (tempoAutoCheckbox) {
+      tempoAutoCheckbox.addEventListener('change', (e) => {
+        this.timelineMode.tempoAutomationEnabled = e.target.checked;
+        // Show/hide the detail controls
+        const controlsDiv = document.getElementById('tempo-automation-controls');
+        if (controlsDiv) {
+          controlsDiv.style.display = e.target.checked ? 'block' : 'none';
+        }
+        if (e.target.checked) {
+          this.notificationSystem.show('Tempo automation enabled');
+        }
+        this.scheduleAutoSave();
+      });
+    }
+
+    // Tempo automation BPM increase
+    const tempoAutoBpmInput = document.getElementById('tempo-automation-bpm');
+    if (tempoAutoBpmInput) {
+      tempoAutoBpmInput.addEventListener('change', (e) => {
+        this.timelineMode.tempoAutomationBpmIncrease = Math.max(1, Math.min(20, parseInt(e.target.value) || 5));
+        e.target.value = this.timelineMode.tempoAutomationBpmIncrease;
+        this.scheduleAutoSave();
+      });
+    }
+
+    // Tempo automation bars interval
+    const tempoAutoBarsInput = document.getElementById('tempo-automation-bars');
+    if (tempoAutoBarsInput) {
+      tempoAutoBarsInput.addEventListener('change', (e) => {
+        this.timelineMode.tempoAutomationBars = Math.max(1, Math.min(16, parseInt(e.target.value) || 4));
+        e.target.value = this.timelineMode.tempoAutomationBars;
+        this.scheduleAutoSave();
+      });
+    }
+
+    // Tempo automation max BPM
+    const tempoAutoMaxInput = document.getElementById('tempo-automation-max');
+    if (tempoAutoMaxInput) {
+      tempoAutoMaxInput.addEventListener('change', (e) => {
+        this.timelineMode.tempoAutomationMaxBpm = Math.max(60, Math.min(300, parseInt(e.target.value) || 200));
+        e.target.value = this.timelineMode.tempoAutomationMaxBpm;
+        this.scheduleAutoSave();
+      });
     }
 
     // MIDI latency input
@@ -115,6 +164,18 @@ export class TimelineControls {
     if (showGridCheckbox) {
       showGridCheckbox.addEventListener('change', (e) => {
         this.timelineMode.showGrid = e.target.checked;
+        this.scheduleAutoSave();
+      });
+    }
+
+    // Show deviation graph checkbox
+    const showDeviationCheckbox = document.getElementById('timeline-show-deviation');
+    if (showDeviationCheckbox) {
+      showDeviationCheckbox.addEventListener('change', (e) => {
+        this.timelineMode.showDeviationGraph = e.target.checked;
+        if (e.target.checked) {
+          this.notificationSystem.show('Timing deviation graph enabled');
+        }
         this.scheduleAutoSave();
       });
     }
@@ -578,6 +639,18 @@ export class TimelineControls {
   }
 
   /**
+   * Update tempo automation section visibility based on metronome state
+   */
+  updateTempoAutomationVisibility() {
+    const tempoAutoSection = document.getElementById('tempo-automation-section');
+    const metronomeEnabled = this.timelineMode.metronomeEnabled;
+
+    if (tempoAutoSection) {
+      tempoAutoSection.style.display = metronomeEnabled ? 'block' : 'none';
+    }
+  }
+
+  /**
    * Sync UI with current timeline mode settings
    */
   syncUI() {
@@ -593,6 +666,16 @@ export class TimelineControls {
     const warmupSelect = document.getElementById('timeline-warmup-measures');
     const measuresPerStaffSelect = document.getElementById('timeline-measures-per-staff');
 
+    // Tempo automation elements
+    const tempoAutoCheckbox = document.getElementById('tempo-automation-enabled');
+    const tempoAutoBpmInput = document.getElementById('tempo-automation-bpm');
+    const tempoAutoBarsInput = document.getElementById('tempo-automation-bars');
+    const tempoAutoMaxInput = document.getElementById('tempo-automation-max');
+    const tempoAutoControls = document.getElementById('tempo-automation-controls');
+
+    // Deviation graph element
+    const showDeviationCheckbox = document.getElementById('timeline-show-deviation');
+
     if (bpmInput) bpmInput.value = this.timelineMode.bpm;
     if (bpmDisplay) bpmDisplay.textContent = this.timelineMode.bpm;
     if (subdivisionSelect) subdivisionSelect.value = this.timelineMode.subdivision;
@@ -600,10 +683,21 @@ export class TimelineControls {
     if (metronomeCheckbox) metronomeCheckbox.checked = this.timelineMode.metronomeEnabled;
     if (latencyInput) latencyInput.value = this.timelineMode.midiLatencyMs;
     if (showGridCheckbox) showGridCheckbox.checked = this.timelineMode.showGrid;
+    if (showDeviationCheckbox) showDeviationCheckbox.checked = this.timelineMode.showDeviationGraph;
     if (rowSpacingSlider) rowSpacingSlider.value = this.timelineMode.rowSpacing;
     if (rowSpacingDisplay) rowSpacingDisplay.textContent = `${this.timelineMode.rowSpacing}px`;
     if (warmupSelect) warmupSelect.value = this.timelineMode.warmupMeasures;
     if (measuresPerStaffSelect) measuresPerStaffSelect.value = this.timelineMode.measuresPerStaffPreference;
+
+    // Sync tempo automation settings
+    if (tempoAutoCheckbox) tempoAutoCheckbox.checked = this.timelineMode.tempoAutomationEnabled;
+    if (tempoAutoBpmInput) tempoAutoBpmInput.value = this.timelineMode.tempoAutomationBpmIncrease;
+    if (tempoAutoBarsInput) tempoAutoBarsInput.value = this.timelineMode.tempoAutomationBars;
+    if (tempoAutoMaxInput) tempoAutoMaxInput.value = this.timelineMode.tempoAutomationMaxBpm;
+    if (tempoAutoControls) tempoAutoControls.style.display = this.timelineMode.tempoAutomationEnabled ? 'block' : 'none';
+
+    // Update tempo automation visibility
+    this.updateTempoAutomationVisibility();
 
     this.updateButtonsUI();
     this.updateStatusText();

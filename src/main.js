@@ -128,9 +128,14 @@ function getAppState() {
       metronomeEnabled: chronicleMode.metronomeEnabled,
       midiLatencyMs: chronicleMode.midiLatencyMs,
       showGrid: chronicleMode.showGrid,
+      showDeviationGraph: chronicleMode.showDeviationGraph,
       rowSpacing: chronicleMode.rowSpacing,
       warmupMeasures: chronicleMode.warmupMeasures,
-      measuresPerStaffPreference: chronicleMode.measuresPerStaffPreference
+      measuresPerStaffPreference: chronicleMode.measuresPerStaffPreference,
+      tempoAutomationEnabled: chronicleMode.tempoAutomationEnabled,
+      tempoAutomationBpmIncrease: chronicleMode.tempoAutomationBpmIncrease,
+      tempoAutomationBars: chronicleMode.tempoAutomationBars,
+      tempoAutomationMaxBpm: chronicleMode.tempoAutomationMaxBpm
     },
     bankModeSettings: midiManager ? midiManager.getState() : {}
   };
@@ -937,10 +942,15 @@ function initializeUI() {
           metronomeEnabled: chronicleMode.metronomeEnabled,
           midiLatencyMs: chronicleMode.midiLatencyMs,
           showGrid: chronicleMode.showGrid,
+          showDeviationGraph: chronicleMode.showDeviationGraph,
           rowSpacing: chronicleMode.rowSpacing,
           layout: chronicleMode.layout,
           warmupMeasures: chronicleMode.warmupMeasures,
-          measuresPerStaffPreference: chronicleMode.measuresPerStaffPreference
+          measuresPerStaffPreference: chronicleMode.measuresPerStaffPreference,
+          tempoAutomationEnabled: chronicleMode.tempoAutomationEnabled,
+          tempoAutomationBpmIncrease: chronicleMode.tempoAutomationBpmIncrease,
+          tempoAutomationBars: chronicleMode.tempoAutomationBars,
+          tempoAutomationMaxBpm: chronicleMode.tempoAutomationMaxBpm
         },
         bankModeSettings: midiManager.getState()
       };
@@ -1011,10 +1021,15 @@ function initializeUI() {
           metronomeEnabled: chronicleMode.metronomeEnabled,
           midiLatencyMs: chronicleMode.midiLatencyMs,
           showGrid: chronicleMode.showGrid,
+          showDeviationGraph: chronicleMode.showDeviationGraph,
           rowSpacing: chronicleMode.rowSpacing,
           layout: chronicleMode.layout,
           warmupMeasures: chronicleMode.warmupMeasures,
-          measuresPerStaffPreference: chronicleMode.measuresPerStaffPreference
+          measuresPerStaffPreference: chronicleMode.measuresPerStaffPreference,
+          tempoAutomationEnabled: chronicleMode.tempoAutomationEnabled,
+          tempoAutomationBpmIncrease: chronicleMode.tempoAutomationBpmIncrease,
+          tempoAutomationBars: chronicleMode.tempoAutomationBars,
+          tempoAutomationMaxBpm: chronicleMode.tempoAutomationMaxBpm
         },
         bankModeSettings: midiManager.getState()
       };
@@ -1292,6 +1307,7 @@ function initializeUI() {
           metronomeEnabled: chronicleMode.metronomeEnabled,
           midiLatencyMs: chronicleMode.midiLatencyMs,
           showGrid: chronicleMode.showGrid,
+          showDeviationGraph: chronicleMode.showDeviationGraph,
           rowSpacing: chronicleMode.rowSpacing
         },
         timestamp: new Date().toISOString()
@@ -1388,6 +1404,9 @@ function initializeUI() {
           if (projectData.timelineSettings.showGrid !== undefined) {
             chronicleMode.showGrid = projectData.timelineSettings.showGrid;
           }
+          if (projectData.timelineSettings.showDeviationGraph !== undefined) {
+            chronicleMode.showDeviationGraph = projectData.timelineSettings.showDeviationGraph;
+          }
           if (projectData.timelineSettings.rowSpacing !== undefined) {
             chronicleMode.rowSpacing = projectData.timelineSettings.rowSpacing;
           }
@@ -1396,6 +1415,19 @@ function initializeUI() {
           }
           if (projectData.timelineSettings.measuresPerStaffPreference !== undefined) {
             chronicleMode.measuresPerStaffPreference = projectData.timelineSettings.measuresPerStaffPreference;
+          }
+          // Tempo automation settings
+          if (projectData.timelineSettings.tempoAutomationEnabled !== undefined) {
+            chronicleMode.tempoAutomationEnabled = projectData.timelineSettings.tempoAutomationEnabled;
+          }
+          if (projectData.timelineSettings.tempoAutomationBpmIncrease !== undefined) {
+            chronicleMode.tempoAutomationBpmIncrease = projectData.timelineSettings.tempoAutomationBpmIncrease;
+          }
+          if (projectData.timelineSettings.tempoAutomationBars !== undefined) {
+            chronicleMode.tempoAutomationBars = projectData.timelineSettings.tempoAutomationBars;
+          }
+          if (projectData.timelineSettings.tempoAutomationMaxBpm !== undefined) {
+            chronicleMode.tempoAutomationMaxBpm = projectData.timelineSettings.tempoAutomationMaxBpm;
           }
           // Sync UI with loaded settings
           if (timelineControls) {
@@ -2038,6 +2070,9 @@ window.draw = function() {
 
     // Draw circular visual metronome
     chronicleMode.drawCircularMetronome(window, width, height);
+
+    // Draw deviation graph overlay (staff mode only)
+    chronicleMode.drawDeviationGraph(window, offsetX, offsetY, scaleFactor, drumSettings);
 
     // Auto-scroll to keep current playhead visible when recording
     if (chronicleMode.recording && chronicleMode.startTime !== null) {
@@ -2751,6 +2786,9 @@ async function loadSavedSettings() {
     if (savedState.timelineSettings.showGrid !== undefined) {
       chronicleMode.showGrid = savedState.timelineSettings.showGrid;
     }
+    if (savedState.timelineSettings.showDeviationGraph !== undefined) {
+      chronicleMode.showDeviationGraph = savedState.timelineSettings.showDeviationGraph;
+    }
     if (savedState.timelineSettings.rowSpacing !== undefined) {
       chronicleMode.rowSpacing = savedState.timelineSettings.rowSpacing;
     }
@@ -2762,6 +2800,19 @@ async function loadSavedSettings() {
     }
     if (savedState.timelineSettings.layout !== undefined) {
       chronicleMode.layout = savedState.timelineSettings.layout;
+    }
+    // Tempo automation settings
+    if (savedState.timelineSettings.tempoAutomationEnabled !== undefined) {
+      chronicleMode.tempoAutomationEnabled = savedState.timelineSettings.tempoAutomationEnabled;
+    }
+    if (savedState.timelineSettings.tempoAutomationBpmIncrease !== undefined) {
+      chronicleMode.tempoAutomationBpmIncrease = savedState.timelineSettings.tempoAutomationBpmIncrease;
+    }
+    if (savedState.timelineSettings.tempoAutomationBars !== undefined) {
+      chronicleMode.tempoAutomationBars = savedState.timelineSettings.tempoAutomationBars;
+    }
+    if (savedState.timelineSettings.tempoAutomationMaxBpm !== undefined) {
+      chronicleMode.tempoAutomationMaxBpm = savedState.timelineSettings.tempoAutomationMaxBpm;
     }
     debugLog('✓ Loaded timeline settings (early)');
   }
@@ -2815,9 +2866,14 @@ async function loadSavedSettings() {
         metronomeEnabled: chronicleMode.metronomeEnabled,
         midiLatencyMs: chronicleMode.midiLatencyMs,
         showGrid: chronicleMode.showGrid,
+        showDeviationGraph: chronicleMode.showDeviationGraph,
         rowSpacing: chronicleMode.rowSpacing,
         warmupMeasures: chronicleMode.warmupMeasures,
-        measuresPerStaffPreference: chronicleMode.measuresPerStaffPreference
+        measuresPerStaffPreference: chronicleMode.measuresPerStaffPreference,
+        tempoAutomationEnabled: chronicleMode.tempoAutomationEnabled,
+        tempoAutomationBpmIncrease: chronicleMode.tempoAutomationBpmIncrease,
+        tempoAutomationBars: chronicleMode.tempoAutomationBars,
+        tempoAutomationMaxBpm: chronicleMode.tempoAutomationMaxBpm
       },
       bankModeSettings: midiManager.getState()
     };
@@ -2981,9 +3037,14 @@ function migrateDrumIdChanges() {
         metronomeEnabled: chronicleMode.metronomeEnabled,
         midiLatencyMs: chronicleMode.midiLatencyMs,
         showGrid: chronicleMode.showGrid,
+        showDeviationGraph: chronicleMode.showDeviationGraph,
         rowSpacing: chronicleMode.rowSpacing,
         warmupMeasures: chronicleMode.warmupMeasures,
-        measuresPerStaffPreference: chronicleMode.measuresPerStaffPreference
+        measuresPerStaffPreference: chronicleMode.measuresPerStaffPreference,
+        tempoAutomationEnabled: chronicleMode.tempoAutomationEnabled,
+        tempoAutomationBpmIncrease: chronicleMode.tempoAutomationBpmIncrease,
+        tempoAutomationBars: chronicleMode.tempoAutomationBars,
+        tempoAutomationMaxBpm: chronicleMode.tempoAutomationMaxBpm
       },
       bankModeSettings: midiManager.getState()
     };
@@ -3061,9 +3122,14 @@ function migrateDrumMappingsToStableKeys() {
         metronomeEnabled: chronicleMode.metronomeEnabled,
         midiLatencyMs: chronicleMode.midiLatencyMs,
         showGrid: chronicleMode.showGrid,
+        showDeviationGraph: chronicleMode.showDeviationGraph,
         rowSpacing: chronicleMode.rowSpacing,
         warmupMeasures: chronicleMode.warmupMeasures,
-        measuresPerStaffPreference: chronicleMode.measuresPerStaffPreference
+        measuresPerStaffPreference: chronicleMode.measuresPerStaffPreference,
+        tempoAutomationEnabled: chronicleMode.tempoAutomationEnabled,
+        tempoAutomationBpmIncrease: chronicleMode.tempoAutomationBpmIncrease,
+        tempoAutomationBars: chronicleMode.tempoAutomationBars,
+        tempoAutomationMaxBpm: chronicleMode.tempoAutomationMaxBpm
       },
       bankModeSettings: midiManager.getState()
     };
@@ -3186,6 +3252,11 @@ window.mousePressed = function() {
     return; // Metronome was clicked, don't do anything else
   }
 
+  // Handle deviation graph dragging in staff mode
+  if (isTimeBased && chronicleMode.handleDeviationGraphMousePressed(mouseX, mouseY)) {
+    return; // Deviation graph was clicked, don't do anything else
+  }
+
   // Check if clicking on scrollbar (any mode with tall canvas)
   if (window.scrollbarBounds) {
     const sb = window.scrollbarBounds;
@@ -3226,6 +3297,7 @@ window.mouseDragged = function() {
   const isTimeBased = currentModeType === 'timeline' && ['staff', 'spiral', 'rings', 'petals', 'polygon'].includes(chronicleMode.layout);
   if (isTimeBased) {
     chronicleMode.handleMetronomeMouseDragged(mouseX, mouseY);
+    chronicleMode.handleDeviationGraphMouseDragged(mouseX, mouseY);
   }
 
   // Handle scrollbar dragging (any mode with tall canvas)
@@ -3347,6 +3419,7 @@ window.mouseReleased = function() {
   const isTimeBased = currentModeType === 'timeline' && ['staff', 'spiral', 'rings', 'petals', 'polygon'].includes(chronicleMode.layout);
   if (isTimeBased) {
     chronicleMode.handleMetronomeMouseReleased();
+    chronicleMode.handleDeviationGraphMouseReleased();
   }
 
   // Stop dragging scrollbar

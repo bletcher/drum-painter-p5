@@ -221,10 +221,15 @@ export class StateManager {
           metronomeEnabled: false,
           midiLatencyMs: 0,
           showGrid: true,
+          showDeviationGraph: false,
           rowSpacing: 30,
           layout: 'staff',
           warmupMeasures: 0,
-          measuresPerStaffPreference: 4
+          measuresPerStaffPreference: 4,
+          tempoAutomationEnabled: false,
+          tempoAutomationBpmIncrease: 5,
+          tempoAutomationBars: 4,
+          tempoAutomationMaxBpm: 200
         },
         bankModeSettings: appState.bankModeSettings || {
           enabled: false,
@@ -324,10 +329,15 @@ export class StateManager {
           metronomeEnabled: false,
           midiLatencyMs: 0,
           showGrid: true,
+          showDeviationGraph: false,
           rowSpacing: 30,
           layout: 'staff',
           warmupMeasures: 0,
-          measuresPerStaffPreference: 4
+          measuresPerStaffPreference: 4,
+          tempoAutomationEnabled: false,
+          tempoAutomationBpmIncrease: 5,
+          tempoAutomationBars: 4,
+          tempoAutomationMaxBpm: 200
         },
         bankModeSettings: appState.bankModeSettings || {
           enabled: false,

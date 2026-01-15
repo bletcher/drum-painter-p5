@@ -114,6 +114,25 @@ export class TimelineMode {
     this.lastMetronomeSubdivision = 4;
     this.audioContext = null; // Web Audio API context
 
+    // Tempo automation settings
+    this.tempoAutomationEnabled = false;
+    this.tempoAutomationBpmIncrease = 5; // BPM to increase each interval
+    this.tempoAutomationBars = 4; // Number of bars between tempo changes
+    this.tempoAutomationMaxBpm = 200; // Maximum BPM cap
+    this.baseBpm = 80; // Starting BPM (captured when recording starts)
+    this.lastTempoChangeMeasure = -1; // Track which measure we last changed tempo
+
+    // Deviation tracking (staff mode only)
+    this.showDeviationGraph = false; // Toggle for displaying deviation graph
+    this.deviationData = {}; // Per-drum deviation data: { drumId: [{ time, deviation, cumulativeDeviation }] }
+
+    // Deviation graph position (draggable)
+    this.deviationGraphX = null; // null = use default position (bottom-left)
+    this.deviationGraphY = null;
+    this.deviationGraphDragging = false;
+    this.deviationGraphDragOffsetX = 0;
+    this.deviationGraphDragOffsetY = 0;
+
     // Hit counters for point-based layouts (fibonacci, radial)
     this.globalHitCount = 0; // Total hits across all drums
     this.perDrumHitCount = {}; // Hits per individual drum
@@ -459,6 +478,11 @@ export class TimelineMode {
       timeElapsed = this.getEffectiveTimeElapsed() - (this.midiLatencyMs / 1000.0);
       const secondsPerBeat = 60 / this.bpm;
       beatCount = timeElapsed / secondsPerBeat;
+
+      // Track deviation from grid for staff mode
+      if (this.layout === 'staff' && this.showDeviationGraph) {
+        this.recordDeviation(drumId, timeElapsed, secondsPerBeat);
+      }
     }
 
     // Get position based on selected layout
@@ -770,6 +794,14 @@ export class TimelineMode {
       this.pausedTime = 0;
       this.stopTime = null;
       this.lastMetronomeClick = -1;
+
+      // Reset tempo automation state
+      this.baseBpm = this.bpm;
+      this.lastTempoChangeMeasure = -1;
+
+      // Clear deviation tracking data
+      this.clearDeviationData();
+
       debugLog('Timeline recording started (from beginning)');
     } else {
       // Continue recording
@@ -794,6 +826,11 @@ export class TimelineMode {
         this.pausedTime = 0;
         this.stopTime = null;
         this.lastMetronomeClick = -1;
+
+        // Initialize tempo automation state
+        this.baseBpm = this.bpm;
+        this.lastTempoChangeMeasure = -1;
+
         debugLog('Timeline recording started');
       }
     }
@@ -858,6 +895,13 @@ export class TimelineMode {
     this.globalHitCount = 0;
     this.perDrumHitCount = {};
 
+    // Reset tempo automation state (but keep settings)
+    this.baseBpm = this.bpm;
+    this.lastTempoChangeMeasure = -1;
+
+    // Clear deviation tracking data
+    this.clearDeviationData();
+
     debugLog('Timeline state cleared');
   }
 
@@ -874,7 +918,7 @@ export class TimelineMode {
       return;
     }
 
-    // Reset if BPM or subdivision changed
+    // Reset if BPM or subdivision changed (manual change, not automation)
     if (this.lastMetronomeBPM !== this.bpm || this.lastMetronomeSubdivision !== this.subdivision) {
       this.lastMetronomeClick = -1;
       this.lastMetronomeBPM = this.bpm;
@@ -890,12 +934,18 @@ export class TimelineMode {
     // Calculate which subdivision we're on
     const currentSubdivision = Math.floor(timeElapsed / secondsPerSubdivision);
 
+    // Calculate current measure (1-indexed)
+    const subdivisionsPerMeasure = this.subdivision * (this.beatsPerMeasure / 4);
+    const currentMeasure = Math.floor(currentSubdivision / subdivisionsPerMeasure) + 1;
+
+    // Check for tempo automation
+    this.updateTempoAutomation(currentMeasure);
+
     // Play click if we've crossed into a new subdivision
     if (currentSubdivision > this.lastMetronomeClick) {
       this.lastMetronomeClick = currentSubdivision;
 
       const subdivisionsPerQuarter = this.subdivision / 4;
-      const subdivisionsPerMeasure = this.subdivision * (this.beatsPerMeasure / 4);
 
       const isFirstBeat = (currentSubdivision % subdivisionsPerMeasure) === 0;
       const isBeat = (currentSubdivision % subdivisionsPerQuarter) === 0;
@@ -904,6 +954,382 @@ export class TimelineMode {
       debugLog(`🎵 Metronome click: subdivision ${currentSubdivision}, firstBeat=${isFirstBeat}, beat=${isBeat}`);
       this.playMetronomeClick(isFirstBeat, isBeat);
     }
+  }
+
+  /**
+   * Update tempo automation - increase BPM at specified bar intervals
+   * @param {number} currentMeasure - Current measure number (1-indexed)
+   */
+  updateTempoAutomation(currentMeasure) {
+    if (!this.tempoAutomationEnabled) return;
+    if (this.tempoAutomationBars <= 0) return;
+
+    // Calculate which tempo change interval we're in
+    // Measure 1-4 = interval 0, Measure 5-8 = interval 1, etc. (for 4 bar intervals)
+    const currentInterval = Math.floor((currentMeasure - 1) / this.tempoAutomationBars);
+
+    // Check if we've entered a new interval
+    if (currentInterval > this.lastTempoChangeMeasure) {
+      this.lastTempoChangeMeasure = currentInterval;
+
+      // Calculate new BPM based on interval number
+      const newBpm = this.baseBpm + (currentInterval * this.tempoAutomationBpmIncrease);
+
+      // Apply the new BPM if it's different and under the cap
+      if (newBpm !== this.bpm && newBpm <= this.tempoAutomationMaxBpm) {
+        this.bpm = newBpm;
+        this.lastMetronomeBPM = newBpm;
+        debugLog(`🎵 Tempo automation: BPM increased to ${newBpm} at measure ${currentMeasure}`);
+
+        // Update the UI display
+        this.updateBpmDisplay();
+      } else if (newBpm > this.tempoAutomationMaxBpm && this.bpm !== this.tempoAutomationMaxBpm) {
+        // Cap at max BPM
+        this.bpm = this.tempoAutomationMaxBpm;
+        this.lastMetronomeBPM = this.tempoAutomationMaxBpm;
+        debugLog(`🎵 Tempo automation: BPM capped at ${this.tempoAutomationMaxBpm}`);
+        this.updateBpmDisplay();
+      }
+    }
+  }
+
+  /**
+   * Update BPM display in UI (called from tempo automation)
+   */
+  updateBpmDisplay() {
+    const bpmDisplay = document.getElementById('bpm-display');
+    const bpmInput = document.getElementById('timeline-bpm');
+    if (bpmDisplay) {
+      bpmDisplay.textContent = this.bpm;
+    }
+    if (bpmInput) {
+      bpmInput.value = this.bpm;
+    }
+  }
+
+  /**
+   * Record deviation from the nearest grid line for a hit
+   * @param {string} drumId - The drum that was hit
+   * @param {number} timeElapsed - Time elapsed in seconds
+   * @param {number} secondsPerBeat - Duration of one beat in seconds
+   */
+  recordDeviation(drumId, timeElapsed, secondsPerBeat) {
+    // Calculate the subdivision grid timing
+    const secondsPerSubdivision = secondsPerBeat / (this.subdivision / 4);
+
+    // Find the nearest grid line
+    const subdivisionIndex = timeElapsed / secondsPerSubdivision;
+    const nearestGridIndex = Math.round(subdivisionIndex);
+    const nearestGridTime = nearestGridIndex * secondsPerSubdivision;
+
+    // Calculate deviation in milliseconds (positive = late, negative = early)
+    const deviationMs = (timeElapsed - nearestGridTime) * 1000;
+
+    // Initialize drum's deviation array if needed
+    if (!this.deviationData[drumId]) {
+      this.deviationData[drumId] = [];
+    }
+
+    // Calculate cumulative deviation for this drum
+    const prevData = this.deviationData[drumId];
+    const prevCumulative = prevData.length > 0 ? prevData[prevData.length - 1].cumulativeDeviation : 0;
+    const cumulativeDeviation = prevCumulative + Math.abs(deviationMs);
+
+    // Record the deviation
+    this.deviationData[drumId].push({
+      time: timeElapsed,
+      deviation: deviationMs,
+      cumulativeDeviation: cumulativeDeviation
+    });
+
+    debugLog(`📊 Deviation: ${drumId} at ${timeElapsed.toFixed(3)}s, deviation: ${deviationMs.toFixed(1)}ms, cumulative: ${cumulativeDeviation.toFixed(1)}ms`);
+  }
+
+  /**
+   * Clear deviation data (called when timeline is cleared)
+   */
+  clearDeviationData() {
+    this.deviationData = {};
+  }
+
+  /**
+   * Draw the deviation graph overlay
+   * @param {Object} p5Instance - The p5 instance for drawing
+   * @param {number} offsetX - X offset for pan (unused, kept for API consistency)
+   * @param {number} offsetY - Y offset for pan (unused, kept for API consistency)
+   * @param {number} scale - Current zoom scale (unused, kept for API consistency)
+   * @param {Object} drumSettings - Current drum settings for colors
+   */
+  drawDeviationGraph(p5Instance, offsetX, offsetY, scale, drumSettings) {
+    if (!this.showDeviationGraph || this.layout !== 'staff') {
+      // Reset cursor when graph is not shown
+      if (this._deviationGraphCursorSet) {
+        p5Instance.cursor(p5Instance.ARROW);
+        this._deviationGraphCursorSet = false;
+      }
+      return;
+    }
+
+    // Check if we have any deviation data
+    const drumIds = Object.keys(this.deviationData);
+    if (drumIds.length === 0) {
+      // Reset cursor when no data
+      if (this._deviationGraphCursorSet) {
+        p5Instance.cursor(p5Instance.ARROW);
+        this._deviationGraphCursorSet = false;
+      }
+      return;
+    }
+
+    // Find the max cumulative deviation and max time for scaling
+    // Also calculate stats for each drum
+    let maxCumulative = 0;
+    let maxTime = 0;
+    const drumStats = {};
+    for (const drumId of drumIds) {
+      const data = this.deviationData[drumId];
+      if (data.length > 0) {
+        const lastEntry = data[data.length - 1];
+        maxCumulative = Math.max(maxCumulative, lastEntry.cumulativeDeviation);
+        maxTime = Math.max(maxTime, lastEntry.time);
+
+        // Calculate stats: hits, average deviation, and standard deviation
+        const deviations = data.map(d => Math.abs(d.deviation));
+        const totalAbsDeviation = deviations.reduce((sum, d) => sum + d, 0);
+        const avgDeviation = totalAbsDeviation / data.length;
+
+        // Standard deviation calculation
+        const squaredDiffs = deviations.map(d => Math.pow(d - avgDeviation, 2));
+        const avgSquaredDiff = squaredDiffs.reduce((sum, d) => sum + d, 0) / data.length;
+        const stdDeviation = Math.sqrt(avgSquaredDiff);
+
+        drumStats[drumId] = {
+          hits: data.length,
+          avgDeviation: avgDeviation,
+          stdDeviation: stdDeviation
+        };
+      }
+    }
+
+    if (maxCumulative === 0 || maxTime === 0) {
+      // Reset cursor when no valid data
+      if (this._deviationGraphCursorSet) {
+        p5Instance.cursor(p5Instance.ARROW);
+        this._deviationGraphCursorSet = false;
+      }
+      return;
+    }
+
+    // Graph dimensions - stats table is to the right of the graph
+    const graphWidth = 300;
+    const graphHeight = 150;
+    const graphMargin = 20;
+    const statsTableWidth = 180; // Width for stats table on the right
+    const totalWidth = graphWidth + statsTableWidth + 50; // Graph + table + margins
+    const totalHeight = graphHeight + 50; // Just graph height + margins for title and axis labels
+
+    // Position (use custom position if set, otherwise default to bottom-left)
+    const defaultX = graphMargin;
+    const defaultY = p5Instance.height - totalHeight - graphMargin;
+    const baseX = this.deviationGraphX !== null ? this.deviationGraphX : defaultX;
+    const baseY = this.deviationGraphY !== null ? this.deviationGraphY : defaultY;
+
+    // Graph content starts offset from base position
+    const graphX = baseX + 35;
+    const graphY = baseY + 25;
+
+    // Check if mouse is over graph (for drag detection)
+    const mouseX = p5Instance.mouseX;
+    const mouseY = p5Instance.mouseY;
+    const isMouseOver = mouseX >= baseX && mouseX <= baseX + totalWidth &&
+                        mouseY >= baseY && mouseY <= baseY + totalHeight;
+
+    p5Instance.push();
+
+    // Draw semi-transparent background with hover effect
+    if (isMouseOver || this.deviationGraphDragging) {
+      p5Instance.fill(0, 0, 0, 200);
+      p5Instance.stroke(150, 200, 255, 220);
+      p5Instance.strokeWeight(2);
+      p5Instance.cursor(p5Instance.MOVE);
+      this._deviationGraphCursorSet = true;
+    } else {
+      p5Instance.fill(0, 0, 0, 180);
+      p5Instance.noStroke();
+      // Reset cursor when mouse leaves the graph
+      if (this._deviationGraphCursorSet) {
+        p5Instance.cursor(p5Instance.ARROW);
+        this._deviationGraphCursorSet = false;
+      }
+    }
+    p5Instance.rect(baseX, baseY, totalWidth, totalHeight, 5);
+
+    // Draw title
+    p5Instance.fill(255);
+    p5Instance.textSize(11);
+    p5Instance.textAlign(p5Instance.LEFT, p5Instance.TOP);
+    p5Instance.text('Cumulative Timing Deviation (ms)', graphX, baseY + 5);
+
+    // Draw axes
+    p5Instance.stroke(100);
+    p5Instance.strokeWeight(1);
+    // X-axis
+    p5Instance.line(graphX, graphY + graphHeight, graphX + graphWidth, graphY + graphHeight);
+    // Y-axis
+    p5Instance.line(graphX, graphY, graphX, graphY + graphHeight);
+
+    // Draw axis labels
+    p5Instance.fill(150);
+    p5Instance.noStroke();
+    p5Instance.textSize(9);
+    p5Instance.textAlign(p5Instance.CENTER, p5Instance.TOP);
+    p5Instance.text('Time (s)', graphX + graphWidth / 2, graphY + graphHeight + 5);
+
+    p5Instance.textAlign(p5Instance.RIGHT, p5Instance.CENTER);
+    p5Instance.text(maxCumulative.toFixed(0), graphX - 5, graphY);
+    p5Instance.text('0', graphX - 5, graphY + graphHeight);
+
+    // Time labels
+    p5Instance.textAlign(p5Instance.CENTER, p5Instance.TOP);
+    p5Instance.text('0', graphX, graphY + graphHeight + 5);
+    p5Instance.text(maxTime.toFixed(1), graphX + graphWidth, graphY + graphHeight + 5);
+
+    // Draw lines for each drum
+    for (const drumId of drumIds) {
+      const data = this.deviationData[drumId];
+      if (data.length < 2) continue;
+
+      // Get drum color
+      const settings = drumSettings[drumId];
+      const colorHex = settings?.color || '#ffffff';
+      const r = parseInt(colorHex.slice(1, 3), 16);
+      const g = parseInt(colorHex.slice(3, 5), 16);
+      const b = parseInt(colorHex.slice(5, 7), 16);
+
+      p5Instance.stroke(r, g, b, 220);
+      p5Instance.strokeWeight(2);
+      p5Instance.noFill();
+
+      // Draw the line
+      p5Instance.beginShape();
+      for (const point of data) {
+        const x = graphX + (point.time / maxTime) * graphWidth;
+        const y = graphY + graphHeight - (point.cumulativeDeviation / maxCumulative) * graphHeight;
+        p5Instance.vertex(x, y);
+      }
+      p5Instance.endShape();
+    }
+
+    // Draw stats table to the right of the graph
+    const tableX = graphX + graphWidth + 15;
+    const tableY = graphY - 5;
+
+    // Table header
+    p5Instance.fill(180);
+    p5Instance.textSize(8);
+    p5Instance.textAlign(p5Instance.LEFT, p5Instance.TOP);
+    p5Instance.text('Drum', tableX, tableY);
+    p5Instance.textAlign(p5Instance.RIGHT, p5Instance.TOP);
+    p5Instance.text('Hits', tableX + 55, tableY);
+    p5Instance.text('Avg', tableX + 95, tableY);
+    p5Instance.text('Std', tableX + 135, tableY);
+
+    // Separator line
+    p5Instance.stroke(80);
+    p5Instance.strokeWeight(1);
+    p5Instance.line(tableX, tableY + 11, tableX + 140, tableY + 11);
+
+    // Table rows
+    let rowY = tableY + 15;
+    for (const drumId of drumIds) {
+      const stats = drumStats[drumId];
+      if (!stats) continue;
+
+      const settings = drumSettings[drumId];
+      const colorHex = settings?.color || '#ffffff';
+      const r = parseInt(colorHex.slice(1, 3), 16);
+      const g = parseInt(colorHex.slice(3, 5), 16);
+      const b = parseInt(colorHex.slice(5, 7), 16);
+
+      // Color dot
+      p5Instance.fill(r, g, b);
+      p5Instance.noStroke();
+      p5Instance.circle(tableX + 4, rowY + 5, 6);
+
+      // Drum name (shortened)
+      p5Instance.fill(200);
+      p5Instance.textAlign(p5Instance.LEFT, p5Instance.TOP);
+      const shortName = drumId.length > 6 ? drumId.slice(0, 6) : drumId;
+      p5Instance.text(shortName, tableX + 12, rowY);
+
+      // Hits count
+      p5Instance.textAlign(p5Instance.RIGHT, p5Instance.TOP);
+      p5Instance.text(stats.hits.toString(), tableX + 55, rowY);
+
+      // Average deviation
+      p5Instance.text(stats.avgDeviation.toFixed(1), tableX + 95, rowY);
+
+      // Standard deviation
+      p5Instance.text(stats.stdDeviation.toFixed(1), tableX + 135, rowY);
+
+      rowY += 13;
+      if (rowY > graphY + graphHeight - 5) break; // Limit table height to graph area
+    }
+
+    p5Instance.pop();
+  }
+
+  /**
+   * Handle mouse press on deviation graph
+   * Returns true if graph was clicked (to prevent other interactions)
+   */
+  handleDeviationGraphMousePressed(mouseX, mouseY) {
+    if (!this.showDeviationGraph || this.layout !== 'staff') return false;
+
+    // Check if we have any data to display
+    const drumIds = Object.keys(this.deviationData);
+    if (drumIds.length === 0) return false;
+
+    // Graph dimensions - must match drawDeviationGraph
+    const graphWidth = 300;
+    const graphHeight = 150;
+    const graphMargin = 20;
+    const statsTableWidth = 180;
+    const totalWidth = graphWidth + statsTableWidth + 50;
+    const totalHeight = graphHeight + 50;
+
+    // Use default position if not set
+    const defaultX = graphMargin;
+    const defaultY = (window.height || 600) - totalHeight - graphMargin;
+    const baseX = this.deviationGraphX !== null ? this.deviationGraphX : defaultX;
+    const baseY = this.deviationGraphY !== null ? this.deviationGraphY : defaultY;
+
+    // Check if click is within graph bounds
+    if (mouseX >= baseX && mouseX <= baseX + totalWidth &&
+        mouseY >= baseY && mouseY <= baseY + totalHeight) {
+      this.deviationGraphDragging = true;
+      this.deviationGraphDragOffsetX = mouseX - baseX;
+      this.deviationGraphDragOffsetY = mouseY - baseY;
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Handle mouse drag on deviation graph
+   */
+  handleDeviationGraphMouseDragged(mouseX, mouseY) {
+    if (this.deviationGraphDragging) {
+      this.deviationGraphX = mouseX - this.deviationGraphDragOffsetX;
+      this.deviationGraphY = mouseY - this.deviationGraphDragOffsetY;
+    }
+  }
+
+  /**
+   * Handle mouse release on deviation graph
+   */
+  handleDeviationGraphMouseReleased() {
+    this.deviationGraphDragging = false;
   }
 
   /**
