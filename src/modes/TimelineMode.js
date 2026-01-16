@@ -33,13 +33,6 @@ import {
   METRONOME_MARKER_SIZE_BEAT,
   METRONOME_MARKER_SIZE_SUB,
   METRONOME_HAND_OFFSET,
-  METRONOME_FREQ_FIRST_BEAT,
-  METRONOME_FREQ_BEAT,
-  METRONOME_FREQ_SUBDIVISION,
-  METRONOME_GAIN_FIRST,
-  METRONOME_GAIN_BEAT,
-  METRONOME_GAIN_SUB,
-  METRONOME_CLICK_DURATION,
   TIMELINE_DOT_BASE_SIZE,
   TIMELINE_DOT_VELOCITY_MULT,
   TIMELINE_DOT_ALPHA,
@@ -122,6 +115,14 @@ export class TimelineMode {
     this.baseBpm = 80; // Starting BPM (captured when recording starts)
     this.lastTempoChangeMeasure = -1; // Track which measure we last changed tempo
 
+    // Tempo change tracking for continuous metronome
+    this.tempoChangeTime = 0; // Time (in seconds) when last tempo change occurred
+    this.tempoChangeSubdivisionOffset = 0; // Subdivision count at the time of tempo change
+
+    // Tempo history for drawing staff grids with correct BPM at each staff
+    // Each entry: { time: seconds, bpm: number, staffX: pixels }
+    this.tempoHistory = [];
+
     // Deviation tracking (staff mode only)
     this.showDeviationGraph = false; // Toggle for displaying deviation graph
     this.deviationData = {}; // Per-drum deviation data: { drumId: [{ time, deviation, cumulativeDeviation }] }
@@ -132,6 +133,7 @@ export class TimelineMode {
     this.deviationGraphDragging = false;
     this.deviationGraphDragOffsetX = 0;
     this.deviationGraphDragOffsetY = 0;
+    this.deviationGraphMode = 'cumulative'; // 'cumulative' or 'actual' timing error
 
     // Hit counters for point-based layouts (fibonacci, radial)
     this.globalHitCount = 0; // Total hits across all drums
@@ -351,14 +353,16 @@ export class TimelineMode {
 
       case 'staff':
       default:
-        // Original horizontal staff layout
-        const effectivePixelsPerSecond = this.getEffectivePixelsPerSecond(canvasWidth);
-        const totalX = timeElapsed * effectivePixelsPerSecond;
-        const staffIndex = Math.floor(totalX / this.staffWidth);
-        const xInStaff = totalX % this.staffWidth;
-        const staffY = staffIndex * (this.staffHeight + this.rowSpacing);
+        // Measure-based horizontal staff layout (handles tempo changes correctly)
+        // beatCount is the continuous beat count that accounts for tempo changes
+        const measureNum = Math.floor(beatCount / this.beatsPerMeasure);
+        const beatInMeasure = beatCount % this.beatsPerMeasure;
+
+        const staffPos = this.getStaffPositionForMeasure(measureNum, beatInMeasure, canvasWidth);
+        const staffY = staffPos.staffIndex * (this.staffHeight + this.rowSpacing);
         const laneY = staffY + (laneIndex * this.drumLineSpacing) + this.drumLineSpacing;
-        return { x: xInStaff, y: laneY };
+
+        return { x: staffPos.xInStaff, y: laneY };
     }
   }
 
@@ -373,7 +377,8 @@ export class TimelineMode {
 
     const currentTime = Date.now();
     const timeElapsed = (currentTime - this.startTime - this.pausedTime) / 1000.0;
-    const secondsPerBeat = 60 / this.bpm;
+    // Use baseBpm for warm-up calculation (not current bpm which may have changed)
+    const secondsPerBeat = 60 / this.baseBpm;
     const secondsPerMeasure = secondsPerBeat * this.beatsPerMeasure;
     const warmupDuration = secondsPerMeasure * this.warmupMeasures;
 
@@ -396,7 +401,9 @@ export class TimelineMode {
       return actualTimeElapsed;
     }
 
-    const secondsPerBeat = 60 / this.bpm;
+    // Use baseBpm for warm-up calculation (not current bpm which may have changed)
+    // This ensures consistent warm-up duration even with tempo automation
+    const secondsPerBeat = 60 / this.baseBpm;
     const secondsPerMeasure = secondsPerBeat * this.beatsPerMeasure;
     const warmupDuration = secondsPerMeasure * this.warmupMeasures;
 
@@ -476,11 +483,13 @@ export class TimelineMode {
       // Calculate effective time elapsed (accounts for warm-up period)
       // Also subtract MIDI latency compensation to align notes with grid
       timeElapsed = this.getEffectiveTimeElapsed() - (this.midiLatencyMs / 1000.0);
-      const secondsPerBeat = 60 / this.bpm;
-      beatCount = timeElapsed / secondsPerBeat;
+
+      // Use tempo-aware beat calculation to handle tempo changes correctly
+      beatCount = this.getBeatCountForTime(timeElapsed);
 
       // Track deviation from grid for staff mode
       if (this.layout === 'staff' && this.showDeviationGraph) {
+        const secondsPerBeat = 60 / this.bpm;
         this.recordDeviation(drumId, timeElapsed, secondsPerBeat);
       }
     }
@@ -587,10 +596,15 @@ export class TimelineMode {
     const currentTime = Date.now();
     const timeElapsed = (currentTime - this.startTime - this.pausedTime) / 1000.0;
 
-    // Calculate timing
+    // Calculate timing using continuous subdivision counting (handles tempo changes smoothly)
     const secondsPerBeat = 60 / this.bpm;
     const secondsPerSubdivision = secondsPerBeat / (this.subdivision / 4);
     const subdivisionsPerMeasure = this.subdivision * (this.beatsPerMeasure / 4);
+
+    // Calculate subdivisions since last tempo change, then add offset for continuity
+    const timeSinceTempoChange = timeElapsed - this.tempoChangeTime;
+    const subdivisionsSinceChange = timeSinceTempoChange / secondsPerSubdivision;
+    const currentSubdivision = this.tempoChangeSubdivisionOffset + subdivisionsSinceChange;
 
     // Position (use custom position if set, otherwise default to bottom right)
     const defaultX = canvasWidth - METRONOME_DEFAULT_MARGIN;
@@ -621,8 +635,7 @@ export class TimelineMode {
     }
     p5Instance.circle(centerX, centerY, radius * 2);
 
-    // Calculate current subdivision in measure
-    const currentSubdivision = timeElapsed / secondsPerSubdivision;
+    // Calculate current subdivision position within measure
     const subdivisionInMeasure = currentSubdivision % subdivisionsPerMeasure;
 
     // Draw subdivision markers
@@ -798,6 +811,9 @@ export class TimelineMode {
       // Reset tempo automation state
       this.baseBpm = this.bpm;
       this.lastTempoChangeMeasure = -1;
+      this.tempoChangeTime = 0;
+      this.tempoChangeSubdivisionOffset = 0;
+      this.tempoHistory = [{ time: 0, bpm: this.bpm, staffX: 0 }]; // Initialize with starting BPM
 
       // Clear deviation tracking data
       this.clearDeviationData();
@@ -830,6 +846,9 @@ export class TimelineMode {
         // Initialize tempo automation state
         this.baseBpm = this.bpm;
         this.lastTempoChangeMeasure = -1;
+        this.tempoChangeTime = 0;
+        this.tempoChangeSubdivisionOffset = 0;
+        this.tempoHistory = [{ time: 0, bpm: this.bpm, staffX: 0 }]; // Initialize with starting BPM
 
         debugLog('Timeline recording started');
       }
@@ -898,6 +917,9 @@ export class TimelineMode {
     // Reset tempo automation state (but keep settings)
     this.baseBpm = this.bpm;
     this.lastTempoChangeMeasure = -1;
+    this.tempoChangeTime = 0;
+    this.tempoChangeSubdivisionOffset = 0;
+    this.tempoHistory = [];
 
     // Clear deviation tracking data
     this.clearDeviationData();
@@ -907,6 +929,7 @@ export class TimelineMode {
 
   /**
    * Update metronome - play click sounds based on BPM and subdivision
+   * Uses continuous subdivision counting that handles tempo changes smoothly
    */
   updateMetronome() {
     if (!this.startTime) {
@@ -918,28 +941,22 @@ export class TimelineMode {
       return;
     }
 
-    // Reset if BPM or subdivision changed (manual change, not automation)
-    if (this.lastMetronomeBPM !== this.bpm || this.lastMetronomeSubdivision !== this.subdivision) {
-      this.lastMetronomeClick = -1;
-      this.lastMetronomeBPM = this.bpm;
-      this.lastMetronomeSubdivision = this.subdivision;
-    }
-
     const currentTime = Date.now();
     const timeElapsed = (currentTime - this.startTime - this.pausedTime) / 1000.0;
 
+    // Calculate subdivisions since last tempo change, then add offset
+    const timeSinceTempoChange = timeElapsed - this.tempoChangeTime;
     const secondsPerBeat = 60 / this.bpm;
     const secondsPerSubdivision = secondsPerBeat / (this.subdivision / 4);
+    const subdivisionsSinceChange = timeSinceTempoChange / secondsPerSubdivision;
+    const currentSubdivision = Math.floor(this.tempoChangeSubdivisionOffset + subdivisionsSinceChange);
 
-    // Calculate which subdivision we're on
-    const currentSubdivision = Math.floor(timeElapsed / secondsPerSubdivision);
-
-    // Calculate current measure (1-indexed)
+    // Calculate current measure (1-indexed) based on continuous subdivision count
     const subdivisionsPerMeasure = this.subdivision * (this.beatsPerMeasure / 4);
     const currentMeasure = Math.floor(currentSubdivision / subdivisionsPerMeasure) + 1;
 
-    // Check for tempo automation
-    this.updateTempoAutomation(currentMeasure);
+    // Check for tempo automation (pass time elapsed and current subdivision for smooth transition)
+    this.updateTempoAutomation(currentMeasure, timeElapsed, currentSubdivision);
 
     // Play click if we've crossed into a new subdivision
     if (currentSubdivision > this.lastMetronomeClick) {
@@ -958,9 +975,12 @@ export class TimelineMode {
 
   /**
    * Update tempo automation - increase BPM at specified bar intervals
+   * Handles tempo changes smoothly by tracking subdivision offset
    * @param {number} currentMeasure - Current measure number (1-indexed)
+   * @param {number} timeElapsed - Total time elapsed in seconds
+   * @param {number} currentSubdivision - Current subdivision count
    */
-  updateTempoAutomation(currentMeasure) {
+  updateTempoAutomation(currentMeasure, timeElapsed, currentSubdivision) {
     if (!this.tempoAutomationEnabled) return;
     if (this.tempoAutomationBars <= 0) return;
 
@@ -977,13 +997,38 @@ export class TimelineMode {
 
       // Apply the new BPM if it's different and under the cap
       if (newBpm !== this.bpm && newBpm <= this.tempoAutomationMaxBpm) {
+        // Save current subdivision position before changing tempo
+        this.tempoChangeTime = timeElapsed;
+        this.tempoChangeSubdivisionOffset = currentSubdivision;
+
+        // Record tempo change in history for staff grid drawing
+        // Calculate X position based on effective time (accounts for warm-up)
+        const effectiveTime = this.getEffectiveTimeElapsed();
+        this.tempoHistory.push({
+          time: effectiveTime,
+          bpm: newBpm,
+          measure: currentMeasure
+        });
+
         this.bpm = newBpm;
         this.lastMetronomeBPM = newBpm;
-        debugLog(`🎵 Tempo automation: BPM increased to ${newBpm} at measure ${currentMeasure}`);
+        debugLog(`🎵 Tempo automation: BPM increased to ${newBpm} at measure ${currentMeasure}, subdivision ${currentSubdivision}`);
 
         // Update the UI display
         this.updateBpmDisplay();
       } else if (newBpm > this.tempoAutomationMaxBpm && this.bpm !== this.tempoAutomationMaxBpm) {
+        // Save current subdivision position before changing tempo
+        this.tempoChangeTime = timeElapsed;
+        this.tempoChangeSubdivisionOffset = currentSubdivision;
+
+        // Record tempo change in history for staff grid drawing
+        const effectiveTime = this.getEffectiveTimeElapsed();
+        this.tempoHistory.push({
+          time: effectiveTime,
+          bpm: this.tempoAutomationMaxBpm,
+          measure: currentMeasure
+        });
+
         // Cap at max BPM
         this.bpm = this.tempoAutomationMaxBpm;
         this.lastMetronomeBPM = this.tempoAutomationMaxBpm;
@@ -1081,9 +1126,11 @@ export class TimelineMode {
       return;
     }
 
-    // Find the max cumulative deviation and max time for scaling
+    // Find the max deviation values and max time for scaling
     // Also calculate stats for each drum
     let maxCumulative = 0;
+    let maxActualDeviation = 0; // Max absolute deviation for actual mode
+    let minActualDeviation = 0; // Min deviation (most negative/early)
     let maxTime = 0;
     const drumStats = {};
     for (const drumId of drumIds) {
@@ -1092,6 +1139,12 @@ export class TimelineMode {
         const lastEntry = data[data.length - 1];
         maxCumulative = Math.max(maxCumulative, lastEntry.cumulativeDeviation);
         maxTime = Math.max(maxTime, lastEntry.time);
+
+        // Track min/max actual deviations for scaling in actual mode
+        for (const point of data) {
+          maxActualDeviation = Math.max(maxActualDeviation, point.deviation);
+          minActualDeviation = Math.min(minActualDeviation, point.deviation);
+        }
 
         // Calculate stats: hits, average deviation, and standard deviation
         const deviations = data.map(d => Math.abs(d.deviation));
@@ -1111,7 +1164,11 @@ export class TimelineMode {
       }
     }
 
-    if (maxCumulative === 0 || maxTime === 0) {
+    // For actual mode, ensure symmetric range around zero
+    const actualRange = Math.max(Math.abs(maxActualDeviation), Math.abs(minActualDeviation), 10);
+
+    const isActualMode = this.deviationGraphMode === 'actual';
+    if ((isActualMode && actualRange === 0) || (!isActualMode && maxCumulative === 0) || maxTime === 0) {
       // Reset cursor when no valid data
       if (this._deviationGraphCursorSet) {
         p5Instance.cursor(p5Instance.ARROW);
@@ -1124,8 +1181,8 @@ export class TimelineMode {
     const graphWidth = 300;
     const graphHeight = 150;
     const graphMargin = 20;
-    const statsTableWidth = 180; // Width for stats table on the right
-    const totalWidth = graphWidth + statsTableWidth + 50; // Graph + table + margins
+    const statsTableWidth = 200; // Width for stats table on the right (larger for 2x text)
+    const totalWidth = graphWidth + statsTableWidth + 60; // Graph + table + margins
     const totalHeight = graphHeight + 50; // Just graph height + margins for title and axis labels
 
     // Position (use custom position if set, otherwise default to bottom-left)
@@ -1146,16 +1203,17 @@ export class TimelineMode {
 
     p5Instance.push();
 
-    // Draw semi-transparent background with hover effect
+    // Draw light grey background with hover effect
     if (isMouseOver || this.deviationGraphDragging) {
-      p5Instance.fill(0, 0, 0, 200);
-      p5Instance.stroke(150, 200, 255, 220);
+      p5Instance.fill(240, 240, 240, 245);
+      p5Instance.stroke(100, 150, 200, 220);
       p5Instance.strokeWeight(2);
       p5Instance.cursor(p5Instance.MOVE);
       this._deviationGraphCursorSet = true;
     } else {
-      p5Instance.fill(0, 0, 0, 180);
-      p5Instance.noStroke();
+      p5Instance.fill(235, 235, 235, 240);
+      p5Instance.stroke(180, 180, 180);
+      p5Instance.strokeWeight(1);
       // Reset cursor when mouse leaves the graph
       if (this._deviationGraphCursorSet) {
         p5Instance.cursor(p5Instance.ARROW);
@@ -1164,40 +1222,67 @@ export class TimelineMode {
     }
     p5Instance.rect(baseX, baseY, totalWidth, totalHeight, 5);
 
-    // Draw title
-    p5Instance.fill(255);
+    // Draw title and BPM (dark text on light background)
+    p5Instance.fill(40, 40, 40);
     p5Instance.textSize(11);
     p5Instance.textAlign(p5Instance.LEFT, p5Instance.TOP);
-    p5Instance.text('Cumulative Timing Deviation (ms)', graphX, baseY + 5);
+    const graphTitle = isActualMode ? 'Timing Deviation (ms) [+late/-early]' : 'Cumulative Timing Deviation (ms)';
+    p5Instance.text(graphTitle, graphX, baseY + 5);
+
+    // Draw current BPM (right-aligned in title area)
+    p5Instance.fill(180, 100, 50);
+    p5Instance.textAlign(p5Instance.RIGHT, p5Instance.TOP);
+    p5Instance.text(`${this.bpm} BPM`, baseX + totalWidth - 10, baseY + 5);
 
     // Draw axes
-    p5Instance.stroke(100);
+    p5Instance.stroke(120, 120, 120);
     p5Instance.strokeWeight(1);
-    // X-axis
-    p5Instance.line(graphX, graphY + graphHeight, graphX + graphWidth, graphY + graphHeight);
+    // X-axis (at bottom for cumulative, at center for actual mode)
+    const xAxisY = isActualMode ? graphY + graphHeight / 2 : graphY + graphHeight;
+    p5Instance.line(graphX, xAxisY, graphX + graphWidth, xAxisY);
     // Y-axis
     p5Instance.line(graphX, graphY, graphX, graphY + graphHeight);
 
-    // Draw axis labels
-    p5Instance.fill(150);
+    // Draw axis labels (dark text)
+    p5Instance.fill(80, 80, 80);
     p5Instance.noStroke();
     p5Instance.textSize(9);
     p5Instance.textAlign(p5Instance.CENTER, p5Instance.TOP);
     p5Instance.text('Time (s)', graphX + graphWidth / 2, graphY + graphHeight + 5);
 
     p5Instance.textAlign(p5Instance.RIGHT, p5Instance.CENTER);
-    p5Instance.text(maxCumulative.toFixed(0), graphX - 5, graphY);
-    p5Instance.text('0', graphX - 5, graphY + graphHeight);
+    if (isActualMode) {
+      // Symmetric scale for actual mode (+/- around zero)
+      p5Instance.text(`+${actualRange.toFixed(0)}`, graphX - 5, graphY);
+      p5Instance.text('0', graphX - 5, graphY + graphHeight / 2);
+      p5Instance.text(`-${actualRange.toFixed(0)}`, graphX - 5, graphY + graphHeight);
+    } else {
+      p5Instance.text(maxCumulative.toFixed(0), graphX - 5, graphY);
+      p5Instance.text('0', graphX - 5, graphY + graphHeight);
+    }
 
     // Time labels
     p5Instance.textAlign(p5Instance.CENTER, p5Instance.TOP);
     p5Instance.text('0', graphX, graphY + graphHeight + 5);
     p5Instance.text(maxTime.toFixed(1), graphX + graphWidth, graphY + graphHeight + 5);
 
-    // Draw lines for each drum
+    // Draw faint vertical lines for tempo changes
+    if (this.tempoHistory && this.tempoHistory.length > 1 && maxTime > 0) {
+      p5Instance.stroke(200, 150, 100, 100); // Faint orange/brown
+      p5Instance.strokeWeight(1);
+      for (let i = 1; i < this.tempoHistory.length; i++) {
+        const tempoEntry = this.tempoHistory[i];
+        if (tempoEntry.time > 0 && tempoEntry.time < maxTime) {
+          const lineX = graphX + (tempoEntry.time / maxTime) * graphWidth;
+          p5Instance.line(lineX, graphY, lineX, graphY + graphHeight);
+        }
+      }
+    }
+
+    // Draw data for each drum
     for (const drumId of drumIds) {
       const data = this.deviationData[drumId];
-      if (data.length < 2) continue;
+      if (data.length < 1) continue;
 
       // Get drum color
       const settings = drumSettings[drumId];
@@ -1206,41 +1291,56 @@ export class TimelineMode {
       const g = parseInt(colorHex.slice(3, 5), 16);
       const b = parseInt(colorHex.slice(5, 7), 16);
 
-      p5Instance.stroke(r, g, b, 220);
-      p5Instance.strokeWeight(2);
-      p5Instance.noFill();
+      if (isActualMode) {
+        // Draw individual points for actual deviation mode
+        p5Instance.noStroke();
+        p5Instance.fill(r, g, b, 180);
+        for (const point of data) {
+          const x = graphX + (point.time / maxTime) * graphWidth;
+          // Map deviation to Y: positive (late) above center, negative (early) below
+          // Center line is at graphY + graphHeight/2
+          const normalizedDev = point.deviation / actualRange; // -1 to +1
+          const y = graphY + graphHeight / 2 - (normalizedDev * graphHeight / 2);
+          p5Instance.circle(x, y, 5);
+        }
+      } else {
+        // Draw cumulative line (existing behavior)
+        if (data.length < 2) continue;
+        p5Instance.stroke(r, g, b, 220);
+        p5Instance.strokeWeight(2);
+        p5Instance.noFill();
 
-      // Draw the line
-      p5Instance.beginShape();
-      for (const point of data) {
-        const x = graphX + (point.time / maxTime) * graphWidth;
-        const y = graphY + graphHeight - (point.cumulativeDeviation / maxCumulative) * graphHeight;
-        p5Instance.vertex(x, y);
+        p5Instance.beginShape();
+        for (const point of data) {
+          const x = graphX + (point.time / maxTime) * graphWidth;
+          const y = graphY + graphHeight - (point.cumulativeDeviation / maxCumulative) * graphHeight;
+          p5Instance.vertex(x, y);
+        }
+        p5Instance.endShape();
       }
-      p5Instance.endShape();
     }
 
     // Draw stats table to the right of the graph
     const tableX = graphX + graphWidth + 15;
     const tableY = graphY - 5;
 
-    // Table header
-    p5Instance.fill(180);
-    p5Instance.textSize(8);
+    // Table header (larger text - 16px, 2x the original 8px)
+    p5Instance.fill(60, 60, 60);
+    p5Instance.textSize(16);
     p5Instance.textAlign(p5Instance.LEFT, p5Instance.TOP);
     p5Instance.text('Drum', tableX, tableY);
     p5Instance.textAlign(p5Instance.RIGHT, p5Instance.TOP);
-    p5Instance.text('Hits', tableX + 55, tableY);
-    p5Instance.text('Avg', tableX + 95, tableY);
-    p5Instance.text('Std', tableX + 135, tableY);
+    p5Instance.text('Hits', tableX + 70, tableY);
+    p5Instance.text('Avg', tableX + 115, tableY);
+    p5Instance.text('Std', tableX + 160, tableY);
 
     // Separator line
-    p5Instance.stroke(80);
+    p5Instance.stroke(150, 150, 150);
     p5Instance.strokeWeight(1);
-    p5Instance.line(tableX, tableY + 11, tableX + 140, tableY + 11);
+    p5Instance.line(tableX, tableY + 20, tableX + 165, tableY + 20);
 
-    // Table rows
-    let rowY = tableY + 15;
+    // Table rows (larger text - 16px)
+    let rowY = tableY + 26;
     for (const drumId of drumIds) {
       const stats = drumStats[drumId];
       if (!stats) continue;
@@ -1251,29 +1351,31 @@ export class TimelineMode {
       const g = parseInt(colorHex.slice(3, 5), 16);
       const b = parseInt(colorHex.slice(5, 7), 16);
 
-      // Color dot
+      // Color dot (larger)
       p5Instance.fill(r, g, b);
       p5Instance.noStroke();
-      p5Instance.circle(tableX + 4, rowY + 5, 6);
+      p5Instance.circle(tableX + 6, rowY + 8, 10);
 
-      // Drum name (shortened)
-      p5Instance.fill(200);
+      // Drum name - use settings.name instead of drumId
+      p5Instance.fill(40, 40, 40);
+      p5Instance.textSize(16);
       p5Instance.textAlign(p5Instance.LEFT, p5Instance.TOP);
-      const shortName = drumId.length > 6 ? drumId.slice(0, 6) : drumId;
-      p5Instance.text(shortName, tableX + 12, rowY);
+      const drumName = settings?.name || drumId;
+      const shortName = drumName.length > 8 ? drumName.slice(0, 8) : drumName;
+      p5Instance.text(shortName, tableX + 16, rowY);
 
       // Hits count
       p5Instance.textAlign(p5Instance.RIGHT, p5Instance.TOP);
-      p5Instance.text(stats.hits.toString(), tableX + 55, rowY);
+      p5Instance.text(stats.hits.toString(), tableX + 70, rowY);
 
       // Average deviation
-      p5Instance.text(stats.avgDeviation.toFixed(1), tableX + 95, rowY);
+      p5Instance.text(stats.avgDeviation.toFixed(1), tableX + 115, rowY);
 
       // Standard deviation
-      p5Instance.text(stats.stdDeviation.toFixed(1), tableX + 135, rowY);
+      p5Instance.text(stats.stdDeviation.toFixed(1), tableX + 160, rowY);
 
-      rowY += 13;
-      if (rowY > graphY + graphHeight - 5) break; // Limit table height to graph area
+      rowY += 22;
+      if (rowY > graphY + graphHeight - 10) break; // Limit table height to graph area
     }
 
     p5Instance.pop();
@@ -1294,8 +1396,8 @@ export class TimelineMode {
     const graphWidth = 300;
     const graphHeight = 150;
     const graphMargin = 20;
-    const statsTableWidth = 180;
-    const totalWidth = graphWidth + statsTableWidth + 50;
+    const statsTableWidth = 200;
+    const totalWidth = graphWidth + statsTableWidth + 60;
     const totalHeight = graphHeight + 50;
 
     // Use default position if not set
@@ -1333,7 +1435,7 @@ export class TimelineMode {
   }
 
   /**
-   * Play metronome click sound
+   * Play metronome click sound using a short noise burst for precise timing perception
    */
   playMetronomeClick(isFirstBeat, isBeat) {
     if (!this.audioContext) {
@@ -1346,26 +1448,47 @@ export class TimelineMode {
       this.audioContext.resume();
     }
 
-    const oscillator = this.audioContext.createOscillator();
-    const gainNode = this.audioContext.createGain();
+    const now = this.audioContext.currentTime;
 
-    oscillator.connect(gainNode);
-    gainNode.connect(this.audioContext.destination);
+    // Create a short noise burst filtered to sound like a click
+    // This is more precise than a sine wave oscillator
+    const bufferSize = Math.floor(this.audioContext.sampleRate * 0.015); // 15ms click
+    const buffer = this.audioContext.createBuffer(1, bufferSize, this.audioContext.sampleRate);
+    const data = buffer.getChannelData(0);
 
-    // Different tones for different beats
-    if (isFirstBeat) {
-      oscillator.frequency.value = METRONOME_FREQ_FIRST_BEAT;
-      gainNode.gain.value = METRONOME_GAIN_FIRST;
-    } else if (isBeat) {
-      oscillator.frequency.value = METRONOME_FREQ_BEAT;
-      gainNode.gain.value = METRONOME_GAIN_BEAT;
-    } else {
-      oscillator.frequency.value = METRONOME_FREQ_SUBDIVISION;
-      gainNode.gain.value = METRONOME_GAIN_SUB;
+    // Generate noise with exponential decay for sharp attack
+    for (let i = 0; i < bufferSize; i++) {
+      const decay = Math.exp(-i / (bufferSize * 0.15)); // Fast decay
+      data[i] = (Math.random() * 2 - 1) * decay;
     }
 
-    oscillator.start(this.audioContext.currentTime);
-    oscillator.stop(this.audioContext.currentTime + METRONOME_CLICK_DURATION);
+    const noiseSource = this.audioContext.createBufferSource();
+    noiseSource.buffer = buffer;
+
+    // Bandpass filter to give the click a tonal character
+    const filter = this.audioContext.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.Q.value = 5;
+
+    const gainNode = this.audioContext.createGain();
+
+    noiseSource.connect(filter);
+    filter.connect(gainNode);
+    gainNode.connect(this.audioContext.destination);
+
+    // Different tones and volumes for different beats
+    if (isFirstBeat) {
+      filter.frequency.value = 2500; // Higher pitch for downbeat
+      gainNode.gain.value = 0.5;
+    } else if (isBeat) {
+      filter.frequency.value = 1800; // Medium pitch for beats
+      gainNode.gain.value = 0.35;
+    } else {
+      filter.frequency.value = 1200; // Lower pitch for subdivisions
+      gainNode.gain.value = 0.2;
+    }
+
+    noiseSource.start(now);
   }
 
   /**
@@ -1410,7 +1533,148 @@ export class TimelineMode {
   }
 
   /**
+   * Get BPM at a specific measure number, using tempo history
+   * @param {number} measureNum - Measure number (0-indexed)
+   * @returns {number} - BPM for that measure
+   */
+  getBpmAtMeasure(measureNum) {
+    if (!this.tempoHistory || this.tempoHistory.length === 0) {
+      return this.bpm;
+    }
+
+    // Find the tempo entry that was active at this measure
+    let activeBpm = this.tempoHistory[0].bpm;
+    for (const entry of this.tempoHistory) {
+      // entry.measure is 1-indexed (the measure when tempo changed)
+      if (entry.measure && entry.measure <= measureNum + 1) {
+        activeBpm = entry.bpm;
+      } else if (!entry.measure) {
+        // Initial entry at time 0
+        activeBpm = entry.bpm;
+      }
+    }
+    return activeBpm;
+  }
+
+  /**
+   * Get the current continuous subdivision count (accounts for tempo changes)
+   * This is the authoritative measure of position in the timeline
+   * @returns {number} - Current subdivision count
+   */
+  getCurrentSubdivision() {
+    if (!this.startTime) return 0;
+
+    const currentTime = this.recording ? Date.now() : (this.stopTime || Date.now());
+    const timeElapsed = (currentTime - this.startTime - this.pausedTime) / 1000.0;
+
+    // Account for warm-up
+    if (this.warmupMeasures > 0) {
+      const warmupSecondsPerBeat = 60 / this.baseBpm;
+      const warmupDuration = warmupSecondsPerBeat * this.beatsPerMeasure * this.warmupMeasures;
+      if (timeElapsed < warmupDuration) return 0;
+    }
+
+    // Calculate subdivisions using the same logic as updateMetronome
+    const timeSinceTempoChange = timeElapsed - this.tempoChangeTime;
+    const secondsPerBeat = 60 / this.bpm;
+    const secondsPerSubdivision = secondsPerBeat / (this.subdivision / 4);
+    const subdivisionsSinceChange = timeSinceTempoChange / secondsPerSubdivision;
+
+    return this.tempoChangeSubdivisionOffset + subdivisionsSinceChange;
+  }
+
+  /**
+   * Get the current measure number (0-indexed) based on continuous subdivision counting
+   * @returns {number} - Current measure number (0-indexed)
+   */
+  getCurrentMeasure() {
+    const currentSubdivision = this.getCurrentSubdivision();
+    const subdivisionsPerMeasure = this.subdivision * (this.beatsPerMeasure / 4);
+    return Math.floor(currentSubdivision / subdivisionsPerMeasure);
+  }
+
+
+  /**
+   * Get beat count for a given effective time, accounting for tempo changes
+   * This ensures dots are positioned correctly even when tempo changes during recording
+   * @param {number} effectiveTime - Time elapsed since recording started (excluding warm-up)
+   * @returns {number} - Beat count at this time
+   */
+  getBeatCountForTime(effectiveTime) {
+    // If no tempo history or tempo automation not enabled, use simple calculation
+    if (!this.tempoHistory || this.tempoHistory.length <= 1 || !this.tempoAutomationEnabled) {
+      const secondsPerBeat = 60 / this.bpm;
+      return effectiveTime / secondsPerBeat;
+    }
+
+    // Walk through tempo history to calculate beats accumulated at each tempo
+    let totalBeats = 0;
+    let previousTime = 0;
+    let previousBpm = this.tempoHistory[0].bpm;
+
+    for (let i = 1; i < this.tempoHistory.length; i++) {
+      const entry = this.tempoHistory[i];
+      const entryTime = entry.time;
+
+      // If this tempo change is after our target time, stop here
+      if (entryTime > effectiveTime) {
+        break;
+      }
+
+      // Calculate beats during the previous tempo period
+      const duration = entryTime - previousTime;
+      const secondsPerBeat = 60 / previousBpm;
+      totalBeats += duration / secondsPerBeat;
+
+      previousTime = entryTime;
+      previousBpm = entry.bpm;
+    }
+
+    // Add remaining time at current tempo
+    const remainingTime = effectiveTime - previousTime;
+    const secondsPerBeat = 60 / previousBpm;
+    totalBeats += remainingTime / secondsPerBeat;
+
+    return totalBeats;
+  }
+
+  /**
+   * Calculate staff position based on measure number (measure-based positioning)
+   * @param {number} measureNum - Measure number (0-indexed)
+   * @param {number} beatInMeasure - Beat position within the measure (0 to beatsPerMeasure)
+   * @param {number} canvasWidth - Canvas width for calculating staff width
+   * @returns {Object} - { staffIndex, xInStaff, staffWidth, pixelsPerBeat }
+   */
+  getStaffPositionForMeasure(measureNum, beatInMeasure, canvasWidth) {
+    const maxStaffWidth = canvasWidth - 100;
+    const measuresPerStaff = this.measuresPerStaffPreference > 0 ? this.measuresPerStaffPreference : 4;
+
+    // Which staff row is this measure on?
+    const staffIndex = Math.floor(measureNum / measuresPerStaff);
+
+    // Which measure within this staff (0-indexed)?
+    const measureInStaff = measureNum % measuresPerStaff;
+
+    // Calculate staff width and pixels per measure
+    const staffWidth = maxStaffWidth;
+    const pixelsPerMeasure = staffWidth / measuresPerStaff;
+    const pixelsPerBeat = pixelsPerMeasure / this.beatsPerMeasure;
+
+    // Calculate x position within staff
+    const xInStaff = (measureInStaff * pixelsPerMeasure) + (beatInMeasure * pixelsPerBeat);
+
+    return {
+      staffIndex,
+      xInStaff,
+      staffWidth,
+      pixelsPerBeat,
+      pixelsPerMeasure
+    };
+  }
+
+  /**
    * Draw timeline lane guides overlay
+   * Uses measure-based positioning for correct behavior with tempo automation
    */
   drawLaneGuides(p5Instance, offsetX, offsetY, scale, paintCanvas) {
     // Only draw staff grid when using staff layout
@@ -1421,41 +1685,32 @@ export class TimelineMode {
     p5Instance.push();
     p5Instance.colorMode(p5Instance.RGB, 255);
 
-    // Calculate beat/measure metrics
-    const secondsPerBeat = 60 / this.bpm;
-    const secondsPerSubdivision = secondsPerBeat / (this.subdivision / 4);
     const maxStaffWidth = paintCanvas.width - 100;
+    const measuresPerStaff = this.measuresPerStaffPreference > 0 ? this.measuresPerStaffPreference : 4;
 
-    // Calculate staff width and spacing based on user preference
-    const effectivePixelsPerSecond = this.getEffectivePixelsPerSecond(paintCanvas.width);
-    let pixelsPerBeat, pixelsPerMeasure, pixelsPerSubdivision;
+    // Set staff dimensions
+    this.measuresPerStaff = measuresPerStaff;
+    this.staffWidth = maxStaffWidth;
 
-    if (this.measuresPerStaffPreference === 0) {
-      // Auto mode: use default spacing and fit as many measures as possible
-      pixelsPerBeat = secondsPerBeat * this.pixelsPerSecond;
-      pixelsPerMeasure = pixelsPerBeat * this.beatsPerMeasure;
-      pixelsPerSubdivision = secondsPerSubdivision * this.pixelsPerSecond;
-      this.measuresPerStaff = Math.max(1, Math.floor(maxStaffWidth / pixelsPerMeasure));
-      this.staffWidth = this.measuresPerStaff * pixelsPerMeasure;
-    } else {
-      // User-specified number of measures: adjust spacing to fill canvas width
-      this.measuresPerStaff = this.measuresPerStaffPreference;
-      this.staffWidth = maxStaffWidth;
-      pixelsPerMeasure = this.staffWidth / this.measuresPerStaff;
-      pixelsPerBeat = pixelsPerMeasure / this.beatsPerMeasure;
-      pixelsPerSubdivision = pixelsPerBeat / (this.subdivision / 4);
-    }
+    // Calculate grid spacing (same for all staffs when using fixed measures per staff)
+    const pixelsPerMeasure = this.staffWidth / measuresPerStaff;
+    const pixelsPerBeat = pixelsPerMeasure / this.beatsPerMeasure;
+    const pixelsPerSubdivision = pixelsPerBeat / (this.subdivision / 4);
 
-    // Calculate how many staffs to show
-    // Use effective time (excludes warm-up) for visual timeline
-    const timeElapsed = this.getEffectiveTimeElapsed();
-    const totalX = timeElapsed * effectivePixelsPerSecond;
-    const maxStaffs = Math.max(1, Math.ceil(totalX / this.staffWidth) + 1);
-    const maxStaffsToShow = Math.min(maxStaffs, Math.floor(paintCanvas.height / (this.staffHeight + this.rowSpacing)) + 1);
+    // Calculate how many staffs to show based on current measure
+    const currentMeasure = this.getCurrentMeasure();
+    const currentStaffIdx = Math.floor(currentMeasure / measuresPerStaff);
+    const maxStaffsToShow = Math.min(currentStaffIdx + 2, Math.floor(paintCanvas.height / (this.staffHeight + this.rowSpacing)) + 1);
 
     // Draw staffs
     for (let staffIdx = 0; staffIdx < maxStaffsToShow; staffIdx++) {
       const staffY = staffIdx * (this.staffHeight + this.rowSpacing);
+
+      // Calculate the starting measure for this staff (0-indexed)
+      const staffStartMeasure = staffIdx * measuresPerStaff;
+
+      // Get BPM for this staff based on the measure number
+      const staffBpm = this.getBpmAtMeasure(staffStartMeasure);
 
       if (this.showGrid) {
         // Draw horizontal staff lines for each drum
@@ -1470,12 +1725,12 @@ export class TimelineMode {
         }
 
         // Draw subdivision lines
-        const maxBeats = Math.ceil(this.staffWidth / pixelsPerBeat);
+        const totalBeats = measuresPerStaff * this.beatsPerMeasure;
         const subdivisionsPerBeat = this.subdivision / 4;
 
         p5Instance.stroke(190, 190, 190, 200);
         p5Instance.strokeWeight(1);
-        for (let beat = 0; beat <= maxBeats; beat++) {
+        for (let beat = 0; beat <= totalBeats; beat++) {
           for (let sub = 1; sub < subdivisionsPerBeat; sub++) {
             const xPos = beat * pixelsPerBeat + sub * pixelsPerSubdivision;
             if (xPos <= this.staffWidth) {
@@ -1490,7 +1745,7 @@ export class TimelineMode {
         // Draw beat lines
         p5Instance.stroke(170, 170, 170, 180);
         p5Instance.strokeWeight(1.5);
-        for (let beat = 0; beat <= maxBeats; beat++) {
+        for (let beat = 0; beat <= totalBeats; beat++) {
           if (beat % this.beatsPerMeasure !== 0) {
             const xPos = beat * pixelsPerBeat;
             if (xPos <= this.staffWidth) {
@@ -1505,8 +1760,8 @@ export class TimelineMode {
         // Draw measure lines
         p5Instance.stroke(150, 150, 150, 180);
         p5Instance.strokeWeight(2);
-        for (let measure = 0; measure <= maxBeats / this.beatsPerMeasure; measure++) {
-          const xPos = measure * pixelsPerBeat * this.beatsPerMeasure;
+        for (let measure = 0; measure <= measuresPerStaff; measure++) {
+          const xPos = measure * pixelsPerMeasure;
           if (xPos <= this.staffWidth) {
             const x = offsetX + xPos * scale;
             const y1 = offsetY + staffY * scale;
@@ -1519,7 +1774,6 @@ export class TimelineMode {
       // Draw two thin separator lines between staff rows
       if (staffIdx > 0 && this.rowSpacing > 0) {
         const gapStart = (staffY - this.rowSpacing) * scale + offsetY;
-        const gapEnd = staffY * scale + offsetY;
         const lineSpacing = this.rowSpacing * scale / 3; // Divide gap into thirds
 
         // First thin line (1/3 into the gap)
@@ -1545,10 +1799,14 @@ export class TimelineMode {
       p5Instance.textAlign(p5Instance.LEFT, p5Instance.TOP);
       p5Instance.textSize(10 * scale);
       p5Instance.fill(0, 0, 0, 80);
-      const startTime = staffIdx * (this.staffWidth / effectivePixelsPerSecond);
-      const startBeat = Math.floor(startTime / secondsPerBeat);
-      const startMeasure = Math.floor(startBeat / this.beatsPerMeasure);
-      p5Instance.text(`M${startMeasure + 1}`, offsetX + 5 * scale, offsetY + staffY * scale + 5 * scale);
+      p5Instance.text(`M${staffStartMeasure + 1}`, offsetX + 5 * scale, offsetY + staffY * scale + 5 * scale);
+
+      // Show BPM for this staff (helpful when tempo changes)
+      if (this.tempoAutomationEnabled && this.tempoHistory && this.tempoHistory.length > 1) {
+        p5Instance.fill(100, 100, 100, 120);
+        p5Instance.textAlign(p5Instance.RIGHT, p5Instance.TOP);
+        p5Instance.text(`${staffBpm} BPM`, offsetX + this.staffWidth * scale - 5 * scale, offsetY + staffY * scale + 5 * scale);
+      }
 
       // Draw staff separator line (darker horizontal line between staffs)
       if (staffIdx < maxStaffsToShow - 1) {
@@ -1559,48 +1817,53 @@ export class TimelineMode {
       }
     }
 
-    // Draw playhead line (current time position)
+    // Draw playhead line (current position based on measure/beat)
     // Don't draw during warm-up period
-    if (this.startTime !== null && totalX > 0 && !this.isInWarmup()) {
-      const staffIndex = Math.floor(totalX / this.staffWidth);
-      const xInStaff = totalX % this.staffWidth;
-      const staffY = staffIndex * (this.staffHeight + this.rowSpacing);
+    if (this.startTime !== null && !this.isInWarmup()) {
+      const currentSubdivision = this.getCurrentSubdivision();
+      const subdivisionsPerMeasure = this.subdivision * (this.beatsPerMeasure / 4);
+      const currentMeasureFloat = currentSubdivision / subdivisionsPerMeasure;
 
-      // Calculate beat pulse for visual effect
-      let pulseAmount = 0;
-      if (this.recording && this.metronomeEnabled) {
-        const currentTime = Date.now();
-        const timeElapsed = (currentTime - this.startTime - this.pausedTime) / 1000.0;
-        const secondsPerBeat = 60 / this.bpm;
-        const beatProgress = (timeElapsed % secondsPerBeat) / secondsPerBeat;
+      if (currentMeasureFloat > 0) {
+        // Calculate staff position from measure
+        const measureNum = Math.floor(currentMeasureFloat);
+        const beatInMeasure = (currentMeasureFloat - measureNum) * this.beatsPerMeasure;
+        const staffPos = this.getStaffPositionForMeasure(measureNum, beatInMeasure, paintCanvas.width);
 
-        // Create a sharp pulse at the start of each beat that decays quickly
-        // Pulse is strongest at beat (0) and decays over first portion of the beat
-        if (beatProgress < PLAYHEAD_PULSE_DECAY) {
-          pulseAmount = 1 - (beatProgress / PLAYHEAD_PULSE_DECAY); // 1.0 at beat start, 0.0 at decay point
+        const playheadStaffY = staffPos.staffIndex * (this.staffHeight + this.rowSpacing);
+
+        // Calculate beat pulse for visual effect
+        let pulseAmount = 0;
+        if (this.recording && this.metronomeEnabled) {
+          const subdivisionInBeat = currentSubdivision % (this.subdivision / 4);
+          const beatProgress = subdivisionInBeat / (this.subdivision / 4);
+
+          // Create a sharp pulse at the start of each beat that decays quickly
+          if (beatProgress < PLAYHEAD_PULSE_DECAY) {
+            pulseAmount = 1 - (beatProgress / PLAYHEAD_PULSE_DECAY);
+          }
         }
+
+        // Red when recording, grey when stopped
+        if (this.recording) {
+          const baseBrightness = 50;
+          const pulseBrightness = baseBrightness + (pulseAmount * 205);
+          const baseAlpha = 200;
+          const pulseAlpha = baseAlpha + (pulseAmount * 55);
+          p5Instance.stroke(255, pulseBrightness, pulseBrightness, pulseAlpha);
+        } else {
+          p5Instance.stroke(100, 100, 100, 150);
+        }
+
+        // Add pulse effect to line thickness
+        const pulseWeight = PLAYHEAD_BASE_WEIGHT + (pulseAmount * PLAYHEAD_PULSE_WEIGHT);
+        p5Instance.strokeWeight(pulseWeight);
+
+        const playheadX = offsetX + staffPos.xInStaff * scale;
+        const playheadY1 = offsetY + (staffPos.staffIndex * (this.staffHeight + this.rowSpacing)) * scale;
+        const playheadY2 = offsetY + (staffPos.staffIndex * (this.staffHeight + this.rowSpacing) + this.staffHeight) * scale;
+        p5Instance.line(playheadX, playheadY1, playheadX, playheadY2);
       }
-
-      // Red when recording, grey when stopped
-      // Add pulse effect to brightness and alpha
-      if (this.recording) {
-        const baseBrightness = 50;
-        const pulseBrightness = baseBrightness + (pulseAmount * 205); // Pulses from 50 to 255
-        const baseAlpha = 200;
-        const pulseAlpha = baseAlpha + (pulseAmount * 55); // Pulses from 200 to 255
-        p5Instance.stroke(255, pulseBrightness, pulseBrightness, pulseAlpha);
-      } else {
-        p5Instance.stroke(100, 100, 100, 150);
-      }
-
-      // Add pulse effect to line thickness
-      const pulseWeight = PLAYHEAD_BASE_WEIGHT + (pulseAmount * PLAYHEAD_PULSE_WEIGHT);
-      p5Instance.strokeWeight(pulseWeight);
-
-      const x = offsetX + xInStaff * scale;
-      const y1 = offsetY + staffY * scale;
-      const y2 = offsetY + (staffY + this.staffHeight) * scale;
-      p5Instance.line(x, y1, x, y2);
     }
 
     p5Instance.pop();

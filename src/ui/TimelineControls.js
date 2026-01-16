@@ -180,6 +180,15 @@ export class TimelineControls {
       });
     }
 
+    // Deviation graph mode select (cumulative vs actual)
+    const deviationGraphModeSelect = document.getElementById('deviation-graph-mode');
+    if (deviationGraphModeSelect) {
+      deviationGraphModeSelect.addEventListener('change', (e) => {
+        this.timelineMode.deviationGraphMode = e.target.value;
+        this.scheduleAutoSave();
+      });
+    }
+
     // Row spacing slider
     const rowSpacingSlider = document.getElementById('timeline-row-spacing');
     if (rowSpacingSlider) {
@@ -684,6 +693,11 @@ export class TimelineControls {
     if (latencyInput) latencyInput.value = this.timelineMode.midiLatencyMs;
     if (showGridCheckbox) showGridCheckbox.checked = this.timelineMode.showGrid;
     if (showDeviationCheckbox) showDeviationCheckbox.checked = this.timelineMode.showDeviationGraph;
+
+    // Deviation graph mode select
+    const deviationGraphModeSelect = document.getElementById('deviation-graph-mode');
+    if (deviationGraphModeSelect) deviationGraphModeSelect.value = this.timelineMode.deviationGraphMode || 'cumulative';
+
     if (rowSpacingSlider) rowSpacingSlider.value = this.timelineMode.rowSpacing;
     if (rowSpacingDisplay) rowSpacingDisplay.textContent = `${this.timelineMode.rowSpacing}px`;
     if (warmupSelect) warmupSelect.value = this.timelineMode.warmupMeasures;

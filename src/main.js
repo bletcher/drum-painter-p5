@@ -129,6 +129,7 @@ function getAppState() {
       midiLatencyMs: chronicleMode.midiLatencyMs,
       showGrid: chronicleMode.showGrid,
       showDeviationGraph: chronicleMode.showDeviationGraph,
+      deviationGraphMode: chronicleMode.deviationGraphMode,
       rowSpacing: chronicleMode.rowSpacing,
       warmupMeasures: chronicleMode.warmupMeasures,
       measuresPerStaffPreference: chronicleMode.measuresPerStaffPreference,
@@ -943,6 +944,7 @@ function initializeUI() {
           midiLatencyMs: chronicleMode.midiLatencyMs,
           showGrid: chronicleMode.showGrid,
           showDeviationGraph: chronicleMode.showDeviationGraph,
+          deviationGraphMode: chronicleMode.deviationGraphMode,
           rowSpacing: chronicleMode.rowSpacing,
           layout: chronicleMode.layout,
           warmupMeasures: chronicleMode.warmupMeasures,
@@ -1022,6 +1024,7 @@ function initializeUI() {
           midiLatencyMs: chronicleMode.midiLatencyMs,
           showGrid: chronicleMode.showGrid,
           showDeviationGraph: chronicleMode.showDeviationGraph,
+          deviationGraphMode: chronicleMode.deviationGraphMode,
           rowSpacing: chronicleMode.rowSpacing,
           layout: chronicleMode.layout,
           warmupMeasures: chronicleMode.warmupMeasures,
@@ -1308,6 +1311,7 @@ function initializeUI() {
           midiLatencyMs: chronicleMode.midiLatencyMs,
           showGrid: chronicleMode.showGrid,
           showDeviationGraph: chronicleMode.showDeviationGraph,
+          deviationGraphMode: chronicleMode.deviationGraphMode,
           rowSpacing: chronicleMode.rowSpacing
         },
         timestamp: new Date().toISOString()
@@ -1406,6 +1410,9 @@ function initializeUI() {
           }
           if (projectData.timelineSettings.showDeviationGraph !== undefined) {
             chronicleMode.showDeviationGraph = projectData.timelineSettings.showDeviationGraph;
+          }
+          if (projectData.timelineSettings.deviationGraphMode !== undefined) {
+            chronicleMode.deviationGraphMode = projectData.timelineSettings.deviationGraphMode;
           }
           if (projectData.timelineSettings.rowSpacing !== undefined) {
             chronicleMode.rowSpacing = projectData.timelineSettings.rowSpacing;
@@ -2147,6 +2154,26 @@ window.draw = function() {
 };
 
 window.keyPressed = function() {
+  // Don't process keyboard shortcuts if user is typing in an input field
+  const activeElement = document.activeElement;
+  const isTypingInInput = activeElement && (
+    activeElement.tagName === 'INPUT' ||
+    activeElement.tagName === 'TEXTAREA' ||
+    activeElement.tagName === 'SELECT' ||
+    activeElement.isContentEditable
+  );
+
+  // Allow default behavior when typing in inputs (except for certain global shortcuts)
+  if (isTypingInInput) {
+    // ESC - blur the input to allow closing panels
+    if (keyCode === 27) {
+      activeElement.blur();
+      return false;
+    }
+    // Allow all other keys to work normally in inputs
+    return true;
+  }
+
   // Don't process keyboard shortcuts if any panel is open (except H to hide UI)
   const panelOpen = customizationPanel.isVisible || midiMappingPanel.isVisible;
 
@@ -2789,6 +2816,9 @@ async function loadSavedSettings() {
     if (savedState.timelineSettings.showDeviationGraph !== undefined) {
       chronicleMode.showDeviationGraph = savedState.timelineSettings.showDeviationGraph;
     }
+    if (savedState.timelineSettings.deviationGraphMode !== undefined) {
+      chronicleMode.deviationGraphMode = savedState.timelineSettings.deviationGraphMode;
+    }
     if (savedState.timelineSettings.rowSpacing !== undefined) {
       chronicleMode.rowSpacing = savedState.timelineSettings.rowSpacing;
     }
@@ -2867,6 +2897,7 @@ async function loadSavedSettings() {
         midiLatencyMs: chronicleMode.midiLatencyMs,
         showGrid: chronicleMode.showGrid,
         showDeviationGraph: chronicleMode.showDeviationGraph,
+        deviationGraphMode: chronicleMode.deviationGraphMode,
         rowSpacing: chronicleMode.rowSpacing,
         warmupMeasures: chronicleMode.warmupMeasures,
         measuresPerStaffPreference: chronicleMode.measuresPerStaffPreference,
@@ -3038,6 +3069,7 @@ function migrateDrumIdChanges() {
         midiLatencyMs: chronicleMode.midiLatencyMs,
         showGrid: chronicleMode.showGrid,
         showDeviationGraph: chronicleMode.showDeviationGraph,
+        deviationGraphMode: chronicleMode.deviationGraphMode,
         rowSpacing: chronicleMode.rowSpacing,
         warmupMeasures: chronicleMode.warmupMeasures,
         measuresPerStaffPreference: chronicleMode.measuresPerStaffPreference,
@@ -3123,6 +3155,7 @@ function migrateDrumMappingsToStableKeys() {
         midiLatencyMs: chronicleMode.midiLatencyMs,
         showGrid: chronicleMode.showGrid,
         showDeviationGraph: chronicleMode.showDeviationGraph,
+        deviationGraphMode: chronicleMode.deviationGraphMode,
         rowSpacing: chronicleMode.rowSpacing,
         warmupMeasures: chronicleMode.warmupMeasures,
         measuresPerStaffPreference: chronicleMode.measuresPerStaffPreference,
