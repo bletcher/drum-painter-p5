@@ -489,8 +489,7 @@ export class TimelineMode {
 
       // Track deviation from grid for staff mode
       if (this.layout === 'staff' && this.showDeviationGraph) {
-        const secondsPerBeat = 60 / this.bpm;
-        this.recordDeviation(drumId, timeElapsed, secondsPerBeat);
+        this.recordDeviation(drumId, timeElapsed);
       }
     }
 
@@ -1058,14 +1057,19 @@ export class TimelineMode {
    * @param {number} timeElapsed - Time elapsed in seconds
    * @param {number} secondsPerBeat - Duration of one beat in seconds
    */
-  recordDeviation(drumId, timeElapsed, secondsPerBeat) {
-    // Calculate the subdivision grid timing
-    const secondsPerSubdivision = secondsPerBeat / (this.subdivision / 4);
+  recordDeviation(drumId, timeElapsed) {
+    // Calculate the subdivision count using tempo-aware beat calculation
+    // This ensures we're measuring deviation from the actual grid, not a hypothetical constant-tempo grid
+    const subdivisionFactor = this.subdivision / 4; // subdivisions per beat
+    const beatCount = this.getBeatCountForTime(timeElapsed);
+    const subdivisionCount = beatCount * subdivisionFactor;
 
-    // Find the nearest grid line
-    const subdivisionIndex = timeElapsed / secondsPerSubdivision;
-    const nearestGridIndex = Math.round(subdivisionIndex);
-    const nearestGridTime = nearestGridIndex * secondsPerSubdivision;
+    // Find the nearest grid line (in subdivision units)
+    const nearestSubdivisionIndex = Math.round(subdivisionCount);
+
+    // Convert back to time: we need to find when this subdivision actually occurs
+    // given the tempo history
+    const nearestGridTime = this.getTimeForSubdivision(nearestSubdivisionIndex);
 
     // Calculate deviation in milliseconds (positive = late, negative = early)
     const deviationMs = (timeElapsed - nearestGridTime) * 1000;
@@ -1087,7 +1091,55 @@ export class TimelineMode {
       cumulativeDeviation: cumulativeDeviation
     });
 
-    debugLog(`📊 Deviation: ${drumId} at ${timeElapsed.toFixed(3)}s, deviation: ${deviationMs.toFixed(1)}ms, cumulative: ${cumulativeDeviation.toFixed(1)}ms`);
+    debugLog(`📊 Deviation: ${drumId} at ${timeElapsed.toFixed(3)}s, subdivision: ${subdivisionCount.toFixed(2)}, nearest: ${nearestSubdivisionIndex}, deviation: ${deviationMs.toFixed(1)}ms`);
+  }
+
+  /**
+   * Get the time (in seconds) at which a given subdivision occurs, accounting for tempo history
+   * This is the inverse of getBeatCountForTime - given a beat/subdivision count, find the time
+   * @param {number} targetSubdivision - The subdivision index to find the time for
+   * @returns {number} - Time in seconds when this subdivision occurs
+   */
+  getTimeForSubdivision(targetSubdivision) {
+    const subdivisionFactor = this.subdivision / 4; // subdivisions per beat
+    const targetBeats = targetSubdivision / subdivisionFactor;
+
+    // If no tempo history or tempo automation not enabled, use simple calculation
+    if (!this.tempoHistory || this.tempoHistory.length <= 1 || !this.tempoAutomationEnabled) {
+      const secondsPerBeat = 60 / this.bpm;
+      return targetBeats * secondsPerBeat;
+    }
+
+    // Walk through tempo history to find when this beat count is reached
+    let accumulatedBeats = 0;
+    let accumulatedTime = 0;
+    let previousBpm = this.tempoHistory[0].bpm;
+
+    for (let i = 1; i < this.tempoHistory.length; i++) {
+      const entry = this.tempoHistory[i];
+      const entryTime = entry.time;
+
+      // Calculate beats during the previous tempo period
+      const periodDuration = entryTime - accumulatedTime;
+      const secondsPerBeat = 60 / previousBpm;
+      const beatsInPeriod = periodDuration / secondsPerBeat;
+
+      // Check if target falls within this period
+      if (accumulatedBeats + beatsInPeriod >= targetBeats) {
+        // Target is in this period - calculate exact time
+        const remainingBeats = targetBeats - accumulatedBeats;
+        return accumulatedTime + (remainingBeats * secondsPerBeat);
+      }
+
+      accumulatedBeats += beatsInPeriod;
+      accumulatedTime = entryTime;
+      previousBpm = entry.bpm;
+    }
+
+    // Target is after the last tempo change - use current tempo
+    const remainingBeats = targetBeats - accumulatedBeats;
+    const secondsPerBeat = 60 / previousBpm;
+    return accumulatedTime + (remainingBeats * secondsPerBeat);
   }
 
   /**
