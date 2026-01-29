@@ -161,6 +161,19 @@ export class TimelineMode {
           this.timelineLanes[drumId] = index;
         }
       });
+
+      // Also add any drums that are in drumSettings but missing from drumOrder
+      // This handles cases where drums were added but drumOrder wasn't synced
+      if (drumSettings) {
+        let nextIndex = Object.keys(this.timelineLanes).length;
+        for (const drumId of Object.keys(drumSettings)) {
+          if (!(drumId in this.timelineLanes)) {
+            debugLog(`📋 Adding missing drum to lanes: ${drumId} (was in settings but not in order)`);
+            this.timelineLanes[drumId] = nextIndex++;
+          }
+        }
+      }
+
       this.timelineLaneCount = Object.keys(this.timelineLanes).length;
 
       debugLog(`📋 Timeline lanes regenerated from drumOrder: ${this.timelineLaneCount} drums`);
@@ -1230,10 +1243,10 @@ export class TimelineMode {
     }
 
     // Graph dimensions - stats table is to the right of the graph
-    const graphWidth = 300;
+    const graphWidth = 400; // 33% wider than original 300
     const graphHeight = 150;
     const graphMargin = 20;
-    const statsTableWidth = 200; // Width for stats table on the right (larger for 2x text)
+    const statsTableWidth = 220; // Width for stats table on the right (with spacing for drum names)
     const totalWidth = graphWidth + statsTableWidth + 60; // Graph + table + margins
     const totalHeight = graphHeight + 50; // Just graph height + margins for title and axis labels
 
@@ -1281,10 +1294,11 @@ export class TimelineMode {
     const graphTitle = isActualMode ? 'Timing Deviation (ms) [+late/-early]' : 'Cumulative Timing Deviation (ms)';
     p5Instance.text(graphTitle, graphX, baseY + 5);
 
-    // Draw current BPM (right-aligned in title area)
+    // Draw current BPM (right-aligned in title area, 25% larger font)
     p5Instance.fill(180, 100, 50);
+    p5Instance.textSize(14); // 25% larger than 11
     p5Instance.textAlign(p5Instance.RIGHT, p5Instance.TOP);
-    p5Instance.text(`${this.bpm} BPM`, baseX + totalWidth - 10, baseY + 5);
+    p5Instance.text(`${this.bpm} BPM`, baseX + totalWidth - 10, baseY + 4);
 
     // Draw axes
     p5Instance.stroke(120, 120, 120);
@@ -1382,14 +1396,14 @@ export class TimelineMode {
     p5Instance.textAlign(p5Instance.LEFT, p5Instance.TOP);
     p5Instance.text('Drum', tableX, tableY);
     p5Instance.textAlign(p5Instance.RIGHT, p5Instance.TOP);
-    p5Instance.text('Hits', tableX + 70, tableY);
-    p5Instance.text('Avg', tableX + 115, tableY);
-    p5Instance.text('Std', tableX + 160, tableY);
+    p5Instance.text('Hits', tableX + 100, tableY); // Added 30px spacing from drum name
+    p5Instance.text('Avg', tableX + 150, tableY);
+    p5Instance.text('Std', tableX + 200, tableY);
 
     // Separator line
     p5Instance.stroke(150, 150, 150);
     p5Instance.strokeWeight(1);
-    p5Instance.line(tableX, tableY + 20, tableX + 165, tableY + 20);
+    p5Instance.line(tableX, tableY + 20, tableX + 205, tableY + 20);
 
     // Table rows (larger text - 16px)
     let rowY = tableY + 26;
@@ -1416,15 +1430,15 @@ export class TimelineMode {
       const shortName = drumName.length > 8 ? drumName.slice(0, 8) : drumName;
       p5Instance.text(shortName, tableX + 16, rowY);
 
-      // Hits count
+      // Hits count (shifted right to add spacing from drum name)
       p5Instance.textAlign(p5Instance.RIGHT, p5Instance.TOP);
-      p5Instance.text(stats.hits.toString(), tableX + 70, rowY);
+      p5Instance.text(stats.hits.toString(), tableX + 100, rowY);
 
       // Average deviation
-      p5Instance.text(stats.avgDeviation.toFixed(1), tableX + 115, rowY);
+      p5Instance.text(stats.avgDeviation.toFixed(1), tableX + 150, rowY);
 
       // Standard deviation
-      p5Instance.text(stats.stdDeviation.toFixed(1), tableX + 160, rowY);
+      p5Instance.text(stats.stdDeviation.toFixed(1), tableX + 200, rowY);
 
       rowY += 22;
       if (rowY > graphY + graphHeight - 10) break; // Limit table height to graph area
@@ -1619,15 +1633,19 @@ export class TimelineMode {
     const currentTime = this.recording ? Date.now() : (this.stopTime || Date.now());
     const timeElapsed = (currentTime - this.startTime - this.pausedTime) / 1000.0;
 
-    // Account for warm-up
+    // Calculate warm-up duration
+    let warmupDuration = 0;
     if (this.warmupMeasures > 0) {
       const warmupSecondsPerBeat = 60 / this.baseBpm;
-      const warmupDuration = warmupSecondsPerBeat * this.beatsPerMeasure * this.warmupMeasures;
+      warmupDuration = warmupSecondsPerBeat * this.beatsPerMeasure * this.warmupMeasures;
       if (timeElapsed < warmupDuration) return 0;
     }
 
+    // Use effective time (after warm-up) for subdivision calculation
+    const effectiveTimeElapsed = timeElapsed - warmupDuration;
+
     // Calculate subdivisions using the same logic as updateMetronome
-    const timeSinceTempoChange = timeElapsed - this.tempoChangeTime;
+    const timeSinceTempoChange = effectiveTimeElapsed - this.tempoChangeTime;
     const secondsPerBeat = 60 / this.bpm;
     const secondsPerSubdivision = secondsPerBeat / (this.subdivision / 4);
     const subdivisionsSinceChange = timeSinceTempoChange / secondsPerSubdivision;
@@ -1853,9 +1871,10 @@ export class TimelineMode {
       p5Instance.fill(0, 0, 0, 80);
       p5Instance.text(`M${staffStartMeasure + 1}`, offsetX + 5 * scale, offsetY + staffY * scale + 5 * scale);
 
-      // Show BPM for this staff (helpful when tempo changes)
+      // Show BPM for this staff (helpful when tempo changes) - 25% larger font
       if (this.tempoAutomationEnabled && this.tempoHistory && this.tempoHistory.length > 1) {
-        p5Instance.fill(100, 100, 100, 120);
+        p5Instance.fill(100, 100, 100, 140);
+        p5Instance.textSize(12.5 * scale); // 25% larger than 10
         p5Instance.textAlign(p5Instance.RIGHT, p5Instance.TOP);
         p5Instance.text(`${staffBpm} BPM`, offsetX + this.staffWidth * scale - 5 * scale, offsetY + staffY * scale + 5 * scale);
       }

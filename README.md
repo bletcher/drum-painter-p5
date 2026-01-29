@@ -1,4 +1,4 @@
-# Drum Painter v0.2
+# Drum Painter v0.3
 
 Create stunning generative art with your MIDI drums! A browser-based painting application where every drum hit becomes a visual element, powered by p5.js and the Web MIDI API.
 
@@ -6,6 +6,8 @@ Create stunning generative art with your MIDI drums! A browser-based painting ap
 
 - **Two-Mode System** - Timeline (structured layouts) and Freeform (random patterns)
 - **Timeline Modes** - Point-based (paint immediately) and Time-based (require Start button)
+- **Tempo Automation** - Automatically increase BPM at configurable intervals for progressive practice
+- **Timing Deviation Graph** - Real-time visualization of timing accuracy with cumulative or actual (+/-) modes
 - **Device-Specific MIDI Mapping** - Use multiple MIDI devices simultaneously with auto-opening ports
 - **Bank Mode** - Map global parameters to MIDI CC controls
 - **7 Structured Layouts** - Staff, Spiral, Fibonacci, Radial, Rings, Petals, Polygon
@@ -92,7 +94,10 @@ Position depends on elapsed time with BPM synchronization. All time-based layout
 - Each drum on its own horizontal lane
 - Time flows left to right with BPM sync
 - Grid shows eighth triplet subdivisions by default
-- Visual metronome and auto-scroll during recording
+- Visual metronome with noise-burst click for precise timing
+- Auto-scroll during recording
+- Tempo automation support with visual tempo markers per staff
+- Timing deviation graph with cumulative or actual (+/-) display modes
 
 **Spiral**
 - Archimedean spiral expanding from center
@@ -276,6 +281,65 @@ A small dot appears next to the MIDI status showing save state:
 ### Timeline Mode (when time-based layout active)
 - **P** - Start/pause recording
 - **C** - Clear timeline
+
+## Tempo Automation
+
+Practice with progressively increasing tempo for skill building:
+
+### Setup
+
+1. Enable **Metronome** checkbox in Timeline controls
+2. Enable **Auto Tempo** checkbox (appears when metronome is enabled)
+3. Configure automation parameters:
+   - **Increase** - BPM increment per interval (1-20)
+   - **every X bars** - How often tempo increases (1-16 bars)
+   - **Max** - Maximum BPM cap (60-300)
+
+### How It Works
+
+- Tempo starts at your base BPM setting
+- Every N bars, BPM increases by your configured amount
+- Staff grid shows current BPM for each staff row
+- Timing calculations automatically adjust for tempo changes
+- Warm-up period uses base BPM for consistent preparation
+
+### Example
+
+Start at 80 BPM, increase 5 BPM every 4 bars, max 120 BPM:
+
+- Bars 1-4: 80 BPM
+- Bars 5-8: 85 BPM
+- Bars 9-12: 90 BPM
+- ... continues until reaching 120 BPM cap
+
+## Timing Deviation Graph
+
+Visualize your timing accuracy in real-time during staff mode recording:
+
+### Enable
+
+Check the **Timing Graph** checkbox next to Metronome in Timeline controls.
+
+### Graph Modes
+
+Select from the dropdown next to the checkbox:
+
+- **Cumulative** - Running total of absolute timing deviations over time. Lines trend upward; steeper = less consistent timing.
+- **Actual (+/-)** - Individual hit deviations as scatter points. Positive (above center) = late, negative (below) = early. Helps identify timing tendencies.
+
+### Graph Features
+
+- **Draggable** - Click and drag the graph to reposition
+- **Per-drum statistics** - Hits count, average deviation (ms), standard deviation
+- **Tempo change markers** - Faint vertical lines show where tempo changed (when using Auto Tempo)
+- **Color-coded** - Each drum's line/points match its configured color
+
+### Interpreting Results
+
+- **Low cumulative slope** = consistent timing
+- **Actual points clustered near zero** = accurate timing
+- **Consistent positive/negative bias** = tendency to play late/early
+- **Large standard deviation** = inconsistent timing
 
 ## Recording & Export
 
