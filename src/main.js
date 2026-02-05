@@ -130,13 +130,17 @@ function getAppState() {
       showGrid: chronicleMode.showGrid,
       showDeviationGraph: chronicleMode.showDeviationGraph,
       deviationGraphMode: chronicleMode.deviationGraphMode,
+      deviationGraphWidth: chronicleMode.deviationGraphWidth,
+      deviationGraphHeight: chronicleMode.deviationGraphHeight,
       rowSpacing: chronicleMode.rowSpacing,
       warmupMeasures: chronicleMode.warmupMeasures,
       measuresPerStaffPreference: chronicleMode.measuresPerStaffPreference,
       tempoAutomationEnabled: chronicleMode.tempoAutomationEnabled,
-      tempoAutomationBpmIncrease: chronicleMode.tempoAutomationBpmIncrease,
+      tempoAutomationBpmChange: chronicleMode.tempoAutomationBpmChange,
       tempoAutomationBars: chronicleMode.tempoAutomationBars,
-      tempoAutomationMaxBpm: chronicleMode.tempoAutomationMaxBpm
+      tempoAutomationMaxBpm: chronicleMode.tempoAutomationMaxBpm,
+      tempoAutomationDirection: chronicleMode.tempoAutomationDirection,
+      tempoAutomationMinBpm: chronicleMode.tempoAutomationMinBpm
     },
     bankModeSettings: midiManager ? midiManager.getState() : {}
   };
@@ -950,7 +954,7 @@ function initializeUI() {
           warmupMeasures: chronicleMode.warmupMeasures,
           measuresPerStaffPreference: chronicleMode.measuresPerStaffPreference,
           tempoAutomationEnabled: chronicleMode.tempoAutomationEnabled,
-          tempoAutomationBpmIncrease: chronicleMode.tempoAutomationBpmIncrease,
+          tempoAutomationBpmChange: chronicleMode.tempoAutomationBpmChange,
           tempoAutomationBars: chronicleMode.tempoAutomationBars,
           tempoAutomationMaxBpm: chronicleMode.tempoAutomationMaxBpm
         },
@@ -1030,7 +1034,7 @@ function initializeUI() {
           warmupMeasures: chronicleMode.warmupMeasures,
           measuresPerStaffPreference: chronicleMode.measuresPerStaffPreference,
           tempoAutomationEnabled: chronicleMode.tempoAutomationEnabled,
-          tempoAutomationBpmIncrease: chronicleMode.tempoAutomationBpmIncrease,
+          tempoAutomationBpmChange: chronicleMode.tempoAutomationBpmChange,
           tempoAutomationBars: chronicleMode.tempoAutomationBars,
           tempoAutomationMaxBpm: chronicleMode.tempoAutomationMaxBpm
         },
@@ -1414,6 +1418,12 @@ function initializeUI() {
           if (projectData.timelineSettings.deviationGraphMode !== undefined) {
             chronicleMode.deviationGraphMode = projectData.timelineSettings.deviationGraphMode;
           }
+          if (projectData.timelineSettings.deviationGraphWidth !== undefined) {
+            chronicleMode.deviationGraphWidth = projectData.timelineSettings.deviationGraphWidth;
+          }
+          if (projectData.timelineSettings.deviationGraphHeight !== undefined) {
+            chronicleMode.deviationGraphHeight = projectData.timelineSettings.deviationGraphHeight;
+          }
           if (projectData.timelineSettings.rowSpacing !== undefined) {
             chronicleMode.rowSpacing = projectData.timelineSettings.rowSpacing;
           }
@@ -1427,14 +1437,20 @@ function initializeUI() {
           if (projectData.timelineSettings.tempoAutomationEnabled !== undefined) {
             chronicleMode.tempoAutomationEnabled = projectData.timelineSettings.tempoAutomationEnabled;
           }
-          if (projectData.timelineSettings.tempoAutomationBpmIncrease !== undefined) {
-            chronicleMode.tempoAutomationBpmIncrease = projectData.timelineSettings.tempoAutomationBpmIncrease;
+          if (projectData.timelineSettings.tempoAutomationBpmChange !== undefined) {
+            chronicleMode.tempoAutomationBpmChange = projectData.timelineSettings.tempoAutomationBpmChange;
           }
           if (projectData.timelineSettings.tempoAutomationBars !== undefined) {
             chronicleMode.tempoAutomationBars = projectData.timelineSettings.tempoAutomationBars;
           }
           if (projectData.timelineSettings.tempoAutomationMaxBpm !== undefined) {
             chronicleMode.tempoAutomationMaxBpm = projectData.timelineSettings.tempoAutomationMaxBpm;
+          }
+          if (projectData.timelineSettings.tempoAutomationDirection !== undefined) {
+            chronicleMode.tempoAutomationDirection = projectData.timelineSettings.tempoAutomationDirection;
+          }
+          if (projectData.timelineSettings.tempoAutomationMinBpm !== undefined) {
+            chronicleMode.tempoAutomationMinBpm = projectData.timelineSettings.tempoAutomationMinBpm;
           }
           // Sync UI with loaded settings
           if (timelineControls) {
@@ -2082,23 +2098,35 @@ window.draw = function() {
     chronicleMode.drawDeviationGraph(window, offsetX, offsetY, scaleFactor, drumSettings);
 
     // Auto-scroll to keep current playhead visible when recording
+    // The playhead should stay just above the deviation graph (if showing)
     if (chronicleMode.recording && chronicleMode.startTime !== null) {
       const timeElapsed = chronicleMode.getElapsedTime();
       const totalX = timeElapsed * chronicleMode.pixelsPerSecond;
       const staffIndex = Math.floor(totalX / chronicleMode.staffWidth);
-      const currentStaffY = staffIndex * chronicleMode.staffHeight * scaleFactor;
-      const currentStaffBottomY = (staffIndex + 1) * chronicleMode.staffHeight * scaleFactor;
 
-      // Auto-scroll if playhead is below viewport
-      const viewportBottom = -timelineScrollY + height - VIEWPORT_MARGIN_BOTTOM;
+      // Calculate staff position including row spacing
+      const staffRowHeight = (chronicleMode.staffHeight + chronicleMode.rowSpacing) * scaleFactor;
+      const currentStaffY = staffIndex * staffRowHeight;
+      const currentStaffBottomY = currentStaffY + chronicleMode.staffHeight * scaleFactor;
+
+      // Calculate bottom margin: if deviation graph is showing, keep playhead above it
+      let bottomMargin = VIEWPORT_MARGIN_BOTTOM;
+      if (chronicleMode.showDeviationGraph && chronicleMode.layout === 'staff') {
+        // Get dynamic graph height (default 150 + 50 margins, or custom if resized)
+        const graphHeight = chronicleMode.deviationGraphHeight !== null ? chronicleMode.deviationGraphHeight : 150;
+        bottomMargin = graphHeight + 70; // Graph height + margins + padding
+      }
+
+      // Auto-scroll to keep playhead staff just above the bottom margin
+      const viewportBottom = -timelineScrollY + height - bottomMargin;
       const viewportTop = -timelineScrollY + VIEWPORT_MARGIN_TOP;
 
       if (currentStaffBottomY > viewportBottom) {
-        // Scroll down to show current staff
-        timelineScrollY = -(currentStaffBottomY - height + AUTO_SCROLL_PADDING);
+        // Scroll down to show current staff above the graph
+        timelineScrollY = -(currentStaffBottomY - height + bottomMargin + 20);
       } else if (currentStaffY < viewportTop) {
         // Scroll up to show current staff
-        timelineScrollY = -currentStaffY + VIEWPORT_MARGIN_BOTTOM;
+        timelineScrollY = -currentStaffY + VIEWPORT_MARGIN_TOP;
       }
 
       // Clamp auto-scroll to valid range
@@ -2819,6 +2847,12 @@ async function loadSavedSettings() {
     if (savedState.timelineSettings.deviationGraphMode !== undefined) {
       chronicleMode.deviationGraphMode = savedState.timelineSettings.deviationGraphMode;
     }
+    if (savedState.timelineSettings.deviationGraphWidth !== undefined) {
+      chronicleMode.deviationGraphWidth = savedState.timelineSettings.deviationGraphWidth;
+    }
+    if (savedState.timelineSettings.deviationGraphHeight !== undefined) {
+      chronicleMode.deviationGraphHeight = savedState.timelineSettings.deviationGraphHeight;
+    }
     if (savedState.timelineSettings.rowSpacing !== undefined) {
       chronicleMode.rowSpacing = savedState.timelineSettings.rowSpacing;
     }
@@ -2835,14 +2869,20 @@ async function loadSavedSettings() {
     if (savedState.timelineSettings.tempoAutomationEnabled !== undefined) {
       chronicleMode.tempoAutomationEnabled = savedState.timelineSettings.tempoAutomationEnabled;
     }
-    if (savedState.timelineSettings.tempoAutomationBpmIncrease !== undefined) {
-      chronicleMode.tempoAutomationBpmIncrease = savedState.timelineSettings.tempoAutomationBpmIncrease;
+    if (savedState.timelineSettings.tempoAutomationBpmChange !== undefined) {
+      chronicleMode.tempoAutomationBpmChange = savedState.timelineSettings.tempoAutomationBpmChange;
     }
     if (savedState.timelineSettings.tempoAutomationBars !== undefined) {
       chronicleMode.tempoAutomationBars = savedState.timelineSettings.tempoAutomationBars;
     }
     if (savedState.timelineSettings.tempoAutomationMaxBpm !== undefined) {
       chronicleMode.tempoAutomationMaxBpm = savedState.timelineSettings.tempoAutomationMaxBpm;
+    }
+    if (savedState.timelineSettings.tempoAutomationDirection !== undefined) {
+      chronicleMode.tempoAutomationDirection = savedState.timelineSettings.tempoAutomationDirection;
+    }
+    if (savedState.timelineSettings.tempoAutomationMinBpm !== undefined) {
+      chronicleMode.tempoAutomationMinBpm = savedState.timelineSettings.tempoAutomationMinBpm;
     }
     debugLog('✓ Loaded timeline settings (early)');
   }
@@ -2902,7 +2942,7 @@ async function loadSavedSettings() {
         warmupMeasures: chronicleMode.warmupMeasures,
         measuresPerStaffPreference: chronicleMode.measuresPerStaffPreference,
         tempoAutomationEnabled: chronicleMode.tempoAutomationEnabled,
-        tempoAutomationBpmIncrease: chronicleMode.tempoAutomationBpmIncrease,
+        tempoAutomationBpmChange: chronicleMode.tempoAutomationBpmChange,
         tempoAutomationBars: chronicleMode.tempoAutomationBars,
         tempoAutomationMaxBpm: chronicleMode.tempoAutomationMaxBpm
       },
@@ -3074,7 +3114,7 @@ function migrateDrumIdChanges() {
         warmupMeasures: chronicleMode.warmupMeasures,
         measuresPerStaffPreference: chronicleMode.measuresPerStaffPreference,
         tempoAutomationEnabled: chronicleMode.tempoAutomationEnabled,
-        tempoAutomationBpmIncrease: chronicleMode.tempoAutomationBpmIncrease,
+        tempoAutomationBpmChange: chronicleMode.tempoAutomationBpmChange,
         tempoAutomationBars: chronicleMode.tempoAutomationBars,
         tempoAutomationMaxBpm: chronicleMode.tempoAutomationMaxBpm
       },
@@ -3160,7 +3200,7 @@ function migrateDrumMappingsToStableKeys() {
         warmupMeasures: chronicleMode.warmupMeasures,
         measuresPerStaffPreference: chronicleMode.measuresPerStaffPreference,
         tempoAutomationEnabled: chronicleMode.tempoAutomationEnabled,
-        tempoAutomationBpmIncrease: chronicleMode.tempoAutomationBpmIncrease,
+        tempoAutomationBpmChange: chronicleMode.tempoAutomationBpmChange,
         tempoAutomationBars: chronicleMode.tempoAutomationBars,
         tempoAutomationMaxBpm: chronicleMode.tempoAutomationMaxBpm
       },
@@ -3331,6 +3371,11 @@ window.mouseDragged = function() {
   if (isTimeBased) {
     chronicleMode.handleMetronomeMouseDragged(mouseX, mouseY);
     chronicleMode.handleDeviationGraphMouseDragged(mouseX, mouseY);
+
+    // Block other interactions if graph is being dragged or resized
+    if (chronicleMode.deviationGraphDragging || chronicleMode.deviationGraphResizing) {
+      return;
+    }
   }
 
   // Handle scrollbar dragging (any mode with tall canvas)

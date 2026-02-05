@@ -427,7 +427,10 @@
           </div>
           <div id="tempo-automation-controls" style="display: none;">
             <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 5px;">
-              <span style="font-size: 10px; color: #666;">Increase</span>
+              <select id="tempo-automation-direction" style="padding: 3px; border: 1px solid #ddd; border-radius: 3px; font-size: 10px;">
+                <option value="increase">Increase</option>
+                <option value="decrease">Decrease</option>
+              </select>
               <input type="number" id="tempo-automation-bpm" value="5" min="1" max="20" step="1"
                 style="width: 45px; padding: 3px; border: 1px solid #ddd; border-radius: 3px; font-size: 10px; text-align: center;">
               <span style="font-size: 10px; color: #666;">BPM every</span>
@@ -436,9 +439,11 @@
               <span style="font-size: 10px; color: #666;">bars</span>
             </div>
             <div style="display: flex; align-items: center; gap: 6px;">
-              <span style="font-size: 10px; color: #666;">Max BPM:</span>
+              <span id="tempo-limit-label" style="font-size: 10px; color: #666;">Max BPM:</span>
               <input type="number" id="tempo-automation-max" value="200" min="60" max="300" step="5"
                 style="width: 50px; padding: 3px; border: 1px solid #ddd; border-radius: 3px; font-size: 10px; text-align: center;">
+              <input type="number" id="tempo-automation-min" value="40" min="20" max="120" step="5"
+                style="width: 50px; padding: 3px; border: 1px solid #ddd; border-radius: 3px; font-size: 10px; text-align: center; display: none;">
             </div>
           </div>
         </div>

@@ -109,11 +109,14 @@ export class TimelineMode {
 
     // Tempo automation settings
     this.tempoAutomationEnabled = false;
-    this.tempoAutomationBpmIncrease = 5; // BPM to increase each interval
+    this.tempoAutomationDirection = 'increase'; // 'increase' or 'decrease'
+    this.tempoAutomationBpmChange = 5; // BPM to change each interval
     this.tempoAutomationBars = 4; // Number of bars between tempo changes
-    this.tempoAutomationMaxBpm = 200; // Maximum BPM cap
+    this.tempoAutomationMaxBpm = 200; // Maximum BPM cap (for increase)
+    this.tempoAutomationMinBpm = 40; // Minimum BPM floor (for decrease)
     this.baseBpm = 80; // Starting BPM (captured when recording starts)
     this.lastTempoChangeMeasure = -1; // Track which measure we last changed tempo
+    this.tempoAverages = []; // Average deviation per tempo period: [{ bpm, avgDeviation, hitCount }]
 
     // Tempo change tracking for continuous metronome
     this.tempoChangeTime = 0; // Time (in seconds) when last tempo change occurred
@@ -126,11 +129,16 @@ export class TimelineMode {
     // Deviation tracking (staff mode only)
     this.showDeviationGraph = false; // Toggle for displaying deviation graph
     this.deviationData = {}; // Per-drum deviation data: { drumId: [{ time, deviation, cumulativeDeviation }] }
+    this.clickTimes = []; // Actual metronome click timestamps for accurate deviation measurement
 
-    // Deviation graph position (draggable)
+    // Deviation graph position (draggable) and size (resizable)
     this.deviationGraphX = null; // null = use default position (bottom-left)
     this.deviationGraphY = null;
+    this.deviationGraphWidth = null; // null = use default (80% of screen)
+    this.deviationGraphHeight = null; // null = use default (150px)
     this.deviationGraphDragging = false;
+    this.deviationGraphResizing = false; // true when resizing
+    this.deviationGraphResizeEdge = null; // 'right', 'bottom', 'corner'
     this.deviationGraphDragOffsetX = 0;
     this.deviationGraphDragOffsetY = 0;
     this.deviationGraphMode = 'cumulative'; // 'cumulative' or 'actual' timing error
@@ -829,6 +837,8 @@ export class TimelineMode {
 
       // Clear deviation tracking data
       this.clearDeviationData();
+      this.clickTimes = []; // Clear recorded click times
+      this.tempoAverages = []; // Clear tempo period averages
 
       debugLog('Timeline recording started (from beginning)');
     } else {
@@ -861,6 +871,8 @@ export class TimelineMode {
         this.tempoChangeTime = 0;
         this.tempoChangeSubdivisionOffset = 0;
         this.tempoHistory = [{ time: 0, bpm: this.bpm, staffX: 0 }]; // Initialize with starting BPM
+        this.clickTimes = []; // Clear recorded click times
+        this.tempoAverages = []; // Clear tempo period averages
 
         debugLog('Timeline recording started');
       }
@@ -935,6 +947,8 @@ export class TimelineMode {
 
     // Clear deviation tracking data
     this.clearDeviationData();
+    this.clickTimes = []; // Clear recorded click times
+    this.tempoAverages = []; // Clear tempo period averages
 
     debugLog('Timeline state cleared');
   }
@@ -982,6 +996,19 @@ export class TimelineMode {
       // Play click
       debugLog(`🎵 Metronome click: subdivision ${currentSubdivision}, firstBeat=${isFirstBeat}, beat=${isBeat}`);
       this.playMetronomeClick(isFirstBeat, isBeat);
+
+      // Record click timestamp for deviation measurement (only after warmup)
+      const warmupSubdivisions = this.warmupMeasures * subdivisionsPerMeasure;
+      if (currentSubdivision >= warmupSubdivisions) {
+        this.clickTimes.push({
+          time: currentTime,
+          subdivision: currentSubdivision
+        });
+        // Keep only last 200 clicks to avoid memory buildup
+        if (this.clickTimes.length > 200) {
+          this.clickTimes.shift();
+        }
+      }
     }
   }
 
@@ -1002,19 +1029,31 @@ export class TimelineMode {
 
     // Check if we've entered a new interval
     if (currentInterval > this.lastTempoChangeMeasure) {
+      // Calculate average deviation for the tempo period that just ended
+      this.recordTempoAverageDeviation();
+
       this.lastTempoChangeMeasure = currentInterval;
 
-      // Calculate new BPM based on interval number
-      const newBpm = this.baseBpm + (currentInterval * this.tempoAutomationBpmIncrease);
+      // Calculate new BPM based on interval number and direction
+      const bpmDelta = this.tempoAutomationDirection === 'decrease'
+        ? -this.tempoAutomationBpmChange
+        : this.tempoAutomationBpmChange;
+      let newBpm = this.baseBpm + (currentInterval * bpmDelta);
 
-      // Apply the new BPM if it's different and under the cap
-      if (newBpm !== this.bpm && newBpm <= this.tempoAutomationMaxBpm) {
+      // Apply limits based on direction
+      if (this.tempoAutomationDirection === 'increase') {
+        newBpm = Math.min(newBpm, this.tempoAutomationMaxBpm);
+      } else {
+        newBpm = Math.max(newBpm, this.tempoAutomationMinBpm);
+      }
+
+      // Apply the new BPM if it's different
+      if (newBpm !== this.bpm) {
         // Save current subdivision position before changing tempo
         this.tempoChangeTime = timeElapsed;
         this.tempoChangeSubdivisionOffset = currentSubdivision;
 
         // Record tempo change in history for staff grid drawing
-        // Calculate X position based on effective time (accounts for warm-up)
         const effectiveTime = this.getEffectiveTimeElapsed();
         this.tempoHistory.push({
           time: effectiveTime,
@@ -1022,31 +1061,48 @@ export class TimelineMode {
           measure: currentMeasure
         });
 
+        const direction = this.tempoAutomationDirection === 'decrease' ? 'decreased' : 'increased';
         this.bpm = newBpm;
         this.lastMetronomeBPM = newBpm;
-        debugLog(`🎵 Tempo automation: BPM increased to ${newBpm} at measure ${currentMeasure}, subdivision ${currentSubdivision}`);
+        debugLog(`🎵 Tempo automation: BPM ${direction} to ${newBpm} at measure ${currentMeasure}, subdivision ${currentSubdivision}`);
 
         // Update the UI display
         this.updateBpmDisplay();
-      } else if (newBpm > this.tempoAutomationMaxBpm && this.bpm !== this.tempoAutomationMaxBpm) {
-        // Save current subdivision position before changing tempo
-        this.tempoChangeTime = timeElapsed;
-        this.tempoChangeSubdivisionOffset = currentSubdivision;
-
-        // Record tempo change in history for staff grid drawing
-        const effectiveTime = this.getEffectiveTimeElapsed();
-        this.tempoHistory.push({
-          time: effectiveTime,
-          bpm: this.tempoAutomationMaxBpm,
-          measure: currentMeasure
-        });
-
-        // Cap at max BPM
-        this.bpm = this.tempoAutomationMaxBpm;
-        this.lastMetronomeBPM = this.tempoAutomationMaxBpm;
-        debugLog(`🎵 Tempo automation: BPM capped at ${this.tempoAutomationMaxBpm}`);
-        this.updateBpmDisplay();
       }
+    }
+  }
+
+  /**
+   * Record average deviation for the current tempo period
+   * Called when tempo changes to capture stats for the period that just ended
+   */
+  recordTempoAverageDeviation() {
+    // Get all deviation data recorded since the last tempo change
+    const allDeviations = [];
+    for (const drumId of Object.keys(this.deviationData)) {
+      const data = this.deviationData[drumId];
+      // Find deviations that occurred during the current tempo period
+      // (after the last recorded tempo average, if any)
+      const lastRecordedTime = this.tempoAverages.length > 0
+        ? this.tempoAverages[this.tempoAverages.length - 1].endTime
+        : 0;
+      for (const point of data) {
+        if (point.time > lastRecordedTime) {
+          allDeviations.push(point.deviation);
+        }
+      }
+    }
+
+    if (allDeviations.length > 0) {
+      const avgDeviation = allDeviations.reduce((sum, d) => sum + d, 0) / allDeviations.length;
+      const effectiveTime = this.getEffectiveTimeElapsed();
+      this.tempoAverages.push({
+        bpm: this.bpm,
+        avgDeviation: avgDeviation,
+        hitCount: allDeviations.length,
+        endTime: effectiveTime
+      });
+      debugLog(`📊 Tempo average: ${this.bpm} BPM, avg deviation: ${avgDeviation.toFixed(1)}ms (${allDeviations.length} hits)`);
     }
   }
 
@@ -1065,27 +1121,50 @@ export class TimelineMode {
   }
 
   /**
+   * Find the nearest recorded metronome click to a given timestamp
+   * @param {number} hitTime - The hit timestamp (Date.now() format, adjusted for MIDI latency)
+   * @returns {object|null} - The nearest click { time, subdivision } or null if no clicks recorded
+   */
+  findNearestClick(hitTime) {
+    if (this.clickTimes.length === 0) return null;
+
+    let nearest = this.clickTimes[this.clickTimes.length - 1];
+    let minDiff = Math.abs(hitTime - nearest.time);
+
+    // Search backwards from most recent click (most likely to be nearest)
+    for (let i = this.clickTimes.length - 2; i >= 0; i--) {
+      const diff = Math.abs(hitTime - this.clickTimes[i].time);
+      if (diff < minDiff) {
+        minDiff = diff;
+        nearest = this.clickTimes[i];
+      } else {
+        // Getting further away, stop searching
+        break;
+      }
+    }
+    return nearest;
+  }
+
+  /**
    * Record deviation from the nearest grid line for a hit
+   * Uses actual recorded click times for accurate measurement
    * @param {string} drumId - The drum that was hit
-   * @param {number} timeElapsed - Time elapsed in seconds
-   * @param {number} secondsPerBeat - Duration of one beat in seconds
+   * @param {number} timeElapsed - Time elapsed in seconds (for storing in data)
    */
   recordDeviation(drumId, timeElapsed) {
-    // Calculate the subdivision count using tempo-aware beat calculation
-    // This ensures we're measuring deviation from the actual grid, not a hypothetical constant-tempo grid
-    const subdivisionFactor = this.subdivision / 4; // subdivisions per beat
-    const beatCount = this.getBeatCountForTime(timeElapsed);
-    const subdivisionCount = beatCount * subdivisionFactor;
+    // Get the actual hit timestamp, adjusted for MIDI latency
+    const hitTime = Date.now() - this.midiLatencyMs;
 
-    // Find the nearest grid line (in subdivision units)
-    const nearestSubdivisionIndex = Math.round(subdivisionCount);
+    // Find the nearest actual metronome click
+    const nearestClick = this.findNearestClick(hitTime);
 
-    // Convert back to time: we need to find when this subdivision actually occurs
-    // given the tempo history
-    const nearestGridTime = this.getTimeForSubdivision(nearestSubdivisionIndex);
+    if (!nearestClick) {
+      debugLog(`📊 Deviation: ${drumId} - no clicks recorded yet`);
+      return;
+    }
 
     // Calculate deviation in milliseconds (positive = late, negative = early)
-    const deviationMs = (timeElapsed - nearestGridTime) * 1000;
+    const deviationMs = hitTime - nearestClick.time;
 
     // Initialize drum's deviation array if needed
     if (!this.deviationData[drumId]) {
@@ -1104,7 +1183,7 @@ export class TimelineMode {
       cumulativeDeviation: cumulativeDeviation
     });
 
-    debugLog(`📊 Deviation: ${drumId} at ${timeElapsed.toFixed(3)}s, subdivision: ${subdivisionCount.toFixed(2)}, nearest: ${nearestSubdivisionIndex}, deviation: ${deviationMs.toFixed(1)}ms`);
+    debugLog(`📊 Deviation: ${drumId} at ${timeElapsed.toFixed(3)}s, nearest click: ${nearestClick.subdivision}, deviation: ${deviationMs.toFixed(1)}ms`);
   }
 
   /**
@@ -1117,11 +1196,12 @@ export class TimelineMode {
     const subdivisionFactor = this.subdivision / 4; // subdivisions per beat
     const targetBeats = targetSubdivision / subdivisionFactor;
 
-    // If no tempo history or tempo automation not enabled, use simple calculation
-    if (!this.tempoHistory || this.tempoHistory.length <= 1 || !this.tempoAutomationEnabled) {
-      const secondsPerBeat = 60 / this.bpm;
+    // If no tempo history, use simple calculation with starting BPM
+    if (!this.tempoHistory || this.tempoHistory.length === 0) {
+      const secondsPerBeat = 60 / (this.baseBpm || this.bpm);
       return targetBeats * secondsPerBeat;
     }
+
 
     // Walk through tempo history to find when this beat count is reached
     let accumulatedBeats = 0;
@@ -1242,13 +1322,21 @@ export class TimelineMode {
       return;
     }
 
-    // Graph dimensions - stats table is to the right of the graph
-    const graphWidth = 400; // 33% wider than original 300
-    const graphHeight = 150;
+    // Graph dimensions - 80% of screen width by default, resizable
     const graphMargin = 20;
-    const statsTableWidth = 220; // Width for stats table on the right (with spacing for drum names)
+    const statsTableWidth = 220; // Width for stats table on the right
+    const resizeHandleSize = 12; // Size of resize handles
+
+    // Calculate default graph width (80% of screen minus stats table)
+    const defaultGraphWidth = Math.max(300, (p5Instance.width * 0.8) - statsTableWidth - 60);
+    const defaultGraphHeight = 150;
+
+    // Use custom dimensions if set, otherwise use defaults
+    const graphWidth = this.deviationGraphWidth !== null ? this.deviationGraphWidth : defaultGraphWidth;
+    const graphHeight = this.deviationGraphHeight !== null ? this.deviationGraphHeight : defaultGraphHeight;
+
     const totalWidth = graphWidth + statsTableWidth + 60; // Graph + table + margins
-    const totalHeight = graphHeight + 50; // Just graph height + margins for title and axis labels
+    const totalHeight = graphHeight + 50; // Graph height + margins for title and axis labels
 
     // Position (use custom position if set, otherwise default to bottom-left)
     const defaultX = graphMargin;
@@ -1260,32 +1348,75 @@ export class TimelineMode {
     const graphX = baseX + 35;
     const graphY = baseY + 25;
 
-    // Check if mouse is over graph (for drag detection)
+    // Check mouse position for drag/resize detection
     const mouseX = p5Instance.mouseX;
     const mouseY = p5Instance.mouseY;
     const isMouseOver = mouseX >= baseX && mouseX <= baseX + totalWidth &&
                         mouseY >= baseY && mouseY <= baseY + totalHeight;
 
+    // Detect resize edges (right edge, bottom edge, corner)
+    const nearRightEdge = mouseX >= baseX + totalWidth - resizeHandleSize && mouseX <= baseX + totalWidth &&
+                          mouseY >= baseY && mouseY <= baseY + totalHeight;
+    const nearBottomEdge = mouseY >= baseY + totalHeight - resizeHandleSize && mouseY <= baseY + totalHeight &&
+                           mouseX >= baseX && mouseX <= baseX + totalWidth;
+    const nearCorner = nearRightEdge && nearBottomEdge;
+
     p5Instance.push();
 
     // Draw light grey background with hover effect
-    if (isMouseOver || this.deviationGraphDragging) {
+    if (isMouseOver || this.deviationGraphDragging || this.deviationGraphResizing) {
       p5Instance.fill(240, 240, 240, 245);
       p5Instance.stroke(100, 150, 200, 220);
       p5Instance.strokeWeight(2);
-      p5Instance.cursor(p5Instance.MOVE);
-      this._deviationGraphCursorSet = true;
     } else {
       p5Instance.fill(235, 235, 235, 240);
       p5Instance.stroke(180, 180, 180);
       p5Instance.strokeWeight(1);
-      // Reset cursor when mouse leaves the graph
-      if (this._deviationGraphCursorSet) {
-        p5Instance.cursor(p5Instance.ARROW);
-        this._deviationGraphCursorSet = false;
-      }
     }
     p5Instance.rect(baseX, baseY, totalWidth, totalHeight, 5);
+
+    // Set cursor based on position
+    if (this.deviationGraphResizing) {
+      // Keep resize cursor while resizing
+      if (this.deviationGraphResizeEdge === 'corner') {
+        p5Instance.cursor('nwse-resize');
+      } else if (this.deviationGraphResizeEdge === 'right') {
+        p5Instance.cursor('ew-resize');
+      } else if (this.deviationGraphResizeEdge === 'bottom') {
+        p5Instance.cursor('ns-resize');
+      }
+      this._deviationGraphCursorSet = true;
+    } else if (nearCorner) {
+      p5Instance.cursor('nwse-resize');
+      this._deviationGraphCursorSet = true;
+    } else if (nearRightEdge) {
+      p5Instance.cursor('ew-resize');
+      this._deviationGraphCursorSet = true;
+    } else if (nearBottomEdge) {
+      p5Instance.cursor('ns-resize');
+      this._deviationGraphCursorSet = true;
+    } else if (isMouseOver || this.deviationGraphDragging) {
+      p5Instance.cursor(p5Instance.MOVE);
+      this._deviationGraphCursorSet = true;
+    } else if (this._deviationGraphCursorSet) {
+      p5Instance.cursor(p5Instance.ARROW);
+      this._deviationGraphCursorSet = false;
+    }
+
+    // Draw resize handle in corner (visual indicator)
+    if (isMouseOver || this.deviationGraphResizing) {
+      p5Instance.fill(150, 150, 150, 180);
+      p5Instance.noStroke();
+      // Draw diagonal lines in corner as resize indicator
+      const cornerX = baseX + totalWidth - 3;
+      const cornerY = baseY + totalHeight - 3;
+      p5Instance.stroke(120, 120, 120, 200);
+      p5Instance.strokeWeight(1.5);
+      for (let i = 0; i < 3; i++) {
+        const offset = i * 4;
+        p5Instance.line(cornerX - 10 + offset, cornerY, cornerX, cornerY - 10 + offset);
+      }
+    }
 
     // Draw title and BPM (dark text on light background)
     p5Instance.fill(40, 40, 40);
@@ -1341,6 +1472,37 @@ export class TimelineMode {
         if (tempoEntry.time > 0 && tempoEntry.time < maxTime) {
           const lineX = graphX + (tempoEntry.time / maxTime) * graphWidth;
           p5Instance.line(lineX, graphY, lineX, graphY + graphHeight);
+        }
+      }
+    }
+
+    // Draw tempo average deviation markers (only in actual mode with tempo automation)
+    if (isActualMode && this.tempoAverages && this.tempoAverages.length > 0 && maxTime > 0) {
+      p5Instance.textSize(9);
+      p5Instance.textAlign(p5Instance.LEFT, p5Instance.CENTER);
+
+      for (let i = 0; i < this.tempoAverages.length; i++) {
+        const avg = this.tempoAverages[i];
+        const startTime = i === 0 ? 0 : this.tempoAverages[i - 1].endTime;
+        const endTime = avg.endTime;
+
+        if (endTime <= maxTime) {
+          // Draw horizontal line for average deviation in this tempo period
+          const startX = graphX + (startTime / maxTime) * graphWidth;
+          const endX = graphX + (endTime / maxTime) * graphWidth;
+          const normalizedAvg = avg.avgDeviation / actualRange;
+          const avgY = graphY + graphHeight / 2 - normalizedAvg * (graphHeight / 2);
+
+          // Draw average line
+          p5Instance.stroke(50, 150, 50, 180); // Green
+          p5Instance.strokeWeight(2);
+          p5Instance.line(startX, avgY, endX, avgY);
+
+          // Draw BPM and average label at end of period
+          p5Instance.noStroke();
+          p5Instance.fill(50, 120, 50);
+          const labelText = `${avg.bpm}: ${avg.avgDeviation >= 0 ? '+' : ''}${avg.avgDeviation.toFixed(0)}ms`;
+          p5Instance.text(labelText, endX + 3, avgY);
         }
       }
     }
@@ -1448,6 +1610,38 @@ export class TimelineMode {
   }
 
   /**
+   * Get current graph dimensions (shared between draw and mouse handlers)
+   */
+  getDeviationGraphDimensions() {
+    const graphMargin = 20;
+    const statsTableWidth = 220;
+    const resizeHandleSize = 12;
+    const windowWidth = window.innerWidth || 800;
+    const windowHeight = window.innerHeight || 600;
+
+    // Calculate default graph width (80% of screen minus stats table)
+    const defaultGraphWidth = Math.max(300, (windowWidth * 0.8) - statsTableWidth - 60);
+    const defaultGraphHeight = 150;
+
+    // Use custom dimensions if set, otherwise use defaults
+    const graphWidth = this.deviationGraphWidth !== null ? this.deviationGraphWidth : defaultGraphWidth;
+    const graphHeight = this.deviationGraphHeight !== null ? this.deviationGraphHeight : defaultGraphHeight;
+
+    const totalWidth = graphWidth + statsTableWidth + 60;
+    const totalHeight = graphHeight + 50;
+
+    const defaultX = graphMargin;
+    const defaultY = windowHeight - totalHeight - graphMargin;
+    const baseX = this.deviationGraphX !== null ? this.deviationGraphX : defaultX;
+    const baseY = this.deviationGraphY !== null ? this.deviationGraphY : defaultY;
+
+    return {
+      graphWidth, graphHeight, totalWidth, totalHeight,
+      baseX, baseY, resizeHandleSize, statsTableWidth
+    };
+  }
+
+  /**
    * Handle mouse press on deviation graph
    * Returns true if graph was clicked (to prevent other interactions)
    */
@@ -1458,36 +1652,72 @@ export class TimelineMode {
     const drumIds = Object.keys(this.deviationData);
     if (drumIds.length === 0) return false;
 
-    // Graph dimensions - must match drawDeviationGraph
-    const graphWidth = 300;
-    const graphHeight = 150;
-    const graphMargin = 20;
-    const statsTableWidth = 200;
-    const totalWidth = graphWidth + statsTableWidth + 60;
-    const totalHeight = graphHeight + 50;
+    const dims = this.getDeviationGraphDimensions();
+    const { totalWidth, totalHeight, baseX, baseY, resizeHandleSize } = dims;
 
-    // Use default position if not set
-    const defaultX = graphMargin;
-    const defaultY = (window.height || 600) - totalHeight - graphMargin;
-    const baseX = this.deviationGraphX !== null ? this.deviationGraphX : defaultX;
-    const baseY = this.deviationGraphY !== null ? this.deviationGraphY : defaultY;
-
-    // Check if click is within graph bounds
+    // Check if within graph bounds
     if (mouseX >= baseX && mouseX <= baseX + totalWidth &&
         mouseY >= baseY && mouseY <= baseY + totalHeight) {
-      this.deviationGraphDragging = true;
-      this.deviationGraphDragOffsetX = mouseX - baseX;
-      this.deviationGraphDragOffsetY = mouseY - baseY;
-      return true;
+
+      // Check for resize edges
+      const nearRightEdge = mouseX >= baseX + totalWidth - resizeHandleSize;
+      const nearBottomEdge = mouseY >= baseY + totalHeight - resizeHandleSize;
+
+      if (nearRightEdge && nearBottomEdge) {
+        // Corner resize
+        this.deviationGraphResizing = true;
+        this.deviationGraphResizeEdge = 'corner';
+        this.deviationGraphDragOffsetX = mouseX;
+        this.deviationGraphDragOffsetY = mouseY;
+        return true;
+      } else if (nearRightEdge) {
+        // Right edge resize
+        this.deviationGraphResizing = true;
+        this.deviationGraphResizeEdge = 'right';
+        this.deviationGraphDragOffsetX = mouseX;
+        return true;
+      } else if (nearBottomEdge) {
+        // Bottom edge resize
+        this.deviationGraphResizing = true;
+        this.deviationGraphResizeEdge = 'bottom';
+        this.deviationGraphDragOffsetY = mouseY;
+        return true;
+      } else {
+        // Dragging
+        this.deviationGraphDragging = true;
+        this.deviationGraphDragOffsetX = mouseX - baseX;
+        this.deviationGraphDragOffsetY = mouseY - baseY;
+        return true;
+      }
     }
     return false;
   }
 
   /**
-   * Handle mouse drag on deviation graph
+   * Handle mouse drag on deviation graph (drag or resize)
    */
   handleDeviationGraphMouseDragged(mouseX, mouseY) {
-    if (this.deviationGraphDragging) {
+    if (this.deviationGraphResizing) {
+      const dims = this.getDeviationGraphDimensions();
+
+      if (this.deviationGraphResizeEdge === 'corner' || this.deviationGraphResizeEdge === 'right') {
+        // Resize width
+        const deltaX = mouseX - this.deviationGraphDragOffsetX;
+        const currentWidth = this.deviationGraphWidth !== null ? this.deviationGraphWidth : dims.graphWidth;
+        const newWidth = Math.max(200, Math.min(1200, currentWidth + deltaX));
+        this.deviationGraphWidth = newWidth;
+        this.deviationGraphDragOffsetX = mouseX;
+      }
+
+      if (this.deviationGraphResizeEdge === 'corner' || this.deviationGraphResizeEdge === 'bottom') {
+        // Resize height
+        const deltaY = mouseY - this.deviationGraphDragOffsetY;
+        const currentHeight = this.deviationGraphHeight !== null ? this.deviationGraphHeight : dims.graphHeight;
+        const newHeight = Math.max(100, Math.min(400, currentHeight + deltaY));
+        this.deviationGraphHeight = newHeight;
+        this.deviationGraphDragOffsetY = mouseY;
+      }
+    } else if (this.deviationGraphDragging) {
       this.deviationGraphX = mouseX - this.deviationGraphDragOffsetX;
       this.deviationGraphY = mouseY - this.deviationGraphDragOffsetY;
     }
@@ -1498,6 +1728,8 @@ export class TimelineMode {
    */
   handleDeviationGraphMouseReleased() {
     this.deviationGraphDragging = false;
+    this.deviationGraphResizing = false;
+    this.deviationGraphResizeEdge = null;
   }
 
   /**
@@ -1671,11 +1903,12 @@ export class TimelineMode {
    * @returns {number} - Beat count at this time
    */
   getBeatCountForTime(effectiveTime) {
-    // If no tempo history or tempo automation not enabled, use simple calculation
-    if (!this.tempoHistory || this.tempoHistory.length <= 1 || !this.tempoAutomationEnabled) {
-      const secondsPerBeat = 60 / this.bpm;
+    // If no tempo history, use simple calculation with starting BPM
+    if (!this.tempoHistory || this.tempoHistory.length === 0) {
+      const secondsPerBeat = 60 / (this.baseBpm || this.bpm);
       return effectiveTime / secondsPerBeat;
     }
+
 
     // Walk through tempo history to calculate beats accumulated at each tempo
     let totalBeats = 0;

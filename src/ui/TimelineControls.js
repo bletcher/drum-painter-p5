@@ -120,12 +120,22 @@ export class TimelineControls {
       });
     }
 
-    // Tempo automation BPM increase
+    // Tempo automation direction dropdown
+    const tempoAutoDirectionSelect = document.getElementById('tempo-automation-direction');
+    if (tempoAutoDirectionSelect) {
+      tempoAutoDirectionSelect.addEventListener('change', (e) => {
+        this.timelineMode.tempoAutomationDirection = e.target.value;
+        this.updateTempoLimitVisibility();
+        this.scheduleAutoSave();
+      });
+    }
+
+    // Tempo automation BPM change amount
     const tempoAutoBpmInput = document.getElementById('tempo-automation-bpm');
     if (tempoAutoBpmInput) {
       tempoAutoBpmInput.addEventListener('change', (e) => {
-        this.timelineMode.tempoAutomationBpmIncrease = Math.max(1, Math.min(20, parseInt(e.target.value) || 5));
-        e.target.value = this.timelineMode.tempoAutomationBpmIncrease;
+        this.timelineMode.tempoAutomationBpmChange = Math.max(1, Math.min(20, parseInt(e.target.value) || 5));
+        e.target.value = this.timelineMode.tempoAutomationBpmChange;
         this.scheduleAutoSave();
       });
     }
@@ -146,6 +156,16 @@ export class TimelineControls {
       tempoAutoMaxInput.addEventListener('change', (e) => {
         this.timelineMode.tempoAutomationMaxBpm = Math.max(60, Math.min(300, parseInt(e.target.value) || 200));
         e.target.value = this.timelineMode.tempoAutomationMaxBpm;
+        this.scheduleAutoSave();
+      });
+    }
+
+    // Tempo automation min BPM
+    const tempoAutoMinInput = document.getElementById('tempo-automation-min');
+    if (tempoAutoMinInput) {
+      tempoAutoMinInput.addEventListener('change', (e) => {
+        this.timelineMode.tempoAutomationMinBpm = Math.max(20, Math.min(120, parseInt(e.target.value) || 40));
+        e.target.value = this.timelineMode.tempoAutomationMinBpm;
         this.scheduleAutoSave();
       });
     }
@@ -660,6 +680,26 @@ export class TimelineControls {
   }
 
   /**
+   * Update visibility of max/min BPM fields based on direction
+   */
+  updateTempoLimitVisibility() {
+    const direction = this.timelineMode.tempoAutomationDirection || 'increase';
+    const maxInput = document.getElementById('tempo-automation-max');
+    const minInput = document.getElementById('tempo-automation-min');
+    const label = document.getElementById('tempo-limit-label');
+
+    if (direction === 'increase') {
+      if (maxInput) maxInput.style.display = 'inline-block';
+      if (minInput) minInput.style.display = 'none';
+      if (label) label.textContent = 'Max BPM:';
+    } else {
+      if (maxInput) maxInput.style.display = 'none';
+      if (minInput) minInput.style.display = 'inline-block';
+      if (label) label.textContent = 'Min BPM:';
+    }
+  }
+
+  /**
    * Sync UI with current timeline mode settings
    */
   syncUI() {
@@ -705,13 +745,20 @@ export class TimelineControls {
 
     // Sync tempo automation settings
     if (tempoAutoCheckbox) tempoAutoCheckbox.checked = this.timelineMode.tempoAutomationEnabled;
-    if (tempoAutoBpmInput) tempoAutoBpmInput.value = this.timelineMode.tempoAutomationBpmIncrease;
+    if (tempoAutoBpmInput) tempoAutoBpmInput.value = this.timelineMode.tempoAutomationBpmChange;
     if (tempoAutoBarsInput) tempoAutoBarsInput.value = this.timelineMode.tempoAutomationBars;
     if (tempoAutoMaxInput) tempoAutoMaxInput.value = this.timelineMode.tempoAutomationMaxBpm;
     if (tempoAutoControls) tempoAutoControls.style.display = this.timelineMode.tempoAutomationEnabled ? 'block' : 'none';
 
+    // Sync direction dropdown and min BPM
+    const tempoAutoDirectionSelect = document.getElementById('tempo-automation-direction');
+    const tempoAutoMinInput = document.getElementById('tempo-automation-min');
+    if (tempoAutoDirectionSelect) tempoAutoDirectionSelect.value = this.timelineMode.tempoAutomationDirection || 'increase';
+    if (tempoAutoMinInput) tempoAutoMinInput.value = this.timelineMode.tempoAutomationMinBpm;
+
     // Update tempo automation visibility
     this.updateTempoAutomationVisibility();
+    this.updateTempoLimitVisibility();
 
     this.updateButtonsUI();
     this.updateStatusText();
