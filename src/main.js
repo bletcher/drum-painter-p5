@@ -2098,40 +2098,47 @@ window.draw = function() {
     chronicleMode.drawDeviationGraph(window, offsetX, offsetY, scaleFactor, drumSettings);
 
     // Auto-scroll to keep current playhead visible when recording
-    // The playhead should stay just above the deviation graph (if showing)
-    if (chronicleMode.recording && chronicleMode.startTime !== null) {
-      const timeElapsed = chronicleMode.getElapsedTime();
-      const totalX = timeElapsed * chronicleMode.pixelsPerSecond;
-      const staffIndex = Math.floor(totalX / chronicleMode.staffWidth);
+    // Uses measure-based positioning (same as playhead) for consistency with tempo changes
+    if (chronicleMode.recording && chronicleMode.startTime !== null && chronicleMode.layout === 'staff') {
+      // Get current staff position using the same calculation as playhead drawing
+      const staffInfo = chronicleMode.getCurrentStaffInfo();
 
-      // Calculate staff position including row spacing
-      const staffRowHeight = (chronicleMode.staffHeight + chronicleMode.rowSpacing) * scaleFactor;
-      const currentStaffY = staffIndex * staffRowHeight;
-      const currentStaffBottomY = currentStaffY + chronicleMode.staffHeight * scaleFactor;
+      // Convert canvas coordinates to screen coordinates
+      const currentStaffY = staffInfo.staffY * scaleFactor;
+      const currentStaffBottomY = staffInfo.staffBottomY * scaleFactor;
+      const rowHeight = staffInfo.rowHeight * scaleFactor;
 
-      // Calculate bottom margin: if deviation graph is showing, keep playhead above it
+      // Calculate bottom margin: keep playhead staff above the deviation graph
       let bottomMargin = VIEWPORT_MARGIN_BOTTOM;
-      if (chronicleMode.showDeviationGraph && chronicleMode.layout === 'staff') {
-        // Get dynamic graph height (default 150 + 50 margins, or custom if resized)
+      if (chronicleMode.showDeviationGraph) {
         const graphHeight = chronicleMode.deviationGraphHeight !== null ? chronicleMode.deviationGraphHeight : 150;
-        bottomMargin = graphHeight + 70; // Graph height + margins + padding
+        bottomMargin = graphHeight + 80;
       }
 
-      // Auto-scroll to keep playhead staff just above the bottom margin
-      const viewportBottom = -timelineScrollY + height - bottomMargin;
-      const viewportTop = -timelineScrollY + VIEWPORT_MARGIN_TOP;
+      // Target position: we want the TOP of the current staff to be visible,
+      // with enough room for the full staff height above the graph
+      const targetStaffTopOnScreen = height - bottomMargin - (chronicleMode.staffHeight * scaleFactor);
 
-      if (currentStaffBottomY > viewportBottom) {
-        // Scroll down to show current staff above the graph
-        timelineScrollY = -(currentStaffBottomY - height + bottomMargin + 20);
-      } else if (currentStaffY < viewportTop) {
-        // Scroll up to show current staff
-        timelineScrollY = -currentStaffY + VIEWPORT_MARGIN_TOP;
+      // Calculate the minimum scroll needed to show this staff at the target position
+      // scrollY = targetScreenY - canvasY
+      const scrollNeededForThisStaff = targetStaffTopOnScreen - currentStaffY;
+
+      // Only scroll down (negative values), never scroll up past where we've been
+      // This ensures:
+      // 1. Early staffs stay at the top (scroll = 0)
+      // 2. Once we need to scroll, we scroll just enough to show the current staff
+      // 3. New staffs appear at the target position immediately when they start
+      const newScrollY = Math.min(0, scrollNeededForThisStaff);
+
+      // Only update scroll if we need to scroll MORE (further down)
+      // This prevents jumping back up when we don't need to
+      if (newScrollY < timelineScrollY) {
+        timelineScrollY = newScrollY;
       }
 
-      // Clamp auto-scroll to valid range
+      // Clamp scroll to valid range
       const maxScroll = Math.max(0, displayHeight - height + SCROLL_MAX_PADDING);
-      timelineScrollY = Math.max(-maxScroll, Math.min(SCROLLBAR_TRACK_PADDING, timelineScrollY));
+      timelineScrollY = Math.max(-maxScroll, timelineScrollY);
     }
 
   }

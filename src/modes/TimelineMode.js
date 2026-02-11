@@ -614,17 +614,30 @@ export class TimelineMode {
     if (!this.recording) return; // Stop visual metronome when recording ends
 
     const currentTime = Date.now();
-    const timeElapsed = (currentTime - this.startTime - this.pausedTime) / 1000.0;
+    const rawTimeElapsed = (currentTime - this.startTime - this.pausedTime) / 1000.0;
 
-    // Calculate timing using continuous subdivision counting (handles tempo changes smoothly)
-    const secondsPerBeat = 60 / this.bpm;
-    const secondsPerSubdivision = secondsPerBeat / (this.subdivision / 4);
+    // Calculate warmup duration
+    const warmupSecondsPerBeat = 60 / this.baseBpm;
+    const warmupDuration = this.warmupMeasures > 0
+      ? warmupSecondsPerBeat * this.beatsPerMeasure * this.warmupMeasures
+      : 0;
     const subdivisionsPerMeasure = this.subdivision * (this.beatsPerMeasure / 4);
+    const warmupSubdivisions = this.warmupMeasures * subdivisionsPerMeasure;
 
-    // Calculate subdivisions since last tempo change, then add offset for continuity
-    const timeSinceTempoChange = timeElapsed - this.tempoChangeTime;
-    const subdivisionsSinceChange = timeSinceTempoChange / secondsPerSubdivision;
-    const currentSubdivision = this.tempoChangeSubdivisionOffset + subdivisionsSinceChange;
+    let currentSubdivision;
+
+    if (rawTimeElapsed < warmupDuration) {
+      // During warmup: use simple calculation at base BPM
+      const secondsPerSubdivision = warmupSecondsPerBeat / (this.subdivision / 4);
+      currentSubdivision = rawTimeElapsed / secondsPerSubdivision;
+    } else {
+      // After warmup: use getBeatCountForTime for consistency with grid painting
+      const effectiveTime = rawTimeElapsed - warmupDuration;
+      const beatCount = this.getBeatCountForTime(effectiveTime);
+      const subdivisionsPerBeat = this.subdivision / 4;
+      // Add warmup subdivisions to get continuous subdivision count
+      currentSubdivision = warmupSubdivisions + (beatCount * subdivisionsPerBeat);
+    }
 
     // Position (use custom position if set, otherwise default to bottom right)
     const defaultX = canvasWidth - METRONOME_DEFAULT_MARGIN;
@@ -849,12 +862,27 @@ export class TimelineMode {
         this.pausedTime += pauseDuration;
         this.stopTime = null;
 
-        // Sync metronome to current position
-        const currentTime = Date.now();
-        const timeElapsed = (currentTime - this.startTime - this.pausedTime) / 1000.0;
-        const secondsPerBeat = 60 / this.bpm;
-        const secondsPerSubdivision = secondsPerBeat / (this.subdivision / 4);
-        const exactSubdivision = timeElapsed / secondsPerSubdivision;
+        // Sync metronome to current position using consistent timing calculation
+        const rawTimeElapsed = (Date.now() - this.startTime - this.pausedTime) / 1000.0;
+        const warmupSecondsPerBeat = 60 / this.baseBpm;
+        const warmupDuration = this.warmupMeasures > 0
+          ? warmupSecondsPerBeat * this.beatsPerMeasure * this.warmupMeasures
+          : 0;
+        const subdivisionsPerMeasure = this.subdivision * (this.beatsPerMeasure / 4);
+        const warmupSubdivisions = this.warmupMeasures * subdivisionsPerMeasure;
+
+        let exactSubdivision;
+        if (rawTimeElapsed < warmupDuration) {
+          // During warmup: use simple calculation at base BPM
+          const secondsPerSubdivision = warmupSecondsPerBeat / (this.subdivision / 4);
+          exactSubdivision = rawTimeElapsed / secondsPerSubdivision;
+        } else {
+          // After warmup: use getBeatCountForTime for consistency
+          const effectiveTime = rawTimeElapsed - warmupDuration;
+          const beatCount = this.getBeatCountForTime(effectiveTime);
+          const subdivisionsPerBeat = this.subdivision / 4;
+          exactSubdivision = warmupSubdivisions + (beatCount * subdivisionsPerBeat);
+        }
         this.lastMetronomeClick = Math.round(exactSubdivision) - 1;
 
         debugLog(`Timeline recording continued (paused for ${pauseDuration}ms)`);
@@ -968,21 +996,42 @@ export class TimelineMode {
     }
 
     const currentTime = Date.now();
-    const timeElapsed = (currentTime - this.startTime - this.pausedTime) / 1000.0;
+    const rawTimeElapsed = (currentTime - this.startTime - this.pausedTime) / 1000.0;
 
-    // Calculate subdivisions since last tempo change, then add offset
-    const timeSinceTempoChange = timeElapsed - this.tempoChangeTime;
-    const secondsPerBeat = 60 / this.bpm;
-    const secondsPerSubdivision = secondsPerBeat / (this.subdivision / 4);
-    const subdivisionsSinceChange = timeSinceTempoChange / secondsPerSubdivision;
-    const currentSubdivision = Math.floor(this.tempoChangeSubdivisionOffset + subdivisionsSinceChange);
-
-    // Calculate current measure (1-indexed) based on continuous subdivision count
+    // Calculate warmup duration and subdivisions
+    const warmupSecondsPerBeat = 60 / this.baseBpm;
+    const warmupDuration = this.warmupMeasures > 0
+      ? warmupSecondsPerBeat * this.beatsPerMeasure * this.warmupMeasures
+      : 0;
     const subdivisionsPerMeasure = this.subdivision * (this.beatsPerMeasure / 4);
-    const currentMeasure = Math.floor(currentSubdivision / subdivisionsPerMeasure) + 1;
+    const warmupSubdivisions = this.warmupMeasures * subdivisionsPerMeasure;
 
-    // Check for tempo automation (pass time elapsed and current subdivision for smooth transition)
-    this.updateTempoAutomation(currentMeasure, timeElapsed, currentSubdivision);
+    let currentSubdivision;
+    let currentMeasure;
+
+    if (rawTimeElapsed < warmupDuration) {
+      // During warmup: use simple calculation at base BPM
+      const secondsPerSubdivision = warmupSecondsPerBeat / (this.subdivision / 4);
+      currentSubdivision = Math.floor(rawTimeElapsed / secondsPerSubdivision);
+      currentMeasure = Math.floor(currentSubdivision / subdivisionsPerMeasure) + 1;
+    } else {
+      // After warmup: use getBeatCountForTime for consistency with grid painting
+      const effectiveTime = rawTimeElapsed - warmupDuration;
+      const beatCount = this.getBeatCountForTime(effectiveTime);
+      const subdivisionsPerBeat = this.subdivision / 4;
+
+      // Add warmup subdivisions to get continuous subdivision count
+      currentSubdivision = Math.floor(warmupSubdivisions + (beatCount * subdivisionsPerBeat));
+
+      // Calculate measure (1-indexed) relative to post-warmup position
+      const postWarmupSubdivision = currentSubdivision - warmupSubdivisions;
+      currentMeasure = Math.floor(postWarmupSubdivision / subdivisionsPerMeasure) + 1;
+    }
+
+    // Check for tempo automation (only after warmup)
+    if (rawTimeElapsed >= warmupDuration) {
+      this.updateTempoAutomation(currentMeasure, currentSubdivision - warmupSubdivisions);
+    }
 
     // Play click if we've crossed into a new subdivision
     if (currentSubdivision > this.lastMetronomeClick) {
@@ -1014,12 +1063,10 @@ export class TimelineMode {
 
   /**
    * Update tempo automation - increase BPM at specified bar intervals
-   * Handles tempo changes smoothly by tracking subdivision offset
    * @param {number} currentMeasure - Current measure number (1-indexed)
-   * @param {number} timeElapsed - Total time elapsed in seconds
-   * @param {number} currentSubdivision - Current subdivision count
+   * @param {number} currentSubdivision - Current subdivision count (post-warmup)
    */
-  updateTempoAutomation(currentMeasure, timeElapsed, currentSubdivision) {
+  updateTempoAutomation(currentMeasure, currentSubdivision) {
     if (!this.tempoAutomationEnabled) return;
     if (this.tempoAutomationBars <= 0) return;
 
@@ -1049,11 +1096,7 @@ export class TimelineMode {
 
       // Apply the new BPM if it's different
       if (newBpm !== this.bpm) {
-        // Save current subdivision position before changing tempo
-        this.tempoChangeTime = timeElapsed;
-        this.tempoChangeSubdivisionOffset = currentSubdivision;
-
-        // Record tempo change in history for staff grid drawing
+        // Record tempo change in history (uses effective time for consistency with grid)
         const effectiveTime = this.getEffectiveTimeElapsed();
         this.tempoHistory.push({
           time: effectiveTime,
@@ -1095,14 +1138,21 @@ export class TimelineMode {
 
     if (allDeviations.length > 0) {
       const avgDeviation = allDeviations.reduce((sum, d) => sum + d, 0) / allDeviations.length;
+
+      // Calculate standard deviation
+      const squaredDiffs = allDeviations.map(d => Math.pow(d - avgDeviation, 2));
+      const avgSquaredDiff = squaredDiffs.reduce((sum, d) => sum + d, 0) / allDeviations.length;
+      const stdDeviation = Math.sqrt(avgSquaredDiff);
+
       const effectiveTime = this.getEffectiveTimeElapsed();
       this.tempoAverages.push({
         bpm: this.bpm,
         avgDeviation: avgDeviation,
+        stdDeviation: stdDeviation,
         hitCount: allDeviations.length,
         endTime: effectiveTime
       });
-      debugLog(`📊 Tempo average: ${this.bpm} BPM, avg deviation: ${avgDeviation.toFixed(1)}ms (${allDeviations.length} hits)`);
+      debugLog(`📊 Tempo average: ${this.bpm} BPM, avg: ${avgDeviation.toFixed(1)}ms, std: ${stdDeviation.toFixed(1)}ms (${allDeviations.length} hits)`);
     }
   }
 
@@ -1476,33 +1526,26 @@ export class TimelineMode {
       }
     }
 
-    // Draw tempo average deviation markers (only in actual mode with tempo automation)
+    // Draw tempo average stats in upper right of each tempo block (only in actual mode)
     if (isActualMode && this.tempoAverages && this.tempoAverages.length > 0 && maxTime > 0) {
-      p5Instance.textSize(9);
-      p5Instance.textAlign(p5Instance.LEFT, p5Instance.CENTER);
+      p5Instance.textSize(20);
+      p5Instance.noStroke();
 
       for (let i = 0; i < this.tempoAverages.length; i++) {
         const avg = this.tempoAverages[i];
-        const startTime = i === 0 ? 0 : this.tempoAverages[i - 1].endTime;
         const endTime = avg.endTime;
 
         if (endTime <= maxTime) {
-          // Draw horizontal line for average deviation in this tempo period
-          const startX = graphX + (startTime / maxTime) * graphWidth;
+          // Calculate position in upper right of tempo block
           const endX = graphX + (endTime / maxTime) * graphWidth;
-          const normalizedAvg = avg.avgDeviation / actualRange;
-          const avgY = graphY + graphHeight / 2 - normalizedAvg * (graphHeight / 2);
+          const stdDev = avg.stdDeviation !== undefined ? avg.stdDeviation : 0;
 
-          // Draw average line
-          p5Instance.stroke(50, 150, 50, 180); // Green
-          p5Instance.strokeWeight(2);
-          p5Instance.line(startX, avgY, endX, avgY);
-
-          // Draw BPM and average label at end of period
-          p5Instance.noStroke();
-          p5Instance.fill(50, 120, 50);
-          const labelText = `${avg.bpm}: ${avg.avgDeviation >= 0 ? '+' : ''}${avg.avgDeviation.toFixed(0)}ms`;
-          p5Instance.text(labelText, endX + 3, avgY);
+          // Draw avg and std text in upper right of the tempo block
+          p5Instance.fill(80, 80, 80);
+          p5Instance.textAlign(p5Instance.RIGHT, p5Instance.TOP);
+          const avgText = `${avg.avgDeviation >= 0 ? '+' : ''}${avg.avgDeviation.toFixed(0)}ms`;
+          const stdText = `±${stdDev.toFixed(0)}`;
+          p5Instance.text(`${avgText} ${stdText}`, endX - 3, graphY + 3);
         }
       }
     }
@@ -1862,27 +1905,17 @@ export class TimelineMode {
   getCurrentSubdivision() {
     if (!this.startTime) return 0;
 
-    const currentTime = this.recording ? Date.now() : (this.stopTime || Date.now());
-    const timeElapsed = (currentTime - this.startTime - this.pausedTime) / 1000.0;
+    // Use effective time (excludes warmup) - same coordinate system as grid painting
+    const effectiveTime = this.getEffectiveTimeElapsed();
+    if (effectiveTime <= 0) return 0;
 
-    // Calculate warm-up duration
-    let warmupDuration = 0;
-    if (this.warmupMeasures > 0) {
-      const warmupSecondsPerBeat = 60 / this.baseBpm;
-      warmupDuration = warmupSecondsPerBeat * this.beatsPerMeasure * this.warmupMeasures;
-      if (timeElapsed < warmupDuration) return 0;
-    }
+    // Use getBeatCountForTime which properly handles tempo history
+    // This ensures consistency with how grid positions are calculated
+    const beatCount = this.getBeatCountForTime(effectiveTime);
 
-    // Use effective time (after warm-up) for subdivision calculation
-    const effectiveTimeElapsed = timeElapsed - warmupDuration;
-
-    // Calculate subdivisions using the same logic as updateMetronome
-    const timeSinceTempoChange = effectiveTimeElapsed - this.tempoChangeTime;
-    const secondsPerBeat = 60 / this.bpm;
-    const secondsPerSubdivision = secondsPerBeat / (this.subdivision / 4);
-    const subdivisionsSinceChange = timeSinceTempoChange / secondsPerSubdivision;
-
-    return this.tempoChangeSubdivisionOffset + subdivisionsSinceChange;
+    // Convert beats to subdivisions
+    const subdivisionsPerBeat = this.subdivision / 4;
+    return beatCount * subdivisionsPerBeat;
   }
 
   /**
@@ -1893,6 +1926,36 @@ export class TimelineMode {
     const currentSubdivision = this.getCurrentSubdivision();
     const subdivisionsPerMeasure = this.subdivision * (this.beatsPerMeasure / 4);
     return Math.floor(currentSubdivision / subdivisionsPerMeasure);
+  }
+
+  /**
+   * Get current staff index and position info for auto-scrolling
+   * Uses the same calculation as the playhead drawing for consistency
+   * @returns {Object} - { staffIndex, staffY, staffBottomY, rowHeight }
+   */
+  getCurrentStaffInfo() {
+    if (!this.startTime || this.isInWarmup()) {
+      return { staffIndex: 0, staffY: 0, staffBottomY: this.staffHeight, rowHeight: this.staffHeight + this.rowSpacing };
+    }
+
+    const currentSubdivision = this.getCurrentSubdivision();
+    const subdivisionsPerMeasure = this.subdivision * (this.beatsPerMeasure / 4);
+    const currentMeasureFloat = currentSubdivision / subdivisionsPerMeasure;
+
+    if (currentMeasureFloat <= 0) {
+      return { staffIndex: 0, staffY: 0, staffBottomY: this.staffHeight, rowHeight: this.staffHeight + this.rowSpacing };
+    }
+
+    // Use the same calculation as the playhead
+    const measureNum = Math.floor(currentMeasureFloat);
+    const measuresPerStaff = this.measuresPerStaffPreference > 0 ? this.measuresPerStaffPreference : 4;
+    const staffIndex = Math.floor(measureNum / measuresPerStaff);
+
+    const rowHeight = this.staffHeight + this.rowSpacing;
+    const staffY = staffIndex * rowHeight;
+    const staffBottomY = staffY + this.staffHeight;
+
+    return { staffIndex, staffY, staffBottomY, rowHeight };
   }
 
 
