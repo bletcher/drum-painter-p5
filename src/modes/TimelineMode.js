@@ -43,6 +43,7 @@ import {
   PLAYHEAD_PULSE_DECAY
 } from '../config/constants.js';
 import { debugLog, debugWarn, debugError, infoLog } from '../utils/debug.js';
+import { getColorWithHueVariation } from '../utils/colorUtils.js';
 
 export class TimelineMode {
   constructor(drumKitConfig) {
@@ -339,8 +340,8 @@ export class TimelineMode {
         const measureNumber = Math.floor(beatCount / this.beatsPerMeasure);
 
         // Angle within current measure (0 to 2π per measure)
-        // Uses exact beatCount for precise positioning along the spiral
-        const theta = (measurePosition / this.beatsPerMeasure) * Math.PI * 2;
+        // Offset by -π/2 so beat 1 starts at 12 o'clock (matching circular metronome)
+        const theta = (measurePosition / this.beatsPerMeasure) * Math.PI * 2 - Math.PI / 2;
 
         // Calculate max radius based on canvas size
         const canvasHeight = centerY * 2;
@@ -535,8 +536,7 @@ export class TimelineMode {
     const scaledVelSize = this.applyScalingCurve(velocity, settings?.sizeScaling || 'linear');
     const scaledVelOpacity = this.applyScalingCurve(velocity, settings?.opacityScaling || 'linear');
 
-    const col = this.getDrumColor(note, midiDeviceId, scaledVelOpacity, drumSettings);
-    if (!col) return; // Safety check - should not happen but handle gracefully
+    const col = getColorWithHueVariation(settings, scaledVelOpacity);
     const shape = settings?.shape || 'circle';
     const sizeMultiplier = settings?.size || 1.0;
     const opacityMult = settings?.opacity || 1.0;
@@ -639,9 +639,11 @@ export class TimelineMode {
       currentSubdivision = warmupSubdivisions + (beatCount * subdivisionsPerBeat);
     }
 
-    // Position (use custom position if set, otherwise default to bottom right)
+    // Position within the fixed bottom panel (or bottom-right if no panel)
+    const panelHeight = this.getBottomPanelHeight();
+    const panelTop = canvasHeight - panelHeight;
     const defaultX = canvasWidth - METRONOME_DEFAULT_MARGIN;
-    const defaultY = canvasHeight - METRONOME_DEFAULT_MARGIN;
+    const defaultY = panelHeight > 0 ? panelTop + panelHeight / 2 : canvasHeight - METRONOME_DEFAULT_MARGIN;
     const centerX = this.metronomeX !== null ? this.metronomeX : defaultX;
     const centerY = this.metronomeY !== null ? this.metronomeY : defaultY;
     const radius = METRONOME_RADIUS;
@@ -751,9 +753,11 @@ export class TimelineMode {
   handleMetronomeMousePressed(mouseX, mouseY) {
     if (!this.metronomeEnabled) return false;
 
-    // Use default position if not set
+    // Use default position if not set (within bottom panel)
+    const panelHeight = this.getBottomPanelHeight();
+    const panelTop = window.height - panelHeight;
     const centerX = this.metronomeX !== null ? this.metronomeX : (window.width - METRONOME_DEFAULT_MARGIN);
-    const centerY = this.metronomeY !== null ? this.metronomeY : (window.height - METRONOME_DEFAULT_MARGIN);
+    const centerY = this.metronomeY !== null ? this.metronomeY : (panelHeight > 0 ? panelTop + panelHeight / 2 : window.height - METRONOME_DEFAULT_MARGIN);
     const radius = METRONOME_RADIUS;
 
     const distFromCenter = Math.sqrt(Math.pow(mouseX - centerX, 2) + Math.pow(mouseY - centerY, 2));
@@ -1139,20 +1143,31 @@ export class TimelineMode {
     if (allDeviations.length > 0) {
       const avgDeviation = allDeviations.reduce((sum, d) => sum + d, 0) / allDeviations.length;
 
-      // Calculate standard deviation
+      // Calculate average absolute deviation (mean of |deviation|)
+      const absDeviations = allDeviations.map(d => Math.abs(d));
+      const avgAbsDeviation = absDeviations.reduce((sum, d) => sum + d, 0) / absDeviations.length;
+
+      // Calculate standard deviation of signed deviations
       const squaredDiffs = allDeviations.map(d => Math.pow(d - avgDeviation, 2));
       const avgSquaredDiff = squaredDiffs.reduce((sum, d) => sum + d, 0) / allDeviations.length;
       const stdDeviation = Math.sqrt(avgSquaredDiff);
+
+      // Calculate standard deviation of absolute deviations
+      const absSquaredDiffs = absDeviations.map(d => Math.pow(d - avgAbsDeviation, 2));
+      const absAvgSquaredDiff = absSquaredDiffs.reduce((sum, d) => sum + d, 0) / absDeviations.length;
+      const absStdDeviation = Math.sqrt(absAvgSquaredDiff);
 
       const effectiveTime = this.getEffectiveTimeElapsed();
       this.tempoAverages.push({
         bpm: this.bpm,
         avgDeviation: avgDeviation,
+        avgAbsDeviation: avgAbsDeviation,
         stdDeviation: stdDeviation,
+        absStdDeviation: absStdDeviation,
         hitCount: allDeviations.length,
         endTime: effectiveTime
       });
-      debugLog(`📊 Tempo average: ${this.bpm} BPM, avg: ${avgDeviation.toFixed(1)}ms, std: ${stdDeviation.toFixed(1)}ms (${allDeviations.length} hits)`);
+      debugLog(`📊 Tempo average: ${this.bpm} BPM, avg: ${avgDeviation.toFixed(1)}ms, |avg|: ${avgAbsDeviation.toFixed(1)}ms, std: ${stdDeviation.toFixed(1)}ms (${allDeviations.length} hits)`);
     }
   }
 
@@ -1388,9 +1403,11 @@ export class TimelineMode {
     const totalWidth = graphWidth + statsTableWidth + 60; // Graph + table + margins
     const totalHeight = graphHeight + 50; // Graph height + margins for title and axis labels
 
-    // Position (use custom position if set, otherwise default to bottom-left)
+    // Position within the fixed bottom panel
+    const panelHeight = this.getBottomPanelHeight();
+    const panelTop = p5Instance.height - panelHeight;
     const defaultX = graphMargin;
-    const defaultY = p5Instance.height - totalHeight - graphMargin;
+    const defaultY = panelTop + 10; // Position near top of panel
     const baseX = this.deviationGraphX !== null ? this.deviationGraphX : defaultX;
     const baseY = this.deviationGraphY !== null ? this.deviationGraphY : defaultY;
 
@@ -1513,22 +1530,57 @@ export class TimelineMode {
     p5Instance.text('0', graphX, graphY + graphHeight + 5);
     p5Instance.text(maxTime.toFixed(1), graphX + graphWidth, graphY + graphHeight + 5);
 
-    // Draw faint vertical lines for tempo changes
-    if (this.tempoHistory && this.tempoHistory.length > 1 && maxTime > 0) {
-      p5Instance.stroke(200, 150, 100, 100); // Faint orange/brown
-      p5Instance.strokeWeight(1);
-      for (let i = 1; i < this.tempoHistory.length; i++) {
-        const tempoEntry = this.tempoHistory[i];
-        if (tempoEntry.time > 0 && tempoEntry.time < maxTime) {
-          const lineX = graphX + (tempoEntry.time / maxTime) * graphWidth;
+    // Draw light grey vertical lines for measure boundaries
+    if (maxTime > 0) {
+      const subdivisionsPerMeasure = this.subdivision * (this.beatsPerMeasure / 4);
+      // Calculate how many measures fit in the current time
+      const totalBeats = this.getBeatCountForTime(maxTime);
+      const totalMeasures = Math.ceil(totalBeats / this.beatsPerMeasure);
+
+      p5Instance.stroke(180, 180, 180, 180); // Medium grey
+      p5Instance.strokeWeight(0.75);
+      for (let m = 1; m <= totalMeasures; m++) {
+        const measureTime = this.getTimeForSubdivision(m * subdivisionsPerMeasure);
+        if (measureTime > 0 && measureTime < maxTime) {
+          const lineX = graphX + (measureTime / maxTime) * graphWidth;
           p5Instance.line(lineX, graphY, lineX, graphY + graphHeight);
+        }
+      }
+    }
+
+    // Draw darker vertical lines for tempo changes with tempo labels
+    if (this.tempoHistory && this.tempoHistory.length > 0 && maxTime > 0) {
+      // Draw first section tempo label
+      const firstBpm = this.tempoHistory[0].bpm;
+      p5Instance.noStroke();
+      p5Instance.fill(180, 120, 60, 200);
+      p5Instance.textSize(10);
+      p5Instance.textAlign(p5Instance.LEFT, p5Instance.BOTTOM);
+      p5Instance.text(`${firstBpm}`, graphX + 3, graphY + graphHeight - 3);
+
+      if (this.tempoHistory.length > 1) {
+        p5Instance.strokeWeight(1.5);
+        for (let i = 1; i < this.tempoHistory.length; i++) {
+          const tempoEntry = this.tempoHistory[i];
+          if (tempoEntry.time > 0 && tempoEntry.time < maxTime) {
+            const lineX = graphX + (tempoEntry.time / maxTime) * graphWidth;
+            // Darker orange/brown for tempo change lines
+            p5Instance.stroke(160, 100, 40, 200);
+            p5Instance.line(lineX, graphY, lineX, graphY + graphHeight);
+
+            // Draw tempo label just inside the new section
+            p5Instance.noStroke();
+            p5Instance.fill(180, 120, 60, 200);
+            p5Instance.textSize(10);
+            p5Instance.textAlign(p5Instance.LEFT, p5Instance.BOTTOM);
+            p5Instance.text(`${tempoEntry.bpm}`, lineX + 3, graphY + graphHeight - 3);
+          }
         }
       }
     }
 
     // Draw tempo average stats in upper right of each tempo block (only in actual mode)
     if (isActualMode && this.tempoAverages && this.tempoAverages.length > 0 && maxTime > 0) {
-      p5Instance.textSize(20);
       p5Instance.noStroke();
 
       for (let i = 0; i < this.tempoAverages.length; i++) {
@@ -1539,13 +1591,20 @@ export class TimelineMode {
           // Calculate position in upper right of tempo block
           const endX = graphX + (endTime / maxTime) * graphWidth;
           const stdDev = avg.stdDeviation !== undefined ? avg.stdDeviation : 0;
+          const avgAbsDev = avg.avgAbsDeviation !== undefined ? avg.avgAbsDeviation : 0;
+          const absStdDev = avg.absStdDeviation !== undefined ? avg.absStdDeviation : 0;
 
-          // Draw avg and std text in upper right of the tempo block
+          // Draw stats text in upper right of the tempo block
           p5Instance.fill(80, 80, 80);
           p5Instance.textAlign(p5Instance.RIGHT, p5Instance.TOP);
-          const avgText = `${avg.avgDeviation >= 0 ? '+' : ''}${avg.avgDeviation.toFixed(0)}ms`;
-          const stdText = `±${stdDev.toFixed(0)}`;
-          p5Instance.text(`${avgText} ${stdText}`, endX - 3, graphY + 3);
+          // Line 1: mean deviation ± std
+          p5Instance.textSize(16);
+          const avgText = `${avg.avgDeviation >= 0 ? '+' : ''}${avg.avgDeviation.toFixed(0)}ms ±${stdDev.toFixed(0)}`;
+          p5Instance.text(avgText, endX - 3, graphY + 3);
+          // Line 2: mean absolute deviation ± std
+          p5Instance.textSize(12);
+          p5Instance.fill(120, 120, 120);
+          p5Instance.text(`|avg| ${avgAbsDev.toFixed(0)}ms ±${absStdDev.toFixed(0)}`, endX - 3, graphY + 21);
         }
       }
     }
@@ -1673,8 +1732,10 @@ export class TimelineMode {
     const totalWidth = graphWidth + statsTableWidth + 60;
     const totalHeight = graphHeight + 50;
 
+    const panelHeight = this.getBottomPanelHeight();
+    const panelTop = windowHeight - panelHeight;
     const defaultX = graphMargin;
-    const defaultY = windowHeight - totalHeight - graphMargin;
+    const defaultY = panelTop + 10;
     const baseX = this.deviationGraphX !== null ? this.deviationGraphX : defaultX;
     const baseY = this.deviationGraphY !== null ? this.deviationGraphY : defaultY;
 
@@ -1682,6 +1743,29 @@ export class TimelineMode {
       graphWidth, graphHeight, totalWidth, totalHeight,
       baseX, baseY, resizeHandleSize, statsTableWidth
     };
+  }
+
+  /**
+   * Get the height of the fixed bottom panel for graph/metronome.
+   * Returns 0 if no panel is needed.
+   */
+  getBottomPanelHeight() {
+    if (this.layout !== 'staff') return 0;
+
+    const hasGraph = this.showDeviationGraph && Object.keys(this.deviationData).length > 0;
+    const hasMetronome = this.metronomeEnabled && this.recording && this.startTime;
+
+    if (hasGraph) {
+      const graphHeight = this.deviationGraphHeight !== null ? this.deviationGraphHeight : 150;
+      // Graph height + margins (title, axis labels) + padding
+      return graphHeight + 70;
+    }
+
+    if (hasMetronome) {
+      return METRONOME_RADIUS * 2 + 40;
+    }
+
+    return 0;
   }
 
   /**
@@ -1871,6 +1955,37 @@ export class TimelineMode {
       return (this.stopTime - this.startTime - this.pausedTime) / 1000.0;
     }
     return 0;
+  }
+
+  /**
+   * Get the planned BPM for a specific measure based on automation settings
+   * Precalculates forward from baseBpm rather than looking at history
+   * @param {number} measureNum - Measure number (0-indexed)
+   * @returns {number} - BPM that will be active during this measure
+   */
+  getPlannedBpmForMeasure(measureNum) {
+    if (!this.tempoAutomationEnabled || this.tempoAutomationBars <= 0) {
+      return this.baseBpm || this.bpm;
+    }
+
+    // Calculate which tempo interval this measure falls in
+    // Measures are 0-indexed, intervals are 0-indexed
+    const interval = Math.floor(measureNum / this.tempoAutomationBars);
+
+    const bpmDelta = this.tempoAutomationDirection === 'decrease'
+      ? -this.tempoAutomationBpmChange
+      : this.tempoAutomationBpmChange;
+
+    let bpm = (this.baseBpm || this.bpm) + (interval * bpmDelta);
+
+    // Apply limits
+    if (this.tempoAutomationDirection === 'increase') {
+      bpm = Math.min(bpm, this.tempoAutomationMaxBpm);
+    } else {
+      bpm = Math.max(bpm, this.tempoAutomationMinBpm);
+    }
+
+    return bpm;
   }
 
   /**
@@ -2075,9 +2190,6 @@ export class TimelineMode {
       // Calculate the starting measure for this staff (0-indexed)
       const staffStartMeasure = staffIdx * measuresPerStaff;
 
-      // Get BPM for this staff based on the measure number
-      const staffBpm = this.getBpmAtMeasure(staffStartMeasure);
-
       if (this.showGrid) {
         // Draw horizontal staff lines for each drum
         p5Instance.stroke(200, 200, 200, 120);
@@ -2167,12 +2279,13 @@ export class TimelineMode {
       p5Instance.fill(0, 0, 0, 80);
       p5Instance.text(`M${staffStartMeasure + 1}`, offsetX + 5 * scale, offsetY + staffY * scale + 5 * scale);
 
-      // Show BPM for this staff (helpful when tempo changes) - 25% larger font
-      if (this.tempoAutomationEnabled && this.tempoHistory && this.tempoHistory.length > 1) {
+      // Show planned BPM for this staff based on automation settings
+      if (this.tempoAutomationEnabled) {
+        const plannedBpm = this.getPlannedBpmForMeasure(staffStartMeasure);
         p5Instance.fill(100, 100, 100, 140);
-        p5Instance.textSize(12.5 * scale); // 25% larger than 10
+        p5Instance.textSize(12.5 * scale);
         p5Instance.textAlign(p5Instance.RIGHT, p5Instance.TOP);
-        p5Instance.text(`${staffBpm} BPM`, offsetX + this.staffWidth * scale - 5 * scale, offsetY + staffY * scale + 5 * scale);
+        p5Instance.text(`${plannedBpm} BPM`, offsetX + this.staffWidth * scale - 5 * scale, offsetY + staffY * scale + 5 * scale);
       }
 
       // Draw staff separator line (darker horizontal line between staffs)
@@ -2247,21 +2360,6 @@ export class TimelineMode {
       }
     }
     return null;
-  }
-
-  getDrumColor(note, midiDeviceId, velocityNorm, drumSettings) {
-    const drumId = this.findDrumIdByNote(note, midiDeviceId, drumSettings);
-    if (drumId && drumSettings[drumId]) {
-      const settings = drumSettings[drumId];
-      const colorHex = settings.color;
-      const r = parseInt(colorHex.slice(1, 3), 16);
-      const g = parseInt(colorHex.slice(3, 5), 16);
-      const b = parseInt(colorHex.slice(5, 7), 16);
-
-      // Use p5 color function from window
-      return window.color ? window.color(r, g, b) : { r, g, b };
-    }
-    return window.color ? window.color(255, 255, 255) : { r: 255, g: 255, b: 255 };
   }
 
   applyScalingCurve(value, curve) {

@@ -119,7 +119,8 @@ function getAppState() {
       tightness: chronicleMode.spiralSettings.tightness,
       rotationsPerMinute: chronicleMode.spiralSettings.rotationsPerMinute,
       startRadius: chronicleMode.spiralSettings.startRadius,
-      syncToBPM: chronicleMode.spiralSettings.syncToBPM
+      syncToBPM: chronicleMode.spiralSettings.syncToBPM,
+      pattern: chronicleMode.spiralSettings.pattern
     },
     timelineSettings: {
       bpm: chronicleMode.bpm,
@@ -133,6 +134,7 @@ function getAppState() {
       deviationGraphWidth: chronicleMode.deviationGraphWidth,
       deviationGraphHeight: chronicleMode.deviationGraphHeight,
       rowSpacing: chronicleMode.rowSpacing,
+      layout: chronicleMode.layout,
       warmupMeasures: chronicleMode.warmupMeasures,
       measuresPerStaffPreference: chronicleMode.measuresPerStaffPreference,
       tempoAutomationEnabled: chronicleMode.tempoAutomationEnabled,
@@ -918,67 +920,7 @@ function initializeUI() {
     });
   }
 
-  // Save/Load buttons
-  const saveBtn = document.getElementById('save-default-btn');
-  if (saveBtn) {
-    saveBtn.addEventListener('click', () => {
-      // Ensure window.drumSettings is synced before saving
-      window.drumSettings = drumSettings;
-
-      const appState = {
-        drumSettings,
-        globalSizeMultiplier,
-        currentBlendMode,
-        currentBgColor,
-        currentModeType,
-        freeformStyle: freeformMode.style,
-        chronicleLayout: chronicleMode.layout,
-        spiralSettings: {
-          tightness: chronicleMode.spiralSettings.tightness,
-          rotationsPerMinute: chronicleMode.spiralSettings.rotationsPerMinute,
-          startRadius: chronicleMode.spiralSettings.startRadius,
-          syncToBPM: chronicleMode.spiralSettings.syncToBPM,
-          pattern: chronicleMode.spiralSettings.pattern
-        },
-        timelineSettings: {
-          bpm: chronicleMode.bpm,
-          subdivision: chronicleMode.subdivision,
-          beatsPerMeasure: chronicleMode.beatsPerMeasure,
-          metronomeEnabled: chronicleMode.metronomeEnabled,
-          midiLatencyMs: chronicleMode.midiLatencyMs,
-          showGrid: chronicleMode.showGrid,
-          showDeviationGraph: chronicleMode.showDeviationGraph,
-          deviationGraphMode: chronicleMode.deviationGraphMode,
-          rowSpacing: chronicleMode.rowSpacing,
-          layout: chronicleMode.layout,
-          warmupMeasures: chronicleMode.warmupMeasures,
-          measuresPerStaffPreference: chronicleMode.measuresPerStaffPreference,
-          tempoAutomationEnabled: chronicleMode.tempoAutomationEnabled,
-          tempoAutomationBpmChange: chronicleMode.tempoAutomationBpmChange,
-          tempoAutomationBars: chronicleMode.tempoAutomationBars,
-          tempoAutomationMaxBpm: chronicleMode.tempoAutomationMaxBpm
-        },
-        bankModeSettings: midiManager.getState()
-      };
-
-      debugLog('Saving settings:', JSON.stringify(appState.drumSettings, null, 2));
-
-      if (stateManager.saveAsDefault(appState)) {
-        notificationSystem.show('Settings saved!');
-      }
-    });
-  }
-
-  const loadBtn = document.getElementById('load-default-btn');
-  if (loadBtn) {
-    loadBtn.addEventListener('click', async () => {
-      await loadSavedSettings();
-      customizationPanel.build(); // Rebuild UI with loaded settings
-      updateActiveDrumIndicator(); // Update bank mode indicator
-      notificationSystem.show('Settings loaded!');
-    });
-  }
-
+  // Reset to factory defaults button
   const resetBtn = document.getElementById('reset-factory-btn');
   if (resetBtn) {
     resetBtn.addEventListener('click', () => {
@@ -996,6 +938,7 @@ function initializeUI() {
         window.currentBlendMode = currentBlendMode; // Update global
 
         customizationPanel.build(); // Rebuild UI
+        stateManager.saveNow(); // Persist reset to localStorage
         notificationSystem.show('Reset to factory defaults');
       }
     });
@@ -1005,42 +948,7 @@ function initializeUI() {
   const exportBtn = document.getElementById('export-file-btn');
   if (exportBtn) {
     exportBtn.addEventListener('click', () => {
-      const appState = {
-        drumSettings,
-        globalSizeMultiplier,
-        currentBlendMode,
-        currentBgColor,
-        currentModeType,
-        freeformStyle: freeformMode.style,
-        chronicleLayout: chronicleMode.layout,
-        spiralSettings: {
-          tightness: chronicleMode.spiralSettings.tightness,
-          rotationsPerMinute: chronicleMode.spiralSettings.rotationsPerMinute,
-          startRadius: chronicleMode.spiralSettings.startRadius,
-          syncToBPM: chronicleMode.spiralSettings.syncToBPM,
-          pattern: chronicleMode.spiralSettings.pattern
-        },
-        timelineSettings: {
-          bpm: chronicleMode.bpm,
-          subdivision: chronicleMode.subdivision,
-          beatsPerMeasure: chronicleMode.beatsPerMeasure,
-          metronomeEnabled: chronicleMode.metronomeEnabled,
-          midiLatencyMs: chronicleMode.midiLatencyMs,
-          showGrid: chronicleMode.showGrid,
-          showDeviationGraph: chronicleMode.showDeviationGraph,
-          deviationGraphMode: chronicleMode.deviationGraphMode,
-          rowSpacing: chronicleMode.rowSpacing,
-          layout: chronicleMode.layout,
-          warmupMeasures: chronicleMode.warmupMeasures,
-          measuresPerStaffPreference: chronicleMode.measuresPerStaffPreference,
-          tempoAutomationEnabled: chronicleMode.tempoAutomationEnabled,
-          tempoAutomationBpmChange: chronicleMode.tempoAutomationBpmChange,
-          tempoAutomationBars: chronicleMode.tempoAutomationBars,
-          tempoAutomationMaxBpm: chronicleMode.tempoAutomationMaxBpm
-        },
-        bankModeSettings: midiManager.getState()
-      };
-      if (stateManager.exportToFile(appState)) {
+      if (stateManager.exportToFile(getAppState())) {
         notificationSystem.show('Settings exported!');
       } else {
         notificationSystem.show('Export failed');
@@ -1990,17 +1898,18 @@ function updateRecordingsList() {
 /**
  * Draw scrollbar for timeline mode
  */
-function drawTimelineScrollbar(displayWidth, displayHeight, offsetX) {
+function drawTimelineScrollbar(displayWidth, displayHeight, offsetX, viewportHeight) {
+  const effectiveHeight = viewportHeight || height;
   const scrollbarX = offsetX + displayWidth + 5;
-  const scrollbarTrackHeight = height - (SCROLLBAR_TRACK_PADDING * 2);
+  const scrollbarTrackHeight = effectiveHeight - (SCROLLBAR_TRACK_PADDING * 2);
   const scrollbarY = SCROLLBAR_TRACK_PADDING;
 
   // Only show scrollbar if content is larger than viewport
-  if (displayHeight > height) {
+  if (displayHeight > effectiveHeight) {
     // Calculate scrollbar thumb size and position
-    const visibleRatio = height / displayHeight;
+    const visibleRatio = effectiveHeight / displayHeight;
     const thumbHeight = Math.max(SCROLLBAR_THUMB_MIN_HEIGHT, scrollbarTrackHeight * visibleRatio);
-    const scrollRange = displayHeight - height;
+    const scrollRange = displayHeight - effectiveHeight;
     const scrollRatio = Math.abs(timelineScrollY) / scrollRange;
     const thumbY = scrollbarY + scrollRatio * (scrollbarTrackHeight - thumbHeight);
 
@@ -2078,74 +1987,73 @@ window.draw = function() {
     postProcessing.apply(paintCanvas);
   }
 
+  // Get bottom panel height for timeline mode (graph + metronome area)
+  const bottomPanelHeight = isTimeBased ? chronicleMode.getBottomPanelHeight() : 0;
+  const staffViewportHeight = height - bottomPanelHeight;
+
+  if (isTimeBased && bottomPanelHeight > 0) {
+    // Clip staff rendering to area above the bottom panel
+    drawingContext.save();
+    drawingContext.beginPath();
+    drawingContext.rect(0, 0, width, staffViewportHeight);
+    drawingContext.clip();
+  }
+
   // Draw the paint canvas
   image(paintCanvas, offsetX, offsetY, displayWidth, displayHeight);
-
-  // Draw spiral timeline guide over the canvas if in Timeline mode with spiral layout
-  if (currentModeType === 'timeline' && chronicleMode.layout === 'spiral') {
-    // Could add a spiral guide visualization here if needed
-    // For now, spiral is drawn as part of Timeline mode's drawLaneGuides
-  }
 
   // Draw timeline guides OVER the canvas if in time-based layout
   if (isTimeBased) {
     chronicleMode.drawLaneGuides(window, offsetX, offsetY, scaleFactor, paintCanvas);
+  }
 
-    // Draw circular visual metronome
+  if (isTimeBased && bottomPanelHeight > 0) {
+    // Restore clipping
+    drawingContext.restore();
+
+    // Draw bottom panel background
+    noStroke();
+    fill(240);
+    rect(0, staffViewportHeight, width, bottomPanelHeight);
+
+    // Draw separator line at panel top
+    stroke(200);
+    strokeWeight(1);
+    line(0, staffViewportHeight, width, staffViewportHeight);
+  }
+
+  if (isTimeBased) {
+    // Draw circular visual metronome (in panel area)
     chronicleMode.drawCircularMetronome(window, width, height);
 
-    // Draw deviation graph overlay (staff mode only)
+    // Draw deviation graph (in panel area, staff mode only)
     chronicleMode.drawDeviationGraph(window, offsetX, offsetY, scaleFactor, drumSettings);
 
     // Auto-scroll to keep current playhead visible when recording
-    // Uses measure-based positioning (same as playhead) for consistency with tempo changes
     if (chronicleMode.recording && chronicleMode.startTime !== null && chronicleMode.layout === 'staff') {
-      // Get current staff position using the same calculation as playhead drawing
       const staffInfo = chronicleMode.getCurrentStaffInfo();
-
-      // Convert canvas coordinates to screen coordinates
       const currentStaffY = staffInfo.staffY * scaleFactor;
-      const currentStaffBottomY = staffInfo.staffBottomY * scaleFactor;
-      const rowHeight = staffInfo.rowHeight * scaleFactor;
 
-      // Calculate bottom margin: keep playhead staff above the deviation graph
-      let bottomMargin = VIEWPORT_MARGIN_BOTTOM;
-      if (chronicleMode.showDeviationGraph) {
-        const graphHeight = chronicleMode.deviationGraphHeight !== null ? chronicleMode.deviationGraphHeight : 150;
-        bottomMargin = graphHeight + 80;
-      }
+      // Use the staff viewport (above panel) as the effective height
+      const effectiveHeight = staffViewportHeight;
+      const targetStaffTopOnScreen = effectiveHeight - VIEWPORT_MARGIN_BOTTOM - (chronicleMode.staffHeight * scaleFactor);
 
-      // Target position: we want the TOP of the current staff to be visible,
-      // with enough room for the full staff height above the graph
-      const targetStaffTopOnScreen = height - bottomMargin - (chronicleMode.staffHeight * scaleFactor);
-
-      // Calculate the minimum scroll needed to show this staff at the target position
-      // scrollY = targetScreenY - canvasY
       const scrollNeededForThisStaff = targetStaffTopOnScreen - currentStaffY;
-
-      // Only scroll down (negative values), never scroll up past where we've been
-      // This ensures:
-      // 1. Early staffs stay at the top (scroll = 0)
-      // 2. Once we need to scroll, we scroll just enough to show the current staff
-      // 3. New staffs appear at the target position immediately when they start
       const newScrollY = Math.min(0, scrollNeededForThisStaff);
 
-      // Only update scroll if we need to scroll MORE (further down)
-      // This prevents jumping back up when we don't need to
       if (newScrollY < timelineScrollY) {
         timelineScrollY = newScrollY;
       }
 
-      // Clamp scroll to valid range
-      const maxScroll = Math.max(0, displayHeight - height + SCROLL_MAX_PADDING);
+      const maxScroll = Math.max(0, displayHeight - effectiveHeight + SCROLL_MAX_PADDING);
       timelineScrollY = Math.max(-maxScroll, timelineScrollY);
     }
-
   }
 
   // Draw scrollbar for any mode if canvas is taller than viewport
-  if (displayHeight > height) {
-    drawTimelineScrollbar(displayWidth, displayHeight, offsetX);
+  // Constrain scrollbar to staff area (above bottom panel)
+  if (displayHeight > staffViewportHeight) {
+    drawTimelineScrollbar(displayWidth, displayHeight, offsetX, staffViewportHeight);
   }
 
   // Update and draw particles

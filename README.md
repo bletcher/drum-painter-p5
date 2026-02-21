@@ -257,20 +257,13 @@ Press **?** to see all shortcuts, or **U** for the complete User Guide.
 - **SPACE** - Start/stop video recording
 - **BACKSPACE** - Clear canvas
 - **S** - Save image as PNG
-- **D** - Save settings immediately (settings also auto-save after 2 seconds)
+- **D** - Force-save settings immediately (settings also auto-save after 2 seconds)
 - **Z** - Undo last action
 - **Y** - Redo
 - **H** - Hide/show UI
 - **F** - Toggle fullscreen
 - **?** - Show keyboard shortcuts
 - **U** - Show user guide
-
-### Save Indicator
-A small dot appears next to the MIDI status showing save state:
-- **Yellow** - Unsaved changes pending
-- **Blue** - Saving in progress
-- **Green** - Just saved
-- **Grey** - All changes saved
 
 ### Navigation
 - **← →** - Switch between Freeform and Timeline modes
@@ -387,26 +380,33 @@ Press **S** to save current canvas as high-resolution PNG (1920x1080).
 
 Select project and click "Delete Project" to remove from storage.
 
-## Settings Import/Export
+## Settings Management
 
-### Export Settings
+### Auto-Save
 
-1. Click "Export Settings"
-2. JSON file downloads automatically
-3. Share with others or back up
+All settings auto-save to browser localStorage 2 seconds after any change. A save indicator dot next to the MIDI status shows the current state:
 
-### Import Settings
+- **Yellow** - Unsaved changes pending
+- **Blue** - Saving in progress
+- **Green** - Just saved
+- **Grey** - All changes saved
 
-1. Click "Import Settings"
-2. Select JSON file
-3. All customizations applied
+Press **D** to force an immediate save at any time.
+
+### Export / Import
+
+Use the buttons at the bottom of the Customize Drums panel:
+
+- **Export to File** - Downloads all settings as a JSON file. Share with others or use as a backup.
+- **Import from File** - Load a previously exported JSON file. All customizations are applied immediately.
+- **Reset to Factory** - Restore all settings to factory defaults (with confirmation).
 
 ### Bundle Default Settings in Production Builds
 
-**NEW:** Include your customized settings in the production build so they load automatically for all users:
+Include your customized settings in the production build so they load automatically for all users:
 
-1. **Configure and save** your desired settings in the app
-2. **Export settings** - click "Export Settings" to download the JSON file
+1. **Configure** your desired settings in the app (they auto-save)
+2. **Export** - click "Export to File" to download the JSON file
 3. **Rename file** to `default-settings.json`
 4. **Place in `/public` directory** (create if it doesn't exist)
 5. **Build normally** with `npm run build`
@@ -447,6 +447,7 @@ drum-painter-p5/
 │   ├── midi/
 │   │   └── MidiManager.js # MIDI input handling
 │   ├── state/
+│   │   ├── StateManager.js   # Auto-save, import/export
 │   │   ├── HistoryManager.js # Undo/redo system
 │   │   └── projects.js    # Project save/load
 │   ├── ui/
@@ -461,7 +462,7 @@ drum-painter-p5/
 │   └── utils/
 │       ├── drumHelpers.js    # MIDI note lookups
 │       ├── scaling.js        # Velocity curves
-│       ├── colorHelpers.js   # Color utilities
+│       ├── colorUtils.js     # Hue variation & color utilities
 │       └── AudioVideoMerger.js # FFmpeg.wasm integration
 └── dist/                  # Production build output
 ```

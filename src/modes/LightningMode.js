@@ -38,15 +38,8 @@ import {
   LIGHTNING_FLASH_SIZE_MULT,
   LIGHTNING_FLASH_ALPHA
 } from '../config/constants.js';
-import {
-  getDrumColor,
-  getDrumSize,
-  getDrumShape,
-  getDrumOpacity,
-  getDrumStroke,
-  getDrumRotation,
-  findDrumByMidiNote
-} from '../utils/drumHelpers.js';
+import { findDrumByMidiNote } from '../utils/drumHelpers.js';
+import { getColorWithHueVariation } from '../utils/colorUtils.js';
 import { paintDot } from '../canvas/DrawingUtils.js';
 import { Particle } from '../canvas/Particle.js';
 
@@ -76,20 +69,14 @@ export class LightningMode extends ModeBase {
     // HALF_PI = straight down, add variation of ±20 degrees
     const strikeAngle = HALF_PI + random(-LIGHTNING_ANGLE_VARIATION, LIGHTNING_ANGLE_VARIATION);
 
-    let col = getDrumColor(note, midiDeviceId, scaledVelOpacity, drumSettings);
-    if (!col) return;
+    let col = getColorWithHueVariation(settings, scaledVelOpacity);
 
-    let shape = getDrumShape(note, midiDeviceId, drumSettings);
-
-    // Block complex shapes for performance (multi-stroke mode)
     const FORBIDDEN_SHAPES = ['brushstroke', 'splatter', 'inkblot'];
-    if (FORBIDDEN_SHAPES.includes(shape)) {
-      shape = 'circle';
-    }
+    let shape = FORBIDDEN_SHAPES.includes(settings.shape) ? 'circle' : settings.shape;
 
-    let opacityMult = getDrumOpacity(note, midiDeviceId, drumSettings);
-    let stroke = getDrumStroke(note, midiDeviceId, drumSettings);
-    let rotation = getDrumRotation(note, midiDeviceId, drumSettings);
+    let opacityMult = settings.opacity || 1.0;
+    let stroke = settings.strokeEnabled ? { enabled: true, weight: settings.strokeWeight || 2, color: settings.strokeColor || '#000000' } : { enabled: false };
+    let rotation = settings.rotation || 0;
 
     paintCanvas.push();
 
@@ -174,7 +161,7 @@ export class LightningMode extends ModeBase {
     const segments = createLightningTree(originX, originY, strikeAngle, maxGenerations);
 
     // Draw glow (corona) first - larger, fainter
-    const baseSize = (LIGHTNING_BASE_SIZE_MIN + scaledVelSize * LIGHTNING_BASE_SIZE_VELOCITY) * globalSizeMultiplier * getDrumSize(note, midiDeviceId, drumSettings);
+    const baseSize = (LIGHTNING_BASE_SIZE_MIN + scaledVelSize * LIGHTNING_BASE_SIZE_VELOCITY) * globalSizeMultiplier * (settings.size || 1.0);
 
     for (let segment of segments) {
       // Width decreases with generation (main bolt thickest)

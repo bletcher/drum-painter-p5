@@ -18,15 +18,8 @@ import {
   GRAVITY_DRIFT_MAX
 } from '../config/constants.js';
 import { applyScalingCurve } from '../utils/scaling.js';
-import {
-  getDrumColor,
-  getDrumSize,
-  getDrumShape,
-  getDrumOpacity,
-  getDrumStroke,
-  getDrumRotation,
-  findDrumByMidiNote
-} from '../utils/drumHelpers.js';
+import { findDrumByMidiNote } from '../utils/drumHelpers.js';
+import { getColorWithHueVariation } from '../utils/colorUtils.js';
 import { paintDot } from '../canvas/DrawingUtils.js';
 import { Particle } from '../canvas/Particle.js';
 
@@ -51,23 +44,17 @@ export class GravityMode extends ModeBase {
     // Start from top area
     let x = random(paintCanvas.width);
     let y = random(paintCanvas.height * 0.8);
-    let size = (this.baseSize + scaledVelSize * this.velocityMult) * globalSizeMultiplier * getDrumSize(note, midiDeviceId, drumSettings);
+    let size = (this.baseSize + scaledVelSize * this.velocityMult) * globalSizeMultiplier * (settings.size || 1.0);
 
-    // Get visual properties
-    let col = getDrumColor(note, midiDeviceId, scaledVelOpacity, drumSettings);
-    if (!col) return; // Safety check - should not happen but handle gracefully
+    // Get visual properties directly from resolved settings
+    let col = getColorWithHueVariation(settings, scaledVelOpacity);
 
-    let shape = getDrumShape(note, midiDeviceId, drumSettings);
-
-    // Block complex shapes for performance (multi-stroke mode)
     const FORBIDDEN_SHAPES = ['brushstroke', 'splatter', 'inkblot'];
-    if (FORBIDDEN_SHAPES.includes(shape)) {
-      shape = 'circle';
-    }
+    let shape = FORBIDDEN_SHAPES.includes(settings.shape) ? 'circle' : settings.shape;
 
-    let opacityMult = getDrumOpacity(note, midiDeviceId, drumSettings);
-    let stroke = getDrumStroke(note, midiDeviceId, drumSettings);
-    let rotation = getDrumRotation(note, midiDeviceId, drumSettings);
+    let opacityMult = settings.opacity || 1.0;
+    let stroke = settings.strokeEnabled ? { enabled: true, weight: settings.strokeWeight || 2, color: settings.strokeColor || '#000000' } : { enabled: false };
+    let rotation = settings.rotation || 0;
 
     // Calculate average opacity (starts higher, ends lower)
     const startingOpacity = (ALPHA_GRAVITY * scaledVelOpacity * opacityMult) / 255;

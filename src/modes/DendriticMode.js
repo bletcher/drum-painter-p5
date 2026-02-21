@@ -20,14 +20,9 @@ import {
   DENDRITIC_OUTLET_ALPHA
 } from '../config/constants.js';
 import {
-  getDrumColor,
-  getDrumSize,
-  getDrumShape,
-  getDrumOpacity,
-  getDrumStroke,
-  getDrumRotation,
   findDrumByMidiNote
 } from '../utils/drumHelpers.js';
+import { getColorWithHueVariation } from '../utils/colorUtils.js';
 import { paintDot } from '../canvas/DrawingUtils.js';
 import { Particle } from '../canvas/Particle.js';
 
@@ -82,20 +77,15 @@ export class DendriticMode extends ModeBase {
       flowDirection = -HALF_PI + angleVariation;
     }
 
-    let col = getDrumColor(note, midiDeviceId, scaledVelOpacity, drumSettings);
-    if (!col) return;
-
-    let shape = getDrumShape(note, midiDeviceId, drumSettings);
+    let col = getColorWithHueVariation(settings, scaledVelOpacity);
 
     // Block complex shapes for performance (multi-stroke mode)
     const FORBIDDEN_SHAPES = ['brushstroke', 'splatter', 'inkblot'];
-    if (FORBIDDEN_SHAPES.includes(shape)) {
-      shape = 'circle';
-    }
+    let shape = FORBIDDEN_SHAPES.includes(settings.shape) ? 'circle' : settings.shape;
 
-    let opacityMult = getDrumOpacity(note, midiDeviceId, drumSettings);
-    let stroke = getDrumStroke(note, midiDeviceId, drumSettings);
-    let rotation = getDrumRotation(note, midiDeviceId, drumSettings);
+    let opacityMult = settings.opacity || 1.0;
+    let stroke = settings.strokeEnabled ? { enabled: true, weight: settings.strokeWeight || 2, color: settings.strokeColor || '#000000' } : { enabled: false };
+    let rotation = settings.rotation || 0;
 
     paintCanvas.push();
 
@@ -175,7 +165,7 @@ export class DendriticMode extends ModeBase {
       const numSteps = max(3, ceil(segmentLength / 4));
 
       // Width increases with stream order (Horton's width ratio)
-      const baseSize = (DENDRITIC_STREAM_BASE_SIZE + scaledVelSize * DENDRITIC_STREAM_VELOCITY_MULT) * globalSizeMultiplier * getDrumSize(note, midiDeviceId, drumSettings);
+      const baseSize = (DENDRITIC_STREAM_BASE_SIZE + scaledVelSize * DENDRITIC_STREAM_VELOCITY_MULT) * globalSizeMultiplier * (settings.size || 1.0);
       const streamWidth = baseSize * pow(DENDRITIC_STREAM_WIDTH_RATIO, segment.order - 1);
 
       // Calculate perpendicular for meandering
@@ -234,7 +224,7 @@ export class DendriticMode extends ModeBase {
     }
 
     // Draw the outlet (river mouth)
-    const outletSize = (DENDRITIC_OUTLET_BASE_SIZE + scaledVelSize * DENDRITIC_OUTLET_VELOCITY_MULT) * globalSizeMultiplier * getDrumSize(note, midiDeviceId, drumSettings);
+    const outletSize = (DENDRITIC_OUTLET_BASE_SIZE + scaledVelSize * DENDRITIC_OUTLET_VELOCITY_MULT) * globalSizeMultiplier * (settings.size || 1.0);
     paintDot(paintCanvas, outletX, outletY, outletSize, col, DENDRITIC_OUTLET_ALPHA * scaledVelOpacity * opacityMult, shape, stroke, rotation);
 
     // Add outlet delta

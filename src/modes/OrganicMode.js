@@ -15,15 +15,8 @@ import {
   ORGANIC_MOVE_RANGE
 } from '../config/constants.js';
 import { applyScalingCurve } from '../utils/scaling.js';
-import {
-  getDrumColor,
-  getDrumSize,
-  getDrumShape,
-  getDrumOpacity,
-  getDrumStroke,
-  getDrumRotation,
-  findDrumByMidiNote
-} from '../utils/drumHelpers.js';
+import { findDrumByMidiNote } from '../utils/drumHelpers.js';
+import { getColorWithHueVariation } from '../utils/colorUtils.js';
 import { paintDot } from '../canvas/DrawingUtils.js';
 import { Particle } from '../canvas/Particle.js';
 
@@ -86,20 +79,18 @@ export class OrganicMode extends ModeBase {
     let distance = randomGaussian() * ORGANIC_DISTANCE_SPREAD + ORGANIC_DISTANCE_BASE;
     let x = nearest.x + cos(angle) * distance;
     let y = nearest.y + sin(angle) * distance;
-    let size = (this.baseSize + scaledVelSize * this.velocityMult) * globalSizeMultiplier * getDrumSize(note, midiDeviceId, drumSettings);
+    let size = (this.baseSize + scaledVelSize * this.velocityMult) * globalSizeMultiplier * (settings.size || 1.0);
 
     // Keep within bounds
     x = constrain(x, 0, paintCanvas.width);
     y = constrain(y, 0, paintCanvas.height);
 
-    // Get visual properties
-    let col = getDrumColor(note, midiDeviceId, scaledVelOpacity, drumSettings);
-    if (!col) return; // Safety check - should not happen but handle gracefully
-
-    let shape = getDrumShape(note, midiDeviceId, drumSettings);
-    let opacityMult = getDrumOpacity(note, midiDeviceId, drumSettings);
-    let stroke = getDrumStroke(note, midiDeviceId, drumSettings);
-    let rotation = getDrumRotation(note, midiDeviceId, drumSettings);
+    // Get visual properties directly from resolved settings
+    let col = getColorWithHueVariation(settings, scaledVelOpacity);
+    let shape = settings.shape;
+    let opacityMult = settings.opacity || 1.0;
+    let stroke = settings.strokeEnabled ? { enabled: true, weight: settings.strokeWeight || 2, color: settings.strokeColor || '#000000' } : { enabled: false };
+    let rotation = settings.rotation || 0;
 
     // Calculate final opacity (alpha is 0-255 scale, convert to 0-1)
     const finalOpacity = (ALPHA_ORGANIC * scaledVelOpacity * opacityMult) / 255;

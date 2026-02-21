@@ -1118,26 +1118,6 @@
       gap: 10px;
     ">
       <div style="display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;">
-        <button id="save-default-btn" style="
-          padding: 8px 16px;
-          background: #28a745;
-          color: white;
-          border: none;
-          border-radius: 5px;
-          cursor: pointer;
-          font-weight: bold;
-          font-size: 12px;
-        ">💾 Save as Default</button>
-        <button id="load-default-btn" style="
-          padding: 8px 16px;
-          background: #17a2b8;
-          color: white;
-          border: none;
-          border-radius: 5px;
-          cursor: pointer;
-          font-weight: bold;
-          font-size: 12px;
-        ">📂 Load Saved</button>
         <button id="export-file-btn" style="
           padding: 8px 16px;
           background: #6c757d;
@@ -1170,7 +1150,7 @@
         ">🔄 Reset to Factory</button>
       </div>
       <div style="text-align: center; font-size: 10px; color: #666;">
-        Save settings to browser storage or export to share between devices
+        Settings auto-save to browser storage. Export to share between devices.
       </div>
     </div>
   </div>
@@ -1825,18 +1805,19 @@
             <li><strong>Point-Based Layouts:</strong> Fibonacci, Radial, Rings, Petals, Polygon paint immediately without needing to start timeline - perfect for live performance and testing in debug panel.</li>
           </ul>
 
-          <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Projects & Settings Export</h4>
+          <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Settings & Projects</h4>
           <p style="color: #444; line-height: 1.7;">
-            <strong>Save Projects:</strong> Save complete configurations including drum settings, mappings, and visual preferences. Name your project, click Save, then load it anytime from the dropdown.
+            <strong>Auto-Save:</strong> All settings automatically save to your browser 2 seconds after any change. The save indicator dot (next to MIDI status) shows the current state: yellow = pending, green = saved.
           </p>
           <p style="color: #444; line-height: 1.7;">
-            <strong>Export Settings:</strong> Click "Export Settings" to download a JSON file containing all your customizations. This file can be:
+            <strong>Export / Import:</strong> Use the buttons at the bottom of the Customize Drums panel to export settings to a JSON file or import from one. Great for sharing setups or backing up.
           </p>
-          <ul style="line-height: 1.8; color: #444;">
-            <li>Shared with others</li>
-            <li>Used as a backup</li>
-            <li>Bundled with production builds (see Power User section)</li>
-          </ul>
+          <p style="color: #444; line-height: 1.7;">
+            <strong>Reset to Factory:</strong> Restores all settings to defaults (with confirmation prompt).
+          </p>
+          <p style="color: #444; line-height: 1.7;">
+            <strong>Projects:</strong> Save complete named configurations including drum settings, mappings, and visual preferences. Load them anytime from the dropdown.
+          </p>
         </div>
 
         <!-- Power User Level -->
@@ -1942,21 +1923,22 @@
             All settings stored in browser localStorage with automatic saving:
           </p>
           <ul style="line-height: 1.8; color: #444; font-size: 14px;">
-            <li><strong>Auto-Save:</strong> Settings automatically save 2 seconds after any change</li>
-            <li><strong>Save Indicator:</strong> Dot next to MIDI status shows save state (yellow=pending, green=saved)</li>
-            <li><strong>Manual Save:</strong> Press D for immediate save</li>
+            <li><strong>Auto-Save:</strong> Settings automatically save 2 seconds after any change (drum settings, mode selections, timeline controls, blend modes, etc.)</li>
+            <li><strong>Save Indicator:</strong> Dot next to MIDI status shows save state (yellow=pending, blue=saving, green=saved, grey=idle)</li>
+            <li><strong>Force Save:</strong> Press <kbd style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">D</kbd> for immediate save</li>
+            <li><strong>Export/Import:</strong> Use buttons at bottom of Customize Drums panel to export settings to a JSON file or import from one</li>
+            <li><strong>Reset to Factory:</strong> Restores all defaults and persists the reset immediately</li>
             <li><strong>Named Projects:</strong> Save multiple configurations</li>
-            <li><strong>Bank Mode State:</strong> Pad/fader assignments persist</li>
-            <li><strong>Drum Kit Config:</strong> Custom drum additions persist</li>
+            <li><strong>Full State Captured:</strong> Drum settings, drum ordering, bank mode state, custom drums, timeline/spiral settings, global preferences</li>
           </ul>
 
           <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Bundling Default Settings for Deployment</h4>
           <p style="color: #444; line-height: 1.7; font-size: 14px;">
-            <strong>NEW FEATURE:</strong> Include your customized settings in production builds so they load automatically for all users:
+            Include your customized settings in production builds so they load automatically for all users:
           </p>
           <ol style="line-height: 1.8; color: #444; font-size: 14px;">
-            <li>Configure all your settings (drum mappings, colors, sizes, etc.)</li>
-            <li>Click <strong>"Export Settings"</strong> - a JSON file downloads</li>
+            <li>Configure all your settings (drum mappings, colors, sizes, etc.) &mdash; they auto-save</li>
+            <li>Click <strong>"Export to File"</strong> in the Customize Drums panel &mdash; a JSON file downloads</li>
             <li>Rename the file to <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">default-settings.json</code></li>
             <li>Place it in the <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">/public</code> directory</li>
             <li>Run <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">npm run build</code> to include it in the build</li>

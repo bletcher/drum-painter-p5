@@ -5,21 +5,19 @@ To ensure your customized drum settings are included when you deploy:
 
 1. Run the app in development mode (npm run dev)
 
-2. Make sure your settings are configured the way you want them
+2. Configure your settings (they auto-save to browser localStorage)
 
-3. Click the "Save" button in the customization panel to save to localStorage
+3. Click "Export to File" at the bottom of the Customize Drums panel
 
-4. Click "Export Settings" to download your settings as a JSON file
+4. Rename the downloaded file to: default-settings.json
 
-5. Rename the downloaded file to: default-settings.json
+5. Place it in this /public directory
 
-6. Place it in this /public directory (replace this README.txt)
+6. Run: npm run build
 
-7. Run: npm run build
+7. The default-settings.json file will be included in the /dist folder
 
-8. The default-settings.json file will be included in the /dist folder
-
-9. When users access your deployed app, if they have no localStorage data,
+8. When users access your deployed app, if they have no localStorage data,
    the app will automatically load settings from default-settings.json
 
 Note: Files in the /public directory are automatically copied to /dist during build.
