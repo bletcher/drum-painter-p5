@@ -20,6 +20,12 @@ export class DrumCustomizationPanel {
     this.currentTab = DRUM_KIT_CONFIG[0]?.id || 'kick';
     this.isVisible = false;
     this.draggedTabIndex = null;
+
+    // Panel drag state
+    this._dragState = null;
+    this._onDragStart = this._onDragStart.bind(this);
+    this._onDragMouseMove = this._onDragMouseMove.bind(this);
+    this._onDragMouseUp = this._onDragMouseUp.bind(this);
   }
 
   /**
@@ -43,10 +49,80 @@ export class DrumCustomizationPanel {
       this.build();
       panel.style.display = 'block';
       backdrop.style.display = 'block';
+      this._setupDrag();
     } else {
       panel.style.display = 'none';
       backdrop.style.display = 'none';
+      this._teardownDrag();
+      // Reset to centered position for next open
+      panel.style.top = '50%';
+      panel.style.left = '50%';
+      panel.style.transform = 'translate(-50%, -50%)';
     }
+  }
+
+  _setupDrag() {
+    const header = document.getElementById('customization-panel-header');
+    if (!header) return;
+    header.removeEventListener('mousedown', this._onDragStart);
+    header.addEventListener('mousedown', this._onDragStart);
+  }
+
+  _teardownDrag() {
+    const header = document.getElementById('customization-panel-header');
+    if (header) header.removeEventListener('mousedown', this._onDragStart);
+    document.removeEventListener('mousemove', this._onDragMouseMove);
+    document.removeEventListener('mouseup', this._onDragMouseUp);
+    this._dragState = null;
+  }
+
+  _onDragStart(e) {
+    // Don't drag if clicking the close button
+    if (e.target.closest('#close-customize-btn')) return;
+
+    const panel = document.getElementById('customization-panel');
+    const rect = panel.getBoundingClientRect();
+
+    // Switch from centered transform to absolute positioning
+    panel.style.transform = 'none';
+    panel.style.top = rect.top + 'px';
+    panel.style.left = rect.left + 'px';
+
+    this._dragState = {
+      offsetX: e.clientX - rect.left,
+      offsetY: e.clientY - rect.top
+    };
+
+    const header = document.getElementById('customization-panel-header');
+    if (header) header.style.cursor = 'grabbing';
+
+    document.addEventListener('mousemove', this._onDragMouseMove);
+    document.addEventListener('mouseup', this._onDragMouseUp);
+    e.preventDefault();
+  }
+
+  _onDragMouseMove(e) {
+    if (!this._dragState) return;
+    const panel = document.getElementById('customization-panel');
+
+    let newLeft = e.clientX - this._dragState.offsetX;
+    let newTop = e.clientY - this._dragState.offsetY;
+
+    // Keep panel within viewport bounds
+    const rect = panel.getBoundingClientRect();
+    newLeft = Math.max(0, Math.min(newLeft, window.innerWidth - rect.width));
+    newTop = Math.max(0, Math.min(newTop, window.innerHeight - 50));
+
+    panel.style.left = newLeft + 'px';
+    panel.style.top = newTop + 'px';
+  }
+
+  _onDragMouseUp() {
+    this._dragState = null;
+    const header = document.getElementById('customization-panel-header');
+    if (header) header.style.cursor = 'grab';
+    document.removeEventListener('mousemove', this._onDragMouseMove);
+    document.removeEventListener('mouseup', this._onDragMouseUp);
   }
 
   /**

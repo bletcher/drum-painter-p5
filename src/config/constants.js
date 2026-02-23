@@ -332,10 +332,11 @@ export const TIMELINE_ROW_SPACING = 10;           // Vertical spacing between st
 export const TIMELINE_RING_SPACING = 40;          // Spacing between concentric rings
 export const TIMELINE_POLYGON_SIDES = 6;          // Number of sides for polygon layout
 export const TIMELINE_LANE_OFFSET = 8;            // Radial offset per drum in spiral mode
+export const SPIRAL_SEPARATE_TRACKS_DEFAULT = true; // Whether spiral mode separates drums into tracks
+export const SPIRAL_TRACK_SPACING_DEFAULT = 4;      // Default spacing between spiral tracks (pixels)
 
 // Timeline spiral defaults
 export const TIMELINE_SPIRAL_TIGHTNESS = 15;
-export const TIMELINE_SPIRAL_ROTATIONS_PER_MIN = 4;
 export const TIMELINE_SPIRAL_START_RADIUS = 50;
 export const TIMELINE_SPIRAL_MAX_RADIUS_MULT = 0.85; // Max radius as fraction of min(width,height)/2
 

@@ -300,9 +300,10 @@ export class ModeManager {
       chronicleLayout: this.chronicleMode.layout,
       spiralSettings: {
         tightness: this.chronicleMode.spiralSettings.tightness,
-        rotationsPerMinute: this.chronicleMode.spiralSettings.rotationsPerMinute,
         startRadius: this.chronicleMode.spiralSettings.startRadius,
-        syncToBPM: this.chronicleMode.spiralSettings.syncToBPM
+        syncToBPM: this.chronicleMode.spiralSettings.syncToBPM,
+        separateTracks: this.chronicleMode.spiralSettings.separateTracks,
+        trackSpacing: this.chronicleMode.spiralSettings.trackSpacing
       },
       timelineSettings: {
         bpm: this.chronicleMode.bpm,
@@ -344,10 +345,10 @@ export class ModeManager {
     if (savedState.spiralSettings) {
       const ss = savedState.spiralSettings;
       if (ss.tightness !== undefined) this.chronicleMode.spiralSettings.tightness = ss.tightness;
-      if (ss.rotationsPerMinute !== undefined) this.chronicleMode.spiralSettings.rotationsPerMinute = ss.rotationsPerMinute;
       if (ss.startRadius !== undefined) this.chronicleMode.spiralSettings.startRadius = ss.startRadius;
       if (ss.syncToBPM !== undefined) this.chronicleMode.spiralSettings.syncToBPM = ss.syncToBPM;
-      if (ss.pattern !== undefined) this.chronicleMode.spiralSettings.pattern = ss.pattern;
+      if (ss.separateTracks !== undefined) this.chronicleMode.spiralSettings.separateTracks = ss.separateTracks;
+      if (ss.trackSpacing !== undefined) this.chronicleMode.spiralSettings.trackSpacing = ss.trackSpacing;
     }
 
     // Load timeline settings

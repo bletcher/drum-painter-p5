@@ -33,6 +33,8 @@
       font-size: 12px;
       box-shadow: 0 2px 10px rgba(0,0,0,0.1);
       max-width: 300px;
+      max-height: 90vh;
+      overflow-y: auto;
       z-index: 1000;
     }
     #controls h3 {
@@ -312,6 +314,16 @@
             cursor: pointer;
             font-size: 11px;
           ">Reset</button>
+          <button id="clear-canvas-btn" data-tooltip="Clear the entire canvas (same as BACKSPACE)" style="
+            padding: 6px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: #dc3545;
+            color: white;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: bold;
+          ">Clear</button>
         </div>
         <label data-tooltip="Toggle dark mode theme" style="display: flex; align-items: center; gap: 6px; cursor: pointer; white-space: nowrap;">
           <input type="checkbox" id="dark-mode-toggle" style="cursor: pointer;">
@@ -338,7 +350,7 @@
       <div id="shortcut-help" data-tooltip="Click to show keyboard shortcuts" style="cursor: pointer; display: inline-block; padding: 2px 0;"><span class="key">?</span> All shortcuts</div><br>
       <span class="key">Click</span> Test paint
     </div>
-    </div>
+    </div><!-- end #main-panel-sections -->
 
     <!-- Timeline Settings (shown only in timeline mode) -->
     <div id="timeline-controls" style="display: none; margin-top: 10px; border-top: 1px solid #ddd; padding-top: 10px;">
@@ -537,7 +549,16 @@
         ">▶ Continue</button>
       </div>
       </div>
-        <div id="timeline-recording-options">
+        <div id="timeline-recording-options" style="margin-top: 8px;">
+          <div id="recording-options-header" style="
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 4px 6px; background: #f0f0f0; border-radius: 3px;
+            cursor: pointer; user-select: none; font-size: 10px; color: #666; font-weight: bold;
+          ">
+            <span>Recording Options</span>
+            <span id="recording-options-arrow" style="font-size: 9px; transition: transform 0.2s; transform: rotate(0deg);">&#9654;</span>
+          </div>
+          <div id="recording-options-content" style="display: none;">
         <div style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
           <label style="display: flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer;">
             <input type="checkbox" id="timeline-auto-record" unchecked
@@ -575,23 +596,14 @@
             <option value="webm">WebM</option>
           </select>
         </div>
+          </div>
         </div>
     </div>
 
     <!-- Spiral Settings (shown only in spiral mode) -->
     <div id="spiral-controls" style="display: none; margin-top: 10px; border-top: 1px solid #ddd; padding-top: 10px;">
-      <strong>Chronicle Settings:</strong><br>
+      <strong>Spiral Settings:</strong><br>
       <div style="margin-top: 8px; font-size: 11px;">
-        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
-          <label style="min-width: 70px;">Pattern:</label>
-          <select id="spiral-pattern"
-            style="flex: 1; padding: 4px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px; cursor: pointer;">
-            <option value="spiral" selected>Spiral</option>
-            <option value="rays">Rays</option>
-            <option value="helix">Helix</option>
-            <option value="orbit">Orbit</option>
-          </select>
-        </div>
         <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
           <label style="min-width: 70px;">Tightness:</label>
           <input type="range" id="spiral-tightness" value="15" min="5" max="40" step="1"
@@ -599,10 +611,17 @@
           <span id="spiral-tightness-display" style="min-width: 30px; text-align: right;">15</span>
         </div>
         <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
-          <label style="min-width: 70px;">Speed:</label>
-          <input type="range" id="spiral-speed" value="4" min="1" max="12" step="0.5"
+          <label style="min-width: 70px;">Tracks:</label>
+          <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+            <input type="checkbox" id="spiral-separate-tracks" checked style="cursor: pointer;">
+            <span>Separate</span>
+          </label>
+        </div>
+        <div id="spiral-track-spacing-row" style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
+          <label style="min-width: 70px;">Spacing:</label>
+          <input type="range" id="spiral-track-spacing" value="8" min="1" max="30" step="1"
             style="flex: 1; cursor: pointer;">
-          <span id="spiral-speed-display" style="min-width: 30px; text-align: right;">4</span>
+          <span id="spiral-track-spacing-display" style="min-width: 30px; text-align: right;">8</span>
         </div>
         <div style="margin-top: 8px;">
           <button id="spiral-reset-btn" style="
@@ -620,7 +639,7 @@
       </div>
     </div>
 
-  </div>
+  </div><!-- end #controls -->
 
   <!-- Active Drum Indicator (Bank Mode) -->
   <div id="active-drum-indicator" style="
@@ -1064,8 +1083,8 @@
     overflow: hidden;
     z-index: 1000;
   ">
-    <!-- Header -->
-    <div style="
+    <!-- Header (drag handle) -->
+    <div id="customization-panel-header" style="
       position: sticky;
       top: 0;
       background: white;
@@ -1075,6 +1094,8 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
+      cursor: grab;
+      user-select: none;
     ">
       <h2 style="margin: 0; font-size: 20px; color: #333; display: flex; align-items: center; gap: 8px;">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -2152,8 +2173,11 @@
     // Setup collapsible sections for main control panel
     (function setupPanelCollapsibleSections() {
       // Load collapsed state from localStorage
-      const savedState = localStorage.getItem('controlPanelCollapsedSections');
-      const collapsedSections = savedState ? JSON.parse(savedState) : {};
+      let collapsedSections = {};
+      try {
+        const savedState = localStorage.getItem('controlPanelCollapsedSections');
+        if (savedState) collapsedSections = JSON.parse(savedState);
+      } catch (e) { /* ignore corrupt data */ }
 
       function saveCollapsedState() {
         localStorage.setItem('controlPanelCollapsedSections', JSON.stringify(collapsedSections));
@@ -2228,8 +2252,11 @@
         // Get all children (we'll wrap specific sections)
         const children = Array.from(mainPanel.children);
 
-        // Clear the panel
-        mainPanel.innerHTML = '';
+        try {
+        // Safely detach children (preserve references)
+        while (mainPanel.firstChild) {
+          mainPanel.removeChild(mainPanel.firstChild);
+        }
 
         // Group elements into sections
         let currentGroup = [];
@@ -2250,7 +2277,7 @@
           }
 
           // Check if this starts a new section (has a label or strong tag with section name)
-          const labelText = child.querySelector('label')?.textContent || child.querySelector('strong')?.textContent || '';
+          const labelText = child.querySelector?.('label')?.textContent || child.querySelector?.('strong')?.textContent || '';
 
           if (labelText.includes('Paint Mode')) {
             if (currentGroup.length > 0 && currentTitle) {
@@ -2298,11 +2325,18 @@
           section.elements.forEach(el => container.appendChild(el));
 
           const sectionId = section.title.toLowerCase().replace(/[^a-z]+/g, '-');
+          // First section and mode-toggled sections (timeline/spiral) expanded by default
           const defaultExpanded = index === 0; // First section expanded by default
           const collapsibleSection = createCollapsibleSection(sectionId, section.title, container, defaultExpanded);
 
           mainPanel.appendChild(collapsibleSection);
         });
+
+        } catch (e) {
+          // If collapsible setup fails, restore all children so panel isn't empty
+          console.error('Collapsible sections setup failed:', e);
+          children.forEach(child => mainPanel.appendChild(child));
+        }
       }
     })();
   </script>

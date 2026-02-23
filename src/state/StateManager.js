@@ -209,10 +209,8 @@ export class StateManager {
         chronicleLayout: appState.chronicleLayout,
         spiralSettings: appState.spiralSettings || {
           tightness: 15,
-          rotationsPerMinute: 4,
           startRadius: 50,
-          syncToBPM: false,
-          pattern: 'spiral'
+          syncToBPM: false
         },
         timelineSettings: appState.timelineSettings || {
           bpm: 80,
@@ -317,10 +315,8 @@ export class StateManager {
         chronicleLayout: appState.chronicleLayout,
         spiralSettings: appState.spiralSettings || {
           tightness: 15,
-          rotationsPerMinute: 4,
           startRadius: 50,
-          syncToBPM: false,
-          pattern: 'spiral'
+          syncToBPM: false
         },
         timelineSettings: appState.timelineSettings || {
           bpm: 80,

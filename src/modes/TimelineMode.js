@@ -12,8 +12,9 @@ import {
   TIMELINE_RING_SPACING,
   TIMELINE_POLYGON_SIDES,
   TIMELINE_LANE_OFFSET,
+  SPIRAL_SEPARATE_TRACKS_DEFAULT,
+  SPIRAL_TRACK_SPACING_DEFAULT,
   TIMELINE_SPIRAL_TIGHTNESS,
-  TIMELINE_SPIRAL_ROTATIONS_PER_MIN,
   TIMELINE_SPIRAL_START_RADIUS,
   TIMELINE_SPIRAL_MAX_RADIUS_MULT,
   TIMELINE_RING_BASE_RADIUS,
@@ -44,6 +45,7 @@ import {
 } from '../config/constants.js';
 import { debugLog, debugWarn, debugError, infoLog } from '../utils/debug.js';
 import { getColorWithHueVariation } from '../utils/colorUtils.js';
+import { paintDot } from '../canvas/DrawingUtils.js';
 
 export class TimelineMode {
   constructor(drumKitConfig) {
@@ -95,10 +97,10 @@ export class TimelineMode {
     this.polygonSides = TIMELINE_POLYGON_SIDES; // Number of sides for polygon layout
     this.spiralSettings = {
       tightness: TIMELINE_SPIRAL_TIGHTNESS,         // Space between rotations (pixels per rotation)
-      rotationsPerMinute: TIMELINE_SPIRAL_ROTATIONS_PER_MIN, // How fast the spiral rotates (visual speed)
       startRadius: TIMELINE_SPIRAL_START_RADIUS,       // Initial radius at center
       syncToBPM: false,      // Whether to sync rotation speed to BPM
-      pattern: 'spiral'      // Pattern type (for future expansion)
+      separateTracks: SPIRAL_SEPARATE_TRACKS_DEFAULT,  // Whether to separate drums into tracks
+      trackSpacing: SPIRAL_TRACK_SPACING_DEFAULT       // Spacing between tracks (pixels)
     };
 
     // Metronome state
@@ -364,8 +366,10 @@ export class TimelineMode {
         const spiralRadius = this.spiralSettings.startRadius +
                            (effectiveMeasure * this.spiralSettings.tightness);
 
-        // Offset each drum slightly radially based on lane
-        const laneOffset = (laneIndex - this.timelineLaneCount / 2) * TIMELINE_LANE_OFFSET;
+        // Optionally offset each drum to its own track
+        const laneOffset = this.spiralSettings.separateTracks
+          ? (laneIndex - this.timelineLaneCount / 2) * this.spiralSettings.trackSpacing
+          : 0;
         const finalRadius = spiralRadius + laneOffset;
 
         return {
@@ -553,7 +557,7 @@ export class TimelineMode {
 
     // Paint the dot
     paintCanvas.push();
-    this.paintDot(paintCanvas, x, y, size, col, alpha, shape, stroke, rotation);
+    paintDot(paintCanvas, x, y, size, col, alpha, shape, stroke, rotation);
     paintCanvas.pop();
 
     // Add particle for visual feedback
@@ -2372,38 +2376,6 @@ export class TimelineMode {
         return value * value;
       default: // linear
         return value;
-    }
-  }
-
-  paintDot(canvas, x, y, size, col, alpha, shape, stroke, rotation) {
-    const r = window.red ? window.red(col) : (col.r || 255);
-    const g = window.green ? window.green(col) : (col.g || 255);
-    const b = window.blue ? window.blue(col) : (col.b || 255);
-
-    canvas.fill(r, g, b, alpha);
-
-    if (stroke && stroke.enabled) {
-      const sr = parseInt(stroke.color.slice(1, 3), 16);
-      const sg = parseInt(stroke.color.slice(3, 5), 16);
-      const sb = parseInt(stroke.color.slice(5, 7), 16);
-      canvas.stroke(sr, sg, sb);
-      canvas.strokeWeight(stroke.weight);
-    } else {
-      canvas.noStroke();
-    }
-
-    // Simple shapes for now
-    switch (shape) {
-      case 'square':
-        canvas.rectMode(canvas.CENTER);
-        canvas.square(x, y, size);
-        break;
-      case 'triangle':
-        const h = size * 0.866;
-        canvas.triangle(x, y - size / 2, x - size / 2, y + h / 2, x + size / 2, y + h / 2);
-        break;
-      default:
-        canvas.circle(x, y, size);
     }
   }
 }

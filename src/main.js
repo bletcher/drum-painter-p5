@@ -117,10 +117,12 @@ function getAppState() {
     chronicleLayout: chronicleMode.layout,
     spiralSettings: {
       tightness: chronicleMode.spiralSettings.tightness,
-      rotationsPerMinute: chronicleMode.spiralSettings.rotationsPerMinute,
+
       startRadius: chronicleMode.spiralSettings.startRadius,
       syncToBPM: chronicleMode.spiralSettings.syncToBPM,
-      pattern: chronicleMode.spiralSettings.pattern
+
+      separateTracks: chronicleMode.spiralSettings.separateTracks,
+      trackSpacing: chronicleMode.spiralSettings.trackSpacing
     },
     timelineSettings: {
       bpm: chronicleMode.bpm,
@@ -481,6 +483,12 @@ function initializeUI() {
       }
     }
 
+    // Show/hide spiral-specific controls (only when in spiral layout)
+    const spiralControlsEl = document.getElementById('spiral-controls');
+    if (spiralControlsEl) {
+      spiralControlsEl.style.display = (isTimeline && chronicleMode.layout === 'spiral') ? 'block' : 'none';
+    }
+
     // Show/hide Quick Settings video section (hide for time-based layouts, show for others)
     const quickSettingsVideoSection = document.getElementById('quick-settings-video-section');
     if (quickSettingsVideoSection) {
@@ -698,29 +706,32 @@ function initializeUI() {
     });
   }
 
-  const spiralSpeedSlider = document.getElementById('spiral-speed');
-  const spiralSpeedDisplay = document.getElementById('spiral-speed-display');
-  if (spiralSpeedSlider && spiralSpeedDisplay) {
-    // Update display while dragging
-    spiralSpeedSlider.addEventListener('input', (e) => {
-      const value = parseFloat(e.target.value);
-      spiralSpeedDisplay.textContent = value;
-    });
-
-    // Apply parameter only when slider is released
-    spiralSpeedSlider.addEventListener('change', (e) => {
-      const value = parseFloat(e.target.value);
-      chronicleMode.spiralSettings.rotationsPerMinute = value;
-      notificationSystem.show(`Speed: ${value} RPM`);
+  // Spiral separate tracks toggle
+  const spiralSeparateTracksCheckbox = document.getElementById('spiral-separate-tracks');
+  const spiralTrackSpacingRow = document.getElementById('spiral-track-spacing-row');
+  if (spiralSeparateTracksCheckbox) {
+    spiralSeparateTracksCheckbox.addEventListener('change', (e) => {
+      chronicleMode.spiralSettings.separateTracks = e.target.checked;
+      if (spiralTrackSpacingRow) {
+        spiralTrackSpacingRow.style.display = e.target.checked ? 'flex' : 'none';
+      }
+      notificationSystem.show(`Separate tracks: ${e.target.checked ? 'On' : 'Off'}`);
+      stateManager.scheduleAutoSave();
     });
   }
 
-  const spiralPatternSelect = document.getElementById('spiral-pattern');
-  if (spiralPatternSelect) {
-    spiralPatternSelect.addEventListener('change', (e) => {
-      const pattern = e.target.value;
-      chronicleMode.spiralSettings.pattern = pattern;
-      notificationSystem.show(`Pattern: ${pattern.charAt(0).toUpperCase() + pattern.slice(1)}`);
+  // Spiral track spacing slider
+  const spiralTrackSpacingSlider = document.getElementById('spiral-track-spacing');
+  const spiralTrackSpacingDisplay = document.getElementById('spiral-track-spacing-display');
+  if (spiralTrackSpacingSlider && spiralTrackSpacingDisplay) {
+    spiralTrackSpacingSlider.addEventListener('input', (e) => {
+      spiralTrackSpacingDisplay.textContent = e.target.value;
+    });
+    spiralTrackSpacingSlider.addEventListener('change', (e) => {
+      const value = parseInt(e.target.value);
+      chronicleMode.spiralSettings.trackSpacing = value;
+      notificationSystem.show(`Track spacing: ${value}`);
+      stateManager.scheduleAutoSave();
     });
   }
 
@@ -735,6 +746,20 @@ function initializeUI() {
       // Restore the current blend mode
       paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
       notificationSystem.show('Spiral Reset');
+    });
+  }
+
+  // Recording options collapsible toggle
+  const recOptionsHeader = document.getElementById('recording-options-header');
+  if (recOptionsHeader) {
+    recOptionsHeader.addEventListener('click', () => {
+      const content = document.getElementById('recording-options-content');
+      const arrow = document.getElementById('recording-options-arrow');
+      if (content && arrow) {
+        const isHidden = content.style.display === 'none';
+        content.style.display = isHidden ? 'block' : 'none';
+        arrow.style.transform = isHidden ? 'rotate(90deg)' : 'rotate(0deg)';
+      }
     });
   }
 
@@ -940,6 +965,24 @@ function initializeUI() {
         customizationPanel.build(); // Rebuild UI
         stateManager.saveNow(); // Persist reset to localStorage
         notificationSystem.show('Reset to factory defaults');
+      }
+    });
+  }
+
+  // Clear canvas button (in customization panel footer)
+  const clearCanvasBtn = document.getElementById('clear-canvas-btn');
+  if (clearCanvasBtn) {
+    clearCanvasBtn.addEventListener('click', () => {
+      if (confirm('Clear the entire canvas? This cannot be undone.')) {
+        paintCanvas.blendMode(BLEND);
+        paintCanvas.background(currentBgColor);
+        paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
+        window.currentBgColor = currentBgColor;
+        strokeCount = 0;
+        particles = [];
+        getCurrentMode().clear({ paintCanvas, currentBgColor });
+        stateManager.saveCanvasState(paintCanvas);
+        notificationSystem.show('Canvas cleared', 'success');
       }
     });
   }
@@ -2717,17 +2760,17 @@ async function loadSavedSettings() {
     if (savedState.spiralSettings.tightness !== undefined) {
       chronicleMode.spiralSettings.tightness = savedState.spiralSettings.tightness;
     }
-    if (savedState.spiralSettings.rotationsPerMinute !== undefined) {
-      chronicleMode.spiralSettings.rotationsPerMinute = savedState.spiralSettings.rotationsPerMinute;
-    }
     if (savedState.spiralSettings.startRadius !== undefined) {
       chronicleMode.spiralSettings.startRadius = savedState.spiralSettings.startRadius;
     }
     if (savedState.spiralSettings.syncToBPM !== undefined) {
       chronicleMode.spiralSettings.syncToBPM = savedState.spiralSettings.syncToBPM;
     }
-    if (savedState.spiralSettings.pattern !== undefined) {
-      chronicleMode.spiralSettings.pattern = savedState.spiralSettings.pattern;
+    if (savedState.spiralSettings.separateTracks !== undefined) {
+      chronicleMode.spiralSettings.separateTracks = savedState.spiralSettings.separateTracks;
+    }
+    if (savedState.spiralSettings.trackSpacing !== undefined) {
+      chronicleMode.spiralSettings.trackSpacing = savedState.spiralSettings.trackSpacing;
     }
     debugLog('✓ Loaded spiral settings (early)');
   }
@@ -2840,9 +2883,12 @@ async function loadSavedSettings() {
         chronicleLayout: chronicleMode.layout,
       spiralSettings: {
         tightness: chronicleMode.spiralSettings.tightness,
-        rotationsPerMinute: chronicleMode.spiralSettings.rotationsPerMinute,
+  
         startRadius: chronicleMode.spiralSettings.startRadius,
-        syncToBPM: chronicleMode.spiralSettings.syncToBPM
+        syncToBPM: chronicleMode.spiralSettings.syncToBPM,
+  
+        separateTracks: chronicleMode.spiralSettings.separateTracks,
+        trackSpacing: chronicleMode.spiralSettings.trackSpacing
       },
       timelineSettings: {
         bpm: chronicleMode.bpm,
@@ -2944,15 +2990,17 @@ async function loadSavedSettings() {
       if (spiralTightnessSlider) spiralTightnessSlider.value = savedState.spiralSettings.tightness;
       if (spiralTightnessVal) spiralTightnessVal.textContent = savedState.spiralSettings.tightness;
     }
-    if (savedState.spiralSettings.rotationsPerMinute !== undefined) {
-      const spiralSpeedSlider = document.getElementById('spiral-speed');
-      const spiralSpeedVal = document.getElementById('spiral-speed-val');
-      if (spiralSpeedSlider) spiralSpeedSlider.value = savedState.spiralSettings.rotationsPerMinute;
-      if (spiralSpeedVal) spiralSpeedVal.textContent = savedState.spiralSettings.rotationsPerMinute;
+    if (savedState.spiralSettings.separateTracks !== undefined) {
+      const spiralSeparateTracksCheckbox = document.getElementById('spiral-separate-tracks');
+      if (spiralSeparateTracksCheckbox) spiralSeparateTracksCheckbox.checked = savedState.spiralSettings.separateTracks;
+      const spiralTrackSpacingRow = document.getElementById('spiral-track-spacing-row');
+      if (spiralTrackSpacingRow) spiralTrackSpacingRow.style.display = savedState.spiralSettings.separateTracks ? 'flex' : 'none';
     }
-    if (savedState.spiralSettings.pattern !== undefined) {
-      const spiralPatternSelect = document.getElementById('spiral-pattern');
-      if (spiralPatternSelect) spiralPatternSelect.value = savedState.spiralSettings.pattern;
+    if (savedState.spiralSettings.trackSpacing !== undefined) {
+      const spiralTrackSpacingSlider = document.getElementById('spiral-track-spacing');
+      const spiralTrackSpacingDisplay = document.getElementById('spiral-track-spacing-display');
+      if (spiralTrackSpacingSlider) spiralTrackSpacingSlider.value = savedState.spiralSettings.trackSpacing;
+      if (spiralTrackSpacingDisplay) spiralTrackSpacingDisplay.textContent = savedState.spiralSettings.trackSpacing;
     }
   }
 
@@ -3012,9 +3060,12 @@ function migrateDrumIdChanges() {
         chronicleLayout: chronicleMode.layout,
       spiralSettings: {
         tightness: chronicleMode.spiralSettings.tightness,
-        rotationsPerMinute: chronicleMode.spiralSettings.rotationsPerMinute,
+  
         startRadius: chronicleMode.spiralSettings.startRadius,
-        syncToBPM: chronicleMode.spiralSettings.syncToBPM
+        syncToBPM: chronicleMode.spiralSettings.syncToBPM,
+  
+        separateTracks: chronicleMode.spiralSettings.separateTracks,
+        trackSpacing: chronicleMode.spiralSettings.trackSpacing
       },
       timelineSettings: {
         bpm: chronicleMode.bpm,
@@ -3098,9 +3149,12 @@ function migrateDrumMappingsToStableKeys() {
         chronicleLayout: chronicleMode.layout,
       spiralSettings: {
         tightness: chronicleMode.spiralSettings.tightness,
-        rotationsPerMinute: chronicleMode.spiralSettings.rotationsPerMinute,
+  
         startRadius: chronicleMode.spiralSettings.startRadius,
-        syncToBPM: chronicleMode.spiralSettings.syncToBPM
+        syncToBPM: chronicleMode.spiralSettings.syncToBPM,
+  
+        separateTracks: chronicleMode.spiralSettings.separateTracks,
+        trackSpacing: chronicleMode.spiralSettings.trackSpacing
       },
       timelineSettings: {
         bpm: chronicleMode.bpm,
