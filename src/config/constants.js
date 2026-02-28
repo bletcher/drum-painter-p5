@@ -365,9 +365,9 @@ export const METRONOME_HAND_OFFSET = 10;          // Hand length offset from edg
 export const METRONOME_FREQ_FIRST_BEAT = 1200;
 export const METRONOME_FREQ_BEAT = 800;
 export const METRONOME_FREQ_SUBDIVISION = 600;
-export const METRONOME_GAIN_FIRST = 0.3;
-export const METRONOME_GAIN_BEAT = 0.2;
-export const METRONOME_GAIN_SUB = 0.1;
+export const METRONOME_GAIN_FIRST = 1.0;
+export const METRONOME_GAIN_BEAT = 0.9;
+export const METRONOME_GAIN_SUB = 0.85;
 export const METRONOME_CLICK_DURATION = 0.05;     // Click duration in seconds
 
 // Timeline paint settings

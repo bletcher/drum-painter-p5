@@ -235,6 +235,10 @@ export class StateManager {
           padAssignments: {},
           globalVariables: {}
         },
+        recordOutputPortId: appState.recordOutputPortId || null,
+        recordOutputNote: appState.recordOutputNote ?? 36,
+        recordOutputChannel: appState.recordOutputChannel ?? 1,
+        sendClockEnabled: appState.sendClockEnabled ?? false,
         timestamp: new Date().toISOString()
       };
 
@@ -341,6 +345,10 @@ export class StateManager {
           padAssignments: {},
           globalVariables: {}
         },
+        recordOutputPortId: appState.recordOutputPortId || null,
+        recordOutputNote: appState.recordOutputNote ?? 36,
+        recordOutputChannel: appState.recordOutputChannel ?? 1,
+        sendClockEnabled: appState.sendClockEnabled ?? false,
         timestamp: new Date().toISOString()
       };
 

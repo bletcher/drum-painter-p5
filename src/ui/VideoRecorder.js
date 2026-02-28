@@ -38,6 +38,15 @@ export class VideoRecorder {
     // Storage for recorded videos
     this.recordings = [];
     this.maxRecordings = 10; // Keep last 10 recordings
+
+    // Callbacks fired when recording state changes (used e.g. to send MIDI out)
+    this.onRecordingStart = null;
+    this.onRecordingStop = null;
+
+    // Optional callback returning the logical pixel height to capture (crops bottom).
+    // When set, a relay canvas is used so the video excludes the bottom panel area.
+    this.getCaptureHeight = null;
+    this.relayCanvas = null;
   }
 
   /**
@@ -80,8 +89,22 @@ export class VideoRecorder {
       debugLog('Canvas element:', htmlCanvas);
       debugLog('Canvas size:', htmlCanvas.width, 'x', htmlCanvas.height);
 
-      // Get canvas stream at 60fps
-      this.stream = htmlCanvas.captureStream(60);
+      // The bottom panel (metronome + deviation graph) is rendered on a separate
+      // overlay canvas in main.js, so it never appears in the video.
+      // Additionally, crop the grey panel area from the bottom of the video by
+      // using a relay canvas sized to just the painting content.
+      const captureHeight = this.getCaptureHeight ? this.getCaptureHeight() : null;
+      if (captureHeight && captureHeight < htmlCanvas.height) {
+        this.relayCanvas = document.createElement('canvas');
+        this.relayCanvas.width = htmlCanvas.width;
+        this.relayCanvas.height = captureHeight;
+        this.stream = this.relayCanvas.captureStream(60);
+        debugLog('Cropped recording:', htmlCanvas.width, 'x', captureHeight,
+          '(full:', htmlCanvas.height, ')');
+      } else {
+        this.relayCanvas = null;
+        this.stream = htmlCanvas.captureStream(60);
+      }
 
       if (!this.stream) {
         throw new Error('Failed to capture canvas stream');
@@ -145,10 +168,12 @@ export class VideoRecorder {
       this.startTime = Date.now();
       this.startTimer();
 
-      this.notificationSystem.show('Video recording started', 'success');
+      this.notificationSystem.show('Recording started', 'success');
       infoLog('✓ Video recording started');
       debugLog(`  Quality: ${this.currentQuality} (${this.qualityPresets[this.currentQuality] / 1000000} Mbps)`);
       debugLog(`  MIME type: ${options.mimeType}`);
+
+      if (this.onRecordingStart) this.onRecordingStart();
 
       return true;
     } catch (error) {
@@ -178,6 +203,8 @@ export class VideoRecorder {
         // If already inactive, save immediately
         this.saveRecording();
       }
+
+      if (this.onRecordingStop) this.onRecordingStop();
 
       debugLog('✓ Video recording stopped');
       return true;
@@ -351,10 +378,24 @@ export class VideoRecorder {
       this.stream = null;
     }
 
+    this.relayCanvas = null;
+
     // Reset state
     this.recordedChunks = [];
     this.startTime = null;
     this.mediaRecorder = null;
+  }
+
+  /**
+   * Copy the top portion of sourceCanvas into the relay canvas.
+   * Called each frame from the draw loop when cropping is active.
+   */
+  relayFrame(sourceCanvas) {
+    if (!this.relayCanvas || !sourceCanvas) return;
+    const ctx = this.relayCanvas.getContext('2d');
+    const w = this.relayCanvas.width;
+    const h = this.relayCanvas.height;
+    ctx.drawImage(sourceCanvas, 0, 0, w, h, 0, 0, w, h);
   }
 
   /**

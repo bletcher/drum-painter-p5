@@ -27,7 +27,8 @@
       "Bash(fi)",
       "Bash(find:*)",
       "Bash(git config:*)",
-      "Bash(timeout 5 npm run dev)"
+      "Bash(timeout 5 npm run dev)",
+      "WebFetch(domain:cdn.jsdelivr.net)"
     ],
     "deny": [],
     "ask": []

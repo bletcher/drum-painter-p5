@@ -11,7 +11,8 @@ Create stunning generative art with your MIDI drums! A browser-based painting ap
 - **Device-Specific MIDI Mapping** - Use multiple MIDI devices simultaneously with auto-opening ports
 - **Bank Mode** - Map global parameters to MIDI CC controls
 - **7 Structured Layouts** - Staff, Spiral, Fibonacci, Radial, Rings, Petals, Polygon
-- **Video Recording** - Capture your creative sessions with audio merge support
+- **Video Recording** - Capture your creative sessions with audio merge support (metronome and timing graph excluded automatically)
+- **MIDI Clock Output** - Send 24 ppq MIDI clock to sync your DAW's tempo with Drum Painter
 - **Velocity Curves** - Customize response to drum dynamics with 6 scaling options
 - **Project System** - Save and load complete setups
 - **Blend Modes** - 8 layering effects including Add, Difference, Multiply, Screen
@@ -341,16 +342,58 @@ Select from the dropdown next to the checkbox:
 1. Press **SPACE** to start recording
 2. Paint your session
 3. Press **SPACE** to stop
-4. Video appears in Recent Recordings list
+4. Video automatically downloads as a WebM file
+
+The metronome, timing deviation graph, and bottom panel area are automatically excluded from video recordings — only the painting canvas is captured.
+
+### Synchronized DAW Recording with loopMIDI
+
+Drum Painter can send a MIDI note to Ableton when you start or stop recording, so both apps begin capturing at exactly the same moment. This uses a free virtual MIDI cable ([loopMIDI](https://www.tobias-erichsen.de/software/loopmidi.html)) — Drum Painter writes to it, Ableton reads from it, with no port conflict.
+
+#### loopMIDI Setup
+
+1. Install loopMIDI, open it, type a name (e.g. `DrumPainter`), click **+** to create the port, then restart Ableton
+2. In Ableton Preferences > MIDI, enable **Remote** on the loopMIDI input
+3. In Drum Painter, open **Recording Options** (Timeline mode left panel) → **MIDI Out → DAW** section:
+   - Select the loopMIDI port from the **Port** dropdown
+   - Set the **Note** and **Channel** (defaults: 36, ch 1)
+   - Click **Test** to verify — Ableton should flash the MIDI indicator
+4. In Ableton, enter MIDI Map mode and click the Record button, then hit the **Test** button in Drum Painter to assign it
+
+Now pressing **SPACE** (or the Timeline auto-record) starts both Drum Painter and Ableton recording simultaneously.
+
+#### MIDI Clock (Tempo Sync)
+
+In addition to the record start/stop trigger, Drum Painter can send **MIDI Clock** (24 pulses per quarter note) so your DAW locks to Drum Painter's BPM:
+
+1. In **Recording Options**, check **Send MIDI Clock (tempo sync)**
+2. In Ableton Preferences > MIDI, enable **Sync** on the loopMIDI input port
+3. When timeline recording starts, Drum Painter sends MIDI Start (0xFA) followed by continuous clock pulses (0xF8) at the configured BPM
+4. When recording stops, MIDI Stop (0xFC) is sent
+
+The clock automatically follows tempo changes from Auto Tempo, so the DAW stays in sync even as BPM increases.
+
+### Sync & Merge Audio
+
+Record video in Drum Painter and audio in Ableton (or any DAW) separately, then use the in-browser **Sync & Merge** tool to align and combine them without leaving the app.
+
+1. After recording, click **Sync & Merge** on a recording card
+2. Load your audio file (MP3, WAV, etc.)
+3. Click **Play** — video and audio play together
+4. Drag the **Audio Offset** slider while playing to align sync in real time
+5. Click **Merge with this offset** — FFmpeg runs in the browser and downloads an MP4
+
+No server uploads required. FFmpeg.wasm is loaded on first merge.
 
 ### Recording Management
 
-Each recording can be:
-- **Downloaded** - Save original video as WebM
-- **Merged with Audio** - Upload an audio file (MP3, WAV, etc.) to create a synchronized MP4 with sound
-- **Deleted** - Remove from the list
+Each recording card shows:
 
-The app stores up to 10 recent recordings. Use FFmpeg.wasm (loaded on first merge) to combine video and audio entirely in your browser—no server uploads required.
+- **Download** - Save original video as WebM
+- **Sync & Merge** - Open the sync preview tool to align and merge with an audio file
+- **Delete** - Remove from the list
+
+The app stores up to 10 recent recordings in memory (cleared on page refresh).
 
 ### Save Image
 
@@ -454,11 +497,11 @@ drum-painter-p5/
 │   │   ├── DrumCustomizationPanel.js
 │   │   ├── MidiMappingPanel.js
 │   │   ├── TimelineControls.js
-│   │   └── NotificationSystem.js
+│   │   ├── NotificationSystem.js
+│   │   └── VideoRecorder.js  # MediaRecorder wrapper
 │   ├── canvas/
 │   │   ├── DrawingUtils.js # Paint functions
-│   │   ├── Particle.js    # Particle effects
-│   │   └── VideoRecorder.js
+│   │   └── Particle.js    # Particle effects
 │   └── utils/
 │       ├── drumHelpers.js    # MIDI note lookups
 │       ├── scaling.js        # Velocity curves

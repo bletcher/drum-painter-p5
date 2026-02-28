@@ -60,9 +60,12 @@ export class AudioVideoMerger {
    * @param {Blob} videoBlob - Video file blob
    * @param {File} audioFile - Audio file from user upload
    * @param {Function} onProgress - Progress callback (0-100)
+   * @param {number} audioOffsetMs - Audio offset in milliseconds.
+   *   Positive = delay audio (audio starts this many ms into the video).
+   *   Negative = trim audio start (skip this many ms off the beginning of the audio file).
    * @returns {Promise<Blob>} Merged video blob
    */
-  async merge(videoBlob, audioFile, onProgress = null) {
+  async merge(videoBlob, audioFile, onProgress = null, audioOffsetMs = 0) {
     // Ensure FFmpeg is loaded
     if (!this.isLoaded) {
       const loaded = await this.load();
@@ -88,19 +91,53 @@ export class AudioVideoMerger {
       await this.ffmpeg.writeFile('input_video.webm', await fetchFile(videoBlob));
       await this.ffmpeg.writeFile('input_audio', await fetchFile(audioFile));
 
-      // Run FFmpeg command
+      // Build FFmpeg command with optional audio offset
       // -c:v copy = copy video without re-encoding (fast)
       // -c:a aac = encode audio as AAC
       // -shortest = trim to shortest input
-      await this.ffmpeg.exec([
-        '-i', 'input_video.webm',
-        '-i', 'input_audio',
-        '-c:v', 'copy',
-        '-c:a', 'aac',
-        '-b:a', '192k',
-        '-shortest',
-        'output.mp4'
-      ]);
+      const offsetSec = audioOffsetMs / 1000;
+      let ffmpegArgs;
+
+      if (audioOffsetMs > 0) {
+        // Delay audio: audio starts offsetSec into the output timeline
+        // -itsoffset applies to the next -i input
+        ffmpegArgs = [
+          '-i', 'input_video.webm',
+          '-itsoffset', offsetSec.toFixed(3),
+          '-i', 'input_audio',
+          '-c:v', 'copy',
+          '-c:a', 'aac',
+          '-b:a', '192k',
+          '-shortest',
+          'output.mp4'
+        ];
+      } else if (audioOffsetMs < 0) {
+        // Trim audio start: skip the first abs(offsetSec) of the audio file
+        // -ss on input seeks into the audio before decoding
+        ffmpegArgs = [
+          '-i', 'input_video.webm',
+          '-ss', (-offsetSec).toFixed(3),
+          '-i', 'input_audio',
+          '-c:v', 'copy',
+          '-c:a', 'aac',
+          '-b:a', '192k',
+          '-shortest',
+          'output.mp4'
+        ];
+      } else {
+        ffmpegArgs = [
+          '-i', 'input_video.webm',
+          '-i', 'input_audio',
+          '-c:v', 'copy',
+          '-c:a', 'aac',
+          '-b:a', '192k',
+          '-shortest',
+          'output.mp4'
+        ];
+      }
+
+      debugLog(`Audio offset: ${audioOffsetMs}ms`);
+      await this.ffmpeg.exec(ffmpegArgs);
 
       // Read output file
       const data = await this.ffmpeg.readFile('output.mp4');

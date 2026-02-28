@@ -43,6 +43,11 @@ export default defineConfig({
     }
   },
 
+  // Exclude FFmpeg from dep optimization — it uses Web Workers which Vite can't pre-bundle
+  optimizeDeps: {
+    exclude: ['@ffmpeg/ffmpeg', '@ffmpeg/util']
+  },
+
   // Server config for development
   server: {
     port: 3000,

@@ -12,6 +12,7 @@ export class TimelineControls {
     this.notificationSystem = notificationSystem;
     this.videoRecorder = videoRecorder;
     this.updateInterval = null;
+    this.onBpmOrTimeSigChange = null; // Callback(bpm, beatsPerMeasure) — used to update MIDI clock display
   }
 
   /**
@@ -34,6 +35,9 @@ export class TimelineControls {
         const bpm = parseInt(e.target.value);
         this.timelineMode.bpm = Math.max(40, Math.min(240, bpm));
         this.updateBPMDisplay();
+        if (this.onBpmOrTimeSigChange) {
+          this.onBpmOrTimeSigChange(this.timelineMode.bpm, this.timelineMode.beatsPerMeasure);
+        }
         this.scheduleAutoSave();
       });
     }
@@ -54,6 +58,9 @@ export class TimelineControls {
       timeSignatureSelect.addEventListener('change', (e) => {
         this.timelineMode.beatsPerMeasure = parseInt(e.target.value);
         this.timelineMode.lastMetronomeClick = -1; // Reset metronome
+        if (this.onBpmOrTimeSigChange) {
+          this.onBpmOrTimeSigChange(this.timelineMode.bpm, this.timelineMode.beatsPerMeasure);
+        }
         this.scheduleAutoSave();
       });
     }

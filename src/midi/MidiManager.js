@@ -66,6 +66,20 @@ export class MidiManager {
       this.bankPadAssignments[drum.id] = { note: null, deviceId: null };
     }
 
+    // MIDI output — sends a note to a virtual port (e.g. loopMIDI) on record start/stop
+    this.midiAccess = null;            // Stored MIDIAccess for output enumeration
+    this.recordOutputPortId = null;    // Selected output port ID
+    this.recordOutputNote = 36;        // Note to send (default 36 = C2)
+    this.recordOutputChannel = 1;      // MIDI channel (1–16)
+    this.onOutputDevicesChanged = null; // Callback when output list changes
+
+    // MIDI Clock — sends 24 ppq clock pulses so the DAW locks to Drum Painter's BPM
+    this.sendClockEnabled = false;
+    this._clockAudioCtx = null;        // AudioContext used for accurate scheduling
+    this._clockBpm = 120;
+    this._nextClockTime = 0;           // Next scheduled clock tick (AudioContext seconds)
+    this._clockSchedulerTimeout = null;
+
     // Callbacks
     this.onMidiStatusChange = null;
     this.onBankModeChange = null;
@@ -96,6 +110,7 @@ export class MidiManager {
    */
   async onMIDISuccess(midi) {
     infoLog('✓ MIDI Access granted');
+    this.midiAccess = midi; // Store for output access
     debugLog('🔍 Raw MIDI object:', midi);
     debugLog('🔍 MIDI inputs map:', midi.inputs);
     debugLog('🔍 MIDI outputs map:', midi.outputs);
@@ -186,6 +201,11 @@ export class MidiManager {
         };
       });
       debugLog('📱 Updated connected devices:', this.connectedDevices);
+
+      // Notify output device changes
+      if (e.port.type === 'output' && this.onOutputDevicesChanged) {
+        this.onOutputDevicesChanged(this.getOutputDevices());
+      }
 
       // Update status callback
       if (this.onMidiStatusChange) {
@@ -487,6 +507,110 @@ export class MidiManager {
     this.bankLearnType = null;
     this.bankLearnTarget = null;
     this.ccLearnCalibrationValues = [];
+  }
+
+  /**
+   * Get list of available MIDI output devices
+   * @returns {Array<{id: string, name: string}>}
+   */
+  getOutputDevices() {
+    if (!this.midiAccess) return [];
+    return Array.from(this.midiAccess.outputs.values()).map(o => ({
+      id: o.id,
+      name: o.name
+    }));
+  }
+
+  /**
+   * Send a MIDI Note On pulse to the configured output port.
+   * Used to trigger recording in Ableton (or any MIDI-mapped DAW).
+   * @param {boolean} isStart - true = recording started, false = recording stopped
+   */
+  sendRecordTriggerNote(isStart) {
+    if (!this.recordOutputPortId || !this.midiAccess) return;
+
+    const output = this.midiAccess.outputs.get(this.recordOutputPortId);
+    if (!output) {
+      debugWarn('Record output port not found:', this.recordOutputPortId);
+      return;
+    }
+
+    const channel = (this.recordOutputChannel - 1) & 0x0F; // 0-indexed
+    const note = this.recordOutputNote & 0x7F;
+    const velocity = isStart ? 127 : 64; // Different velocities for start vs stop
+
+    output.send([0x90 | channel, note, velocity]); // Note On
+    setTimeout(() => {
+      try { output.send([0x80 | channel, note, 0]); } catch (e) { /* port may have closed */ }
+    }, 50); // Note Off after 50ms
+
+    debugLog(`📤 MIDI out: Note ${note} vel ${velocity} → ${output.name}`);
+  }
+
+  /**
+   * Start sending MIDI Clock (24 ppq) at the given BPM.
+   * Sends MIDI Start (0xFA) immediately, then schedules 0xF8 clock pulses via
+   * AudioContext look-ahead scheduling for sub-millisecond accuracy.
+   */
+  startMidiClock(bpm) {
+    if (!this.recordOutputPortId || !this.midiAccess) return;
+
+    this._clockBpm = bpm;
+
+    if (!this._clockAudioCtx) {
+      this._clockAudioCtx = new AudioContext();
+    }
+    if (this._clockAudioCtx.state === 'suspended') {
+      this._clockAudioCtx.resume();
+    }
+
+    this._sendOutputNow([0xFA]); // MIDI Start — resets DAW bar counter
+    this._nextClockTime = this._clockAudioCtx.currentTime + 0.002;
+    this._runClockScheduler();
+    debugLog(`📤 MIDI Clock started at ${bpm} BPM`);
+  }
+
+  /**
+   * Stop MIDI Clock and send MIDI Stop (0xFC).
+   */
+  stopMidiClock() {
+    if (this._clockSchedulerTimeout) {
+      clearTimeout(this._clockSchedulerTimeout);
+      this._clockSchedulerTimeout = null;
+    }
+    this._sendOutputNow([0xFC]); // MIDI Stop
+    debugLog('📤 MIDI Clock stopped');
+  }
+
+  /**
+   * Update clock BPM on the fly (takes effect at next scheduler tick).
+   */
+  updateClockBpm(bpm) {
+    this._clockBpm = bpm;
+  }
+
+  _runClockScheduler() {
+    if (!this._clockAudioCtx || !this.recordOutputPortId || !this.midiAccess) return;
+    const output = this.midiAccess.outputs.get(this.recordOutputPortId);
+    if (!output) return;
+
+    const now = this._clockAudioCtx.currentTime;
+    const lookAhead = 0.1; // schedule 100ms ahead
+    const tickInterval = 60 / (this._clockBpm * 24); // seconds between clock pulses
+
+    while (this._nextClockTime < now + lookAhead) {
+      const msOffset = (this._nextClockTime - now) * 1000;
+      output.send([0xF8], Math.max(performance.now(), performance.now() + msOffset));
+      this._nextClockTime += tickInterval;
+    }
+
+    this._clockSchedulerTimeout = setTimeout(() => this._runClockScheduler(), 25);
+  }
+
+  _sendOutputNow(data) {
+    if (!this.recordOutputPortId || !this.midiAccess) return;
+    const output = this.midiAccess.outputs.get(this.recordOutputPortId);
+    if (output) output.send(data);
   }
 
   /**

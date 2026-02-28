@@ -1751,21 +1751,40 @@ export class TimelineMode {
 
   /**
    * Get the height of the fixed bottom panel for graph/metronome.
-   * Returns 0 if no panel is needed.
+   * Returns 0 if no panel is needed right now.
    */
   getBottomPanelHeight() {
-    if (this.layout !== 'staff') return 0;
+    // Staff-specific: deviation graph takes priority (larger panel)
+    if (this.layout === 'staff') {
+      const hasGraph = this.showDeviationGraph && Object.keys(this.deviationData).length > 0;
+      if (hasGraph) {
+        const graphHeight = this.deviationGraphHeight !== null ? this.deviationGraphHeight : 150;
+        return graphHeight + 70;
+      }
+    }
 
-    const hasGraph = this.showDeviationGraph && Object.keys(this.deviationData).length > 0;
-    const hasMetronome = this.metronomeEnabled && this.recording && this.startTime;
+    // All layouts: metronome reserves bottom space when recording
+    if (this.metronomeEnabled && this.recording && this.startTime) {
+      return METRONOME_RADIUS * 2 + 40;
+    }
 
-    if (hasGraph) {
+    return 0;
+  }
+
+  /**
+   * Get the panel height that WILL appear once recording starts.
+   * Used by the video recorder to pre-size the crop before the panel becomes visible.
+   * Unlike getBottomPanelHeight(), this does not require recording to already be active.
+   */
+  getPotentialBottomPanelHeight() {
+    // Staff-specific: deviation graph takes priority
+    if (this.layout === 'staff' && this.showDeviationGraph) {
       const graphHeight = this.deviationGraphHeight !== null ? this.deviationGraphHeight : 150;
-      // Graph height + margins (title, axis labels) + padding
       return graphHeight + 70;
     }
 
-    if (hasMetronome) {
+    // All layouts: metronome reserves bottom space
+    if (this.metronomeEnabled) {
       return METRONOME_RADIUS * 2 + 40;
     }
 

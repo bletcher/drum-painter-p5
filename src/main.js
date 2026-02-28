@@ -82,10 +82,23 @@ let midiMappingPanel;
 let timelineControls;
 let videoRecorder;
 let audioVideoMerger;
+
+// Sync preview modal state
+const syncPreview = {
+  recordingId: null,
+  videoUrl: null,
+  audioFile: null,
+  audioUrl: null,
+  offsetMs: 0,
+  isPlaying: false,
+  syncInterval: null,
+};
 let debugPanel;
 let darkModeManager;
 let sessionRecorder;
 let postProcessing;
+let overlayGfx = null; // p5.Graphics off-screen buffer for bottom panel drawing
+let overlayCanvas = null; // Raw HTML canvas overlay – visible but not captured by video recording
 
 // DOM elements
 let midiStatusEl;
@@ -146,7 +159,11 @@ function getAppState() {
       tempoAutomationDirection: chronicleMode.tempoAutomationDirection,
       tempoAutomationMinBpm: chronicleMode.tempoAutomationMinBpm
     },
-    bankModeSettings: midiManager ? midiManager.getState() : {}
+    bankModeSettings: midiManager ? midiManager.getState() : {},
+    recordOutputPortId: midiManager ? midiManager.recordOutputPortId : null,
+    recordOutputNote: midiManager ? midiManager.recordOutputNote : 36,
+    recordOutputChannel: midiManager ? midiManager.recordOutputChannel : 1,
+    sendClockEnabled: midiManager ? midiManager.sendClockEnabled : false
   };
 }
 
@@ -165,6 +182,31 @@ window.setup = async function() {
   paintCanvas = createGraphics(PAINT_CANVAS_WIDTH, PAINT_CANVAS_HEIGHT);
   paintCanvas.background(currentBgColor);
   paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
+
+  // Create an off-screen p5.Graphics buffer for drawing the bottom panel
+  // (metronome + deviation graph) using the p5 API, and a raw HTML canvas overlay
+  // for display. The overlay sits on top of displayCanvas visually but is NOT
+  // captured by VideoRecorder's captureStream(), so the panel never appears in recordings.
+  overlayGfx = createGraphics(windowWidth, windowHeight);
+  // Patch cursor/mouse props so TimelineMode drawing functions work with overlayGfx
+  overlayGfx.cursor = (...args) => window.cursor(...args);
+  overlayGfx.ARROW = window.ARROW;
+  overlayGfx.MOVE = window.MOVE;
+  Object.defineProperty(overlayGfx, 'mouseX', { get: () => window.mouseX, configurable: true });
+  Object.defineProperty(overlayGfx, 'mouseY', { get: () => window.mouseY, configurable: true });
+
+  // Visible overlay canvas (raw HTML canvas, independent of p5 internals)
+  overlayCanvas = document.createElement('canvas');
+  overlayCanvas.width = windowWidth * pixelDensity();
+  overlayCanvas.height = windowHeight * pixelDensity();
+  overlayCanvas.style.position = 'fixed';
+  overlayCanvas.style.top = '0';
+  overlayCanvas.style.left = '0';
+  overlayCanvas.style.width = windowWidth + 'px';
+  overlayCanvas.style.height = windowHeight + 'px';
+  overlayCanvas.style.pointerEvents = 'none';
+  overlayCanvas.style.zIndex = '1';
+  document.body.appendChild(overlayCanvas);
 
   // Expose canvases globally
   window.displayCanvas = canvas;
@@ -216,16 +258,45 @@ window.setup = async function() {
   // Initialize MIDI mapping panel
   midiMappingPanel = new MidiMappingPanel(drumSettings, midiManager, notificationSystem, updateActiveDrumIndicator);
 
-  // Initialize video recorder with display canvas (captures grid/overlays)
+  // Initialize video recorder with display canvas.
+  // The bottom panel (metronome + deviation graph) is drawn on overlayGfx (not
+  // displayCanvas) so it never appears in the video. A relay canvas also crops the
+  // grey panel area from the bottom of the recording.
   videoRecorder = new VideoRecorder(window.displayCanvas, notificationSystem);
+  videoRecorder.getCaptureHeight = () => {
+    if (currentModeType !== 'timeline') return null;
+    const panelHeight = chronicleMode.getPotentialBottomPanelHeight();
+    if (panelHeight <= 0) return null;
+    // Return physical pixel height (p5 canvas uses pixelDensity)
+    return Math.round((height - panelHeight) * pixelDensity());
+  };
+  videoRecorder.onRecordingStart = () => {
+    if (!midiManager) return;
+    if (midiManager.sendClockEnabled) {
+      midiManager.startMidiClock(chronicleMode ? chronicleMode.bpm : 120);
+    }
+    midiManager.sendRecordTriggerNote(true);
+  };
+  videoRecorder.onRecordingStop = () => {
+    if (!midiManager) return;
+    if (midiManager.sendClockEnabled) {
+      midiManager.stopMidiClock();
+    }
+    midiManager.sendRecordTriggerNote(false);
+  };
   setupVideoRecorderUI();
 
   // Initialize audio/video merger
   audioVideoMerger = new AudioVideoMerger(notificationSystem);
   setupRecordingsUI();
+  setupSyncPreview();
 
   // Initialize timeline controls (pass videoRecorder for integration)
   timelineControls = new TimelineControls(chronicleMode, notificationSystem, videoRecorder);
+  timelineControls.onBpmOrTimeSigChange = (bpm, beats) => {
+    updateClockInfoDisplay();
+    if (midiManager) midiManager.updateClockBpm(bpm);
+  };
   timelineControls.initialize();
 
   // Initialize debug panel
@@ -343,6 +414,68 @@ window.setup = async function() {
     notificationSystem.show(`Active: ${drumSettings[drumId]?.name || drumId}`);
   };
 
+  // Record trigger callback — fires when the assigned pad is hit
+  midiManager.onRecordTrigger = () => {
+    if (!videoRecorder.isRecording) {
+      videoRecorder.startRecording().then(success => {
+        if (success) updateVideoRecordingUI(true);
+      });
+    } else {
+      videoRecorder.stopRecording();
+      updateVideoRecordingUI(false);
+    }
+  };
+
+  // MIDI output port change callback — repopulate selector when devices change
+  midiManager.onOutputDevicesChanged = (outputs) => {
+    populateMidiOutputSelect(outputs);
+  };
+
+  // MIDI Out UI wiring
+  const outputPortSelect = document.getElementById('record-output-port');
+  const outputNoteInput = document.getElementById('record-output-note');
+  const outputChannelInput = document.getElementById('record-output-channel');
+
+  if (outputPortSelect) {
+    outputPortSelect.addEventListener('change', () => {
+      midiManager.recordOutputPortId = outputPortSelect.value || null;
+      stateManager.scheduleAutoSave();
+    });
+  }
+  if (outputNoteInput) {
+    outputNoteInput.addEventListener('change', () => {
+      midiManager.recordOutputNote = parseInt(outputNoteInput.value) || 36;
+      stateManager.scheduleAutoSave();
+    });
+  }
+  if (outputChannelInput) {
+    outputChannelInput.addEventListener('change', () => {
+      midiManager.recordOutputChannel = parseInt(outputChannelInput.value) || 1;
+      stateManager.scheduleAutoSave();
+    });
+  }
+
+  const outputTestBtn = document.getElementById('record-output-test-btn');
+  if (outputTestBtn) {
+    outputTestBtn.addEventListener('click', () => {
+      midiManager.sendRecordTriggerNote(true);
+      notificationSystem.show(`Test: Note ${midiManager.recordOutputNote} sent to ${midiManager.recordOutputPortId ? 'loopMIDI' : 'no port selected'}`, 'info');
+    });
+  }
+
+  const outputClockCheckbox = document.getElementById('record-output-clock');
+  const clockInfoDiv = document.getElementById('record-output-clock-info');
+  if (outputClockCheckbox) {
+    outputClockCheckbox.addEventListener('change', () => {
+      midiManager.sendClockEnabled = outputClockCheckbox.checked;
+      if (clockInfoDiv) {
+        clockInfoDiv.style.display = outputClockCheckbox.checked ? 'block' : 'none';
+      }
+      updateClockInfoDisplay();
+      stateManager.scheduleAutoSave();
+    });
+  }
+
   // Setup MIDI
   midiManager.setup().then(() => {
     // Migrate drum ID changes (rack_tom -> snare_rim)
@@ -353,6 +486,9 @@ window.setup = async function() {
 
     // Check for duplicate note mappings and warn user
     checkForDuplicateNoteMappings();
+
+    // Populate MIDI output selector now that MIDI is ready
+    populateMidiOutputSelect(midiManager.getOutputDevices());
   });
 
   // Setup MIDI devices modal
@@ -489,15 +625,7 @@ function initializeUI() {
       spiralControlsEl.style.display = (isTimeline && chronicleMode.layout === 'spiral') ? 'block' : 'none';
     }
 
-    // Show/hide Quick Settings video section (hide for time-based layouts, show for others)
-    const quickSettingsVideoSection = document.getElementById('quick-settings-video-section');
-    if (quickSettingsVideoSection) {
-      quickSettingsVideoSection.style.display = (isTimeline && isTimeBased) ? 'none' : 'block';
-    }
-
-    // Don't hide the Quick Settings panel when switching to Timeline mode
-    // It will be hidden when recording starts (in TimelineMode.startRecording for time-based layouts)
-    // and shown when recording stops (in TimelineMode.stopRecording)
+    // Quick Settings video section always visible — Recent Recordings must be accessible in all modes
   }
 
   // Mode type change handlers
@@ -1708,11 +1836,50 @@ function setupVideoRecorderUI() {
       }
     });
   }
+
 }
 
 /**
- * Update video recording UI state
+ * Update the MIDI clock info display (BPM and time signature reminder).
  */
+function updateClockInfoDisplay() {
+  const bpmEl = document.getElementById('record-output-bpm-display');
+  const timesigEl = document.getElementById('record-output-timesig-display');
+  if (bpmEl && chronicleMode) {
+    bpmEl.textContent = chronicleMode.bpm;
+  }
+  if (timesigEl && chronicleMode) {
+    timesigEl.textContent = `${chronicleMode.beatsPerMeasure}/4`;
+  }
+}
+
+/**
+ * Populate the MIDI output port selector
+ */
+function populateMidiOutputSelect(outputs) {
+  const select = document.getElementById('record-output-port');
+  if (!select) return;
+
+  const current = select.value;
+  select.innerHTML = '<option value="">None</option>';
+  outputs.forEach(o => {
+    const opt = document.createElement('option');
+    opt.value = o.id;
+    opt.textContent = o.name;
+    select.appendChild(opt);
+  });
+
+  // Restore previous selection if still available
+  if (current && select.querySelector(`option[value="${current}"]`)) {
+    select.value = current;
+  } else if (midiManager.recordOutputPortId) {
+    // Try restoring from saved state
+    if (select.querySelector(`option[value="${midiManager.recordOutputPortId}"]`)) {
+      select.value = midiManager.recordOutputPortId;
+    }
+  }
+}
+
 function updateVideoRecordingUI(isRecording) {
   const recordBtn = document.getElementById('video-record-btn');
   const recordIcon = document.getElementById('video-record-icon');
@@ -1828,12 +1995,10 @@ function updateRecordingsList() {
           style="padding: 6px 10px; font-size: 10px; background: #059669; color: white; border: none; border-radius: 3px; cursor: pointer; flex: 1; min-width: 80px;">
           Download Video
         </button>
-        <label class="merge-audio-btn"
-          style="padding: 6px 10px; font-size: 10px; background: #2563eb; color: white; border: none; border-radius: 3px; cursor: pointer; flex: 1; min-width: 80px; text-align: center; display: inline-block;">
-          Merge Audio
-          <input type="file" class="audio-file-input" data-recording-id="${recording.id}"
-            accept="audio/*" style="display: none;">
-        </label>
+        <button class="sync-merge-btn" data-recording-id="${recording.id}"
+          style="padding: 6px 10px; font-size: 10px; background: #7c3aed; color: white; border: none; border-radius: 3px; cursor: pointer; flex: 1; min-width: 80px;">
+          Sync &amp; Merge
+        </button>
       </div>
       <div id="merge-progress-${recording.id}" style="display: none; margin-top: 8px;">
         <div style="font-size: 10px; margin-bottom: 4px; color: #3b82f6;">
@@ -1864,77 +2029,354 @@ function updateRecordingsList() {
     });
   });
 
-  recordingsList.querySelectorAll('.audio-file-input').forEach(input => {
-    input.addEventListener('change', async (e) => {
-      const id = parseInt(input.dataset.recordingId);
-      const file = e.target.files[0];
-      if (!file) return;
-
-      const recording = recordings.find(r => r.id === id);
-      if (!recording) return;
-
-      // Show progress UI
-      const progressDiv = document.getElementById(`merge-progress-${id}`);
-      const statusSpan = document.getElementById(`merge-status-${id}`);
-      const percentSpan = document.getElementById(`merge-percent-${id}`);
-      const progressBar = document.getElementById(`merge-progress-bar-${id}`);
-
-      if (progressDiv) progressDiv.style.display = 'block';
-
-      try {
-        // Merge audio and video
-        const mergedBlob = await audioVideoMerger.merge(
-          recording.blob,
-          file,
-          (progress) => {
-            // Update progress
-            if (percentSpan) percentSpan.textContent = ` ${progress}%`;
-            if (progressBar) progressBar.style.width = `${progress}%`;
-          }
-        );
-
-        // Update status
-        if (statusSpan) statusSpan.textContent = 'Complete!';
-        if (percentSpan) percentSpan.textContent = '';
-        if (progressBar) progressBar.style.width = '100%';
-
-        // Auto-download merged file
-        setTimeout(() => {
-          const url = URL.createObjectURL(mergedBlob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = `drum-painter-merged-${id}.mp4`;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          setTimeout(() => URL.revokeObjectURL(url), URL_REVOKE_DELAY);
-
-          // Hide progress after download
-          setTimeout(() => {
-            if (progressDiv) progressDiv.style.display = 'none';
-            if (progressBar) progressBar.style.width = '0%';
-          }, 2000);
-        }, 500);
-      } catch (error) {
-        debugError('Merge failed:', error);
-        if (statusSpan) statusSpan.textContent = 'Merge failed';
-        if (statusSpan) statusSpan.style.color = '#dc2626';
-        showUserFriendlyError(notificationSystem, 'VIDEO_MERGE_ERROR', error);
-
-        // Hide progress after a delay
-        setTimeout(() => {
-          if (progressDiv) progressDiv.style.display = 'none';
-          if (progressBar) progressBar.style.width = '0%';
-          if (statusSpan) {
-            statusSpan.textContent = 'Merging...';
-            statusSpan.style.color = '#3b82f6';
-          }
-        }, 3000);
-      }
-
-      // Reset file input
-      input.value = '';
+  // Sync & Merge button — opens sync preview modal
+  recordingsList.querySelectorAll('.sync-merge-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = parseInt(btn.dataset.recordingId);
+      openSyncPreview(id);
     });
+  });
+}
+
+// ===== SYNC PREVIEW MODAL =====
+
+/**
+ * Open the sync preview modal for a given recording
+ */
+function openSyncPreview(recordingId) {
+  const recording = videoRecorder.getRecordings().find(r => r.id === recordingId);
+  if (!recording) return;
+
+  // Store recording id and create video object URL
+  syncPreview.recordingId = recordingId;
+  syncPreview.videoUrl = URL.createObjectURL(recording.blob);
+  syncPreview.audioFile = null;
+  syncPreview.audioUrl = null;
+  syncPreview.offsetMs = 0;
+  syncPreview.isPlaying = false;
+  if (syncPreview.syncInterval) {
+    clearInterval(syncPreview.syncInterval);
+    syncPreview.syncInterval = null;
+  }
+
+  // Set up video element
+  const video = document.getElementById('sync-preview-video');
+  video.src = syncPreview.videoUrl;
+  video.currentTime = 0;
+
+  // Reset audio element
+  const audio = document.getElementById('sync-preview-audio');
+  audio.src = '';
+
+  // Reset UI
+  document.getElementById('sync-preview-audio-name').textContent = 'No audio file loaded';
+  document.getElementById('sync-preview-offset').value = 0;
+  document.getElementById('sync-preview-offset-display').textContent = '0.0s';
+  document.getElementById('sync-preview-play-btn').textContent = '▶ Play';
+  document.getElementById('sync-preview-merge-btn').disabled = true;
+  document.getElementById('sync-preview-merge-btn').style.opacity = '0.5';
+  document.getElementById('sync-preview-merge-progress').style.display = 'none';
+  document.getElementById('sync-preview-merge-bar').style.width = '0%';
+  document.getElementById('sync-preview-merge-status').textContent = 'Merging...';
+  document.getElementById('sync-preview-merge-percent').textContent = '';
+
+  // Show modal
+  const backdrop = document.getElementById('sync-preview-backdrop');
+  backdrop.style.display = 'flex';
+}
+
+/**
+ * Close the sync preview modal and clean up resources
+ */
+function closeSyncPreview() {
+  const video = document.getElementById('sync-preview-video');
+  const audio = document.getElementById('sync-preview-audio');
+
+  // Pause playback
+  video.pause();
+  audio.pause();
+
+  // Clear sync interval
+  if (syncPreview.syncInterval) {
+    clearInterval(syncPreview.syncInterval);
+    syncPreview.syncInterval = null;
+  }
+
+  // Revoke object URLs
+  if (syncPreview.videoUrl) {
+    URL.revokeObjectURL(syncPreview.videoUrl);
+    syncPreview.videoUrl = null;
+  }
+  if (syncPreview.audioUrl) {
+    URL.revokeObjectURL(syncPreview.audioUrl);
+    syncPreview.audioUrl = null;
+  }
+
+  // Clear src to release resources
+  video.src = '';
+  audio.src = '';
+
+  // Reset state
+  syncPreview.recordingId = null;
+  syncPreview.audioFile = null;
+  syncPreview.offsetMs = 0;
+  syncPreview.isPlaying = false;
+
+  // Hide modal
+  document.getElementById('sync-preview-backdrop').style.display = 'none';
+}
+
+/**
+ * Apply current offset to audio position (while playing or paused)
+ */
+function applySyncOffset() {
+  const video = document.getElementById('sync-preview-video');
+  const audio = document.getElementById('sync-preview-audio');
+  if (!audio.src || !audio.duration) return;
+
+  const offsetSec = syncPreview.offsetMs / 1000;
+  const desiredAudioTime = video.currentTime - offsetSec;
+
+  if (desiredAudioTime < 0) {
+    // Audio hasn't started yet in the timeline
+    audio.pause();
+    audio.currentTime = 0;
+  } else if (desiredAudioTime <= audio.duration) {
+    audio.currentTime = desiredAudioTime;
+    if (syncPreview.isPlaying) audio.play().catch(() => {});
+  }
+}
+
+/**
+ * Drift correction — called every 100ms while playing
+ */
+function driftCorrect() {
+  const video = document.getElementById('sync-preview-video');
+  const audio = document.getElementById('sync-preview-audio');
+  if (video.paused || !audio.src || !audio.duration) return;
+
+  const offsetSec = syncPreview.offsetMs / 1000;
+  const desiredAudioTime = video.currentTime - offsetSec;
+
+  if (desiredAudioTime < 0) {
+    // Audio not started yet — keep it paused at 0
+    if (!audio.paused) audio.pause();
+    return;
+  }
+
+  // Audio should be playing — start it if paused
+  if (audio.paused && syncPreview.isPlaying) {
+    audio.currentTime = desiredAudioTime;
+    audio.play().catch(() => {});
+    return;
+  }
+
+  // Correct drift if more than 150ms
+  const drift = Math.abs(audio.currentTime - desiredAudioTime);
+  if (drift > 0.15) {
+    audio.currentTime = desiredAudioTime;
+  }
+}
+
+/**
+ * Set up sync preview modal event listeners (called once on app init)
+ */
+function setupSyncPreview() {
+  // Close button & Cancel button
+  document.getElementById('sync-preview-close-btn').addEventListener('click', closeSyncPreview);
+  document.getElementById('sync-preview-cancel-btn').addEventListener('click', closeSyncPreview);
+
+  // Close on backdrop click (outside modal)
+  document.getElementById('sync-preview-backdrop').addEventListener('click', (e) => {
+    if (e.target === document.getElementById('sync-preview-backdrop')) {
+      closeSyncPreview();
+    }
+  });
+
+  // ESC key
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && document.getElementById('sync-preview-backdrop').style.display === 'flex') {
+      closeSyncPreview();
+    }
+  });
+
+  // Audio file input
+  document.getElementById('sync-preview-audio-input').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    syncPreview.audioFile = file;
+
+    // Revoke old audio URL if any
+    if (syncPreview.audioUrl) {
+      URL.revokeObjectURL(syncPreview.audioUrl);
+    }
+    syncPreview.audioUrl = URL.createObjectURL(file);
+
+    const audio = document.getElementById('sync-preview-audio');
+    audio.src = syncPreview.audioUrl;
+
+    // Show filename
+    document.getElementById('sync-preview-audio-name').textContent = file.name;
+
+    // Enable merge button
+    document.getElementById('sync-preview-merge-btn').disabled = false;
+    document.getElementById('sync-preview-merge-btn').style.opacity = '1';
+
+    // Pre-seek to correct position for current offset
+    audio.addEventListener('loadedmetadata', () => {
+      applySyncOffset();
+    }, { once: true });
+
+    // Reset file input so same file can be reloaded
+    e.target.value = '';
+  });
+
+  // Offset slider
+  const offsetSlider = document.getElementById('sync-preview-offset');
+  const offsetDisplay = document.getElementById('sync-preview-offset-display');
+  offsetSlider.addEventListener('input', () => {
+    syncPreview.offsetMs = parseInt(offsetSlider.value);
+    const sec = (syncPreview.offsetMs / 1000).toFixed(1);
+    offsetDisplay.textContent = syncPreview.offsetMs > 0 ? `+${sec}s` : `${sec}s`;
+    applySyncOffset();
+  });
+
+  // Play / Pause button
+  const playBtn = document.getElementById('sync-preview-play-btn');
+  playBtn.addEventListener('click', () => {
+    const video = document.getElementById('sync-preview-video');
+    const audio = document.getElementById('sync-preview-audio');
+
+    if (!syncPreview.isPlaying) {
+      // Apply offset and start both
+      syncPreview.isPlaying = true;
+      applySyncOffset();
+      video.play().catch(() => {});
+
+      // Start drift correction loop
+      syncPreview.syncInterval = setInterval(driftCorrect, 100);
+      playBtn.textContent = '⏸ Pause';
+    } else {
+      // Pause both
+      syncPreview.isPlaying = false;
+      video.pause();
+      audio.pause();
+      clearInterval(syncPreview.syncInterval);
+      syncPreview.syncInterval = null;
+      playBtn.textContent = '▶ Play';
+    }
+  });
+
+  // Reset button
+  document.getElementById('sync-preview-reset-btn').addEventListener('click', () => {
+    const video = document.getElementById('sync-preview-video');
+    const audio = document.getElementById('sync-preview-audio');
+
+    syncPreview.isPlaying = false;
+    clearInterval(syncPreview.syncInterval);
+    syncPreview.syncInterval = null;
+
+    video.pause();
+    audio.pause();
+    video.currentTime = 0;
+
+    // Seek audio to correct starting position
+    if (audio.src && audio.duration) {
+      const offsetSec = syncPreview.offsetMs / 1000;
+      audio.currentTime = Math.max(0, -offsetSec);
+    }
+
+    document.getElementById('sync-preview-play-btn').textContent = '▶ Play';
+  });
+
+  // Video ended — stop sync
+  document.getElementById('sync-preview-video').addEventListener('ended', () => {
+    const audio = document.getElementById('sync-preview-audio');
+    syncPreview.isPlaying = false;
+    audio.pause();
+    clearInterval(syncPreview.syncInterval);
+    syncPreview.syncInterval = null;
+    document.getElementById('sync-preview-play-btn').textContent = '▶ Play';
+  });
+
+  // Merge button
+  document.getElementById('sync-preview-merge-btn').addEventListener('click', async () => {
+    if (!syncPreview.audioFile || syncPreview.recordingId === null) return;
+
+    const recording = videoRecorder.getRecordings().find(r => r.id === syncPreview.recordingId);
+    if (!recording) return;
+
+    // Pause playback during merge
+    const video = document.getElementById('sync-preview-video');
+    const audio = document.getElementById('sync-preview-audio');
+    video.pause();
+    audio.pause();
+    syncPreview.isPlaying = false;
+    clearInterval(syncPreview.syncInterval);
+    syncPreview.syncInterval = null;
+    document.getElementById('sync-preview-play-btn').textContent = '▶ Play';
+
+    // Show progress UI
+    const mergeProgress = document.getElementById('sync-preview-merge-progress');
+    const mergeStatus = document.getElementById('sync-preview-merge-status');
+    const mergePercent = document.getElementById('sync-preview-merge-percent');
+    const mergeBar = document.getElementById('sync-preview-merge-bar');
+    mergeProgress.style.display = 'block';
+    mergeStatus.textContent = 'Merging...';
+    mergeStatus.style.color = '#89b4fa';
+    mergePercent.textContent = '';
+    mergeBar.style.width = '0%';
+
+    const mergeBtn = document.getElementById('sync-preview-merge-btn');
+    mergeBtn.disabled = true;
+    mergeBtn.style.opacity = '0.5';
+
+    try {
+      const mergedBlob = await audioVideoMerger.merge(
+        recording.blob,
+        syncPreview.audioFile,
+        (progress) => {
+          mergePercent.textContent = ` ${progress}%`;
+          mergeBar.style.width = `${progress}%`;
+        },
+        syncPreview.offsetMs
+      );
+
+      mergeStatus.textContent = 'Complete!';
+      mergePercent.textContent = '';
+      mergeBar.style.width = '100%';
+
+      // Auto-download
+      setTimeout(() => {
+        const url = URL.createObjectURL(mergedBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `drum-painter-merged-${recording.id}.mp4`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), URL_REVOKE_DELAY);
+
+        // Close modal after short delay
+        setTimeout(() => closeSyncPreview(), 1500);
+      }, 500);
+    } catch (error) {
+      debugError('Sync preview merge failed:', error);
+      mergeStatus.textContent = 'Merge failed';
+      mergeStatus.style.color = '#f38ba8';
+      showUserFriendlyError(notificationSystem, 'VIDEO_MERGE_ERROR', error);
+
+      // Re-enable merge button after delay
+      setTimeout(() => {
+        mergeProgress.style.display = 'none';
+        mergeBar.style.width = '0%';
+        mergeStatus.textContent = 'Merging...';
+        mergeStatus.style.color = '#89b4fa';
+        mergeBtn.disabled = false;
+        mergeBtn.style.opacity = '1';
+      }, 3000);
+    }
   });
 }
 
@@ -2053,25 +2495,36 @@ window.draw = function() {
   if (isTimeBased && bottomPanelHeight > 0) {
     // Restore clipping
     drawingContext.restore();
+  }
 
-    // Draw bottom panel background
-    noStroke();
-    fill(240);
-    rect(0, staffViewportHeight, width, bottomPanelHeight);
-
-    // Draw separator line at panel top
-    stroke(200);
-    strokeWeight(1);
-    line(0, staffViewportHeight, width, staffViewportHeight);
+  // Bottom panel (metronome + deviation graph) goes on the overlay canvas, NOT on
+  // displayCanvas, so it never appears in video recordings.
+  overlayGfx.clear();
+  if (isTimeBased && bottomPanelHeight > 0) {
+    overlayGfx.noStroke();
+    overlayGfx.fill(240);
+    overlayGfx.rect(0, staffViewportHeight, width, bottomPanelHeight);
+    overlayGfx.stroke(200);
+    overlayGfx.strokeWeight(1);
+    overlayGfx.line(0, staffViewportHeight, width, staffViewportHeight);
   }
 
   if (isTimeBased) {
-    // Draw circular visual metronome (in panel area)
-    chronicleMode.drawCircularMetronome(window, width, height);
+    // Draw circular visual metronome on overlay (excluded from video)
+    chronicleMode.drawCircularMetronome(overlayGfx, width, height);
 
-    // Draw deviation graph (in panel area, staff mode only)
-    chronicleMode.drawDeviationGraph(window, offsetX, offsetY, scaleFactor, drumSettings);
+    // Draw deviation graph on overlay (excluded from video)
+    chronicleMode.drawDeviationGraph(overlayGfx, offsetX, offsetY, scaleFactor, drumSettings);
+  }
 
+  // Copy the off-screen p5 buffer to the visible overlay HTML canvas
+  if (overlayCanvas) {
+    const ctx = overlayCanvas.getContext('2d');
+    ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+    ctx.drawImage(overlayGfx.canvas, 0, 0);
+  }
+
+  if (isTimeBased) {
     // Auto-scroll to keep current playhead visible when recording
     if (chronicleMode.recording && chronicleMode.startTime !== null && chronicleMode.layout === 'staff') {
       const staffInfo = chronicleMode.getCurrentStaffInfo();
@@ -2137,6 +2590,13 @@ window.draw = function() {
     text(getCurrentMode().name, width / 2, VIEWPORT_MARGIN_TOP);
     pop();
   }
+
+  // Relay cropped frame to the recording canvas (excludes grey panel area from video)
+  if (videoRecorder?.isRecording && videoRecorder?.relayCanvas) {
+    const htmlCanvas = window.displayCanvas.elt || window.displayCanvas.canvas || window.displayCanvas;
+    videoRecorder.relayFrame(htmlCanvas);
+  }
+
 };
 
 window.keyPressed = function() {
@@ -2447,6 +2907,15 @@ window.keyPressed = function() {
 
 window.windowResized = function() {
   resizeCanvas(windowWidth, windowHeight);
+  if (overlayGfx) {
+    overlayGfx.resizeCanvas(windowWidth, windowHeight);
+  }
+  if (overlayCanvas) {
+    overlayCanvas.width = windowWidth * pixelDensity();
+    overlayCanvas.height = windowHeight * pixelDensity();
+    overlayCanvas.style.width = windowWidth + 'px';
+    overlayCanvas.style.height = windowHeight + 'px';
+  }
 };
 
 // ===== MIDI CALLBACKS =====
@@ -2671,14 +3140,7 @@ function switchMode(oldModeIndex) {
     timelineControlsEl.style.display = (mapping.type !== 'freeform' && isTimeBased) ? 'block' : 'none';
   }
 
-  // Show/hide Quick Settings video section (hide for time-based layouts)
-  const quickSettingsVideoSection = document.getElementById('quick-settings-video-section');
-  if (quickSettingsVideoSection) {
-    quickSettingsVideoSection.style.display = (mapping.type !== 'freeform' && isTimeBased) ? 'none' : 'block';
-  }
-
-  // Don't hide Quick Settings panel - it will be hidden when recording starts
-  // and shown when recording stops
+  // Quick Settings video section always visible — Recent Recordings must be accessible in all modes
 
   debugLog(`Mode: ${getCurrentMode().name}`);
   notificationSystem.show(getCurrentMode().name);
@@ -3011,6 +3473,26 @@ async function loadSavedSettings() {
       if (timelineLayoutSelect) timelineLayoutSelect.value = savedState.timelineSettings.layout;
     }
   }
+
+  // Restore MIDI output settings
+  if (midiManager) {
+    if (savedState.recordOutputPortId) midiManager.recordOutputPortId = savedState.recordOutputPortId;
+    if (savedState.recordOutputNote !== undefined) midiManager.recordOutputNote = savedState.recordOutputNote;
+    if (savedState.recordOutputChannel !== undefined) midiManager.recordOutputChannel = savedState.recordOutputChannel;
+    if (savedState.sendClockEnabled !== undefined) midiManager.sendClockEnabled = savedState.sendClockEnabled;
+  }
+  const noteInput = document.getElementById('record-output-note');
+  const channelInput = document.getElementById('record-output-channel');
+  const clockCheckbox = document.getElementById('record-output-clock');
+  const clockInfo = document.getElementById('record-output-clock-info');
+  if (noteInput && savedState.recordOutputNote !== undefined) noteInput.value = savedState.recordOutputNote;
+  if (channelInput && savedState.recordOutputChannel !== undefined) channelInput.value = savedState.recordOutputChannel;
+  if (clockCheckbox && savedState.sendClockEnabled !== undefined) {
+    clockCheckbox.checked = savedState.sendClockEnabled;
+    if (clockInfo) clockInfo.style.display = savedState.sendClockEnabled ? 'block' : 'none';
+    if (savedState.sendClockEnabled) updateClockInfoDisplay();
+  }
+  // Port select is populated async after MIDI setup — populateMidiOutputSelect() restores the value
 
   infoLog(`📁 Loaded settings from ${savedState.timestamp}`);
 }

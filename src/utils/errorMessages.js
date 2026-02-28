@@ -140,7 +140,6 @@ export const ERROR_MESSAGES = {
       'Recording may be too large - try shorter sessions'
     ]
   },
-
   // Paint/Rendering Errors
   PAINT_ERROR: {
     title: 'Paint Error',

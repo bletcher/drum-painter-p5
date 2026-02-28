@@ -596,6 +596,45 @@
             <option value="webm">WebM</option>
           </select>
         </div>
+        <div style="margin-top: 8px; padding: 6px; background: #f5f5f5; border-radius: 4px; border: 1px solid #ddd;">
+          <div style="font-size: 10px; font-weight: bold; color: #555; margin-bottom: 5px;">MIDI Out → DAW (loopMIDI)</div>
+          <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+            <label style="min-width: 38px; font-size: 10px; color: #666;">Port:</label>
+            <select id="record-output-port"
+              data-tooltip="Select a virtual MIDI output port (e.g. loopMIDI). Drum Painter sends a note here when recording starts/stops so your DAW can react."
+              style="flex: 1; padding: 3px; border: 1px solid #ddd; border-radius: 3px; font-size: 10px; cursor: pointer;">
+              <option value="">None</option>
+            </select>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <label style="min-width: 38px; font-size: 10px; color: #666;">Note:</label>
+            <input type="number" id="record-output-note"
+              min="0" max="127" value="36"
+              data-tooltip="MIDI note sent on record start (vel 127) and stop (vel 64). MIDI-map this note in your DAW."
+              style="width: 48px; padding: 3px; border: 1px solid #ddd; border-radius: 3px; font-size: 10px; text-align: center;">
+            <span style="font-size: 10px; color: #999;">Ch:</span>
+            <input type="number" id="record-output-channel"
+              min="1" max="16" value="1"
+              style="width: 36px; padding: 3px; border: 1px solid #ddd; border-radius: 3px; font-size: 10px; text-align: center;">
+            <button id="record-output-test-btn"
+              data-tooltip="Send a test note now to verify your DAW receives it."
+              style="padding: 3px 7px; font-size: 10px; background: #059669; color: white; border: none; border-radius: 3px; cursor: pointer; margin-left: 2px;">
+              Test
+            </button>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px; margin-top: 5px;">
+            <label style="min-width: 38px; font-size: 10px; color: #666;"></label>
+            <label style="display: flex; align-items: center; gap: 4px; font-size: 10px; cursor: pointer;"
+              data-tooltip="Send MIDI Clock when recording starts so your DAW locks to Drum Painter's BPM. Enable 'Sync' on the loopMIDI port in Ableton's MIDI preferences.">
+              <input type="checkbox" id="record-output-clock" style="cursor: pointer;">
+              Send MIDI Clock (tempo sync)
+            </label>
+          </div>
+          <div id="record-output-clock-info" style="display: none; margin-top: 4px; padding: 4px 6px; background: #ede9fe; border-left: 2px solid #7c3aed; border-radius: 2px; font-size: 10px; color: #4c1d95;">
+            → <span id="record-output-bpm-display">120</span> BPM &nbsp;·&nbsp; <span id="record-output-timesig-display">4/4</span>
+            &nbsp;·&nbsp; Enable <strong>Sync</strong> on loopMIDI in Ableton MIDI prefs
+          </div>
+        </div>
           </div>
         </div>
     </div>
@@ -1819,8 +1858,8 @@
 
           <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Recording & Export</h4>
           <ul style="line-height: 1.8; color: #444;">
-            <li><strong>Video Recording:</strong> Press SPACE or click recording button. Choose quality first. Recordings appear in "Recent Recordings" list where you can download, merge with audio, or delete them.</li>
-            <li><strong>Audio Merge:</strong> Click "Merge Audio" on any recording to upload an audio file (MP3, WAV, etc.). FFmpeg.wasm processes the merge entirely in your browser and downloads the combined MP4 automatically.</li>
+            <li><strong>Video Recording:</strong> Press SPACE or click recording button. Choose quality first. Recordings appear in "Recent Recordings" list where you can download, merge with audio, or delete them. The metronome, timing graph, and bottom panel are automatically excluded from the video.</li>
+            <li><strong>Sync &amp; Merge:</strong> Click "Sync &amp; Merge" on any recording to load an audio file, preview video+audio together with an adjustable offset slider, then merge when sync sounds right. FFmpeg.wasm processes the merge entirely in your browser.</li>
             <li><strong>Image Save:</strong> Press S to save current canvas as PNG</li>
             <li><strong>Time-Based Recording:</strong> Press Start button to begin timeline. Check "Record video with timeline" to capture session. Staff and Spiral layouts require active recording.</li>
             <li><strong>Point-Based Layouts:</strong> Fibonacci, Radial, Rings, Petals, Polygon paint immediately without needing to start timeline - perfect for live performance and testing in debug panel.</li>
@@ -1893,6 +1932,7 @@
             <li><strong>Metronome:</strong> Audio click track with measure emphasis and visual spinning indicator</li>
             <li><strong>Video Recording Toggle:</strong> Check "Record video with timeline" to capture sessions to file, or uncheck for practice mode</li>
             <li><strong>Warmup Measures:</strong> 0-4 silent measures before painting begins</li>
+            <li><strong>MIDI Clock Output:</strong> Check "Send MIDI Clock (tempo sync)" to send 24 ppq clock pulses to your DAW via loopMIDI. Enable <strong>Sync</strong> on the loopMIDI port in Ableton's MIDI preferences. The clock follows Auto Tempo changes automatically.</li>
           </ul>
 
           <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Staff Layout-Specific Settings</h4>
@@ -2153,6 +2193,151 @@
            onmouseout="this.style.background='rgba(255, 255, 255, 0.2)'; this.style.transform='translateY(0)'">
           Cancel (ESC)
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sync Preview Modal -->
+  <div id="sync-preview-backdrop" style="
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(4px);
+    z-index: 10000;
+    align-items: center;
+    justify-content: center;
+  ">
+    <div id="sync-preview-modal" style="
+      background: #1e1e2e;
+      color: #cdd6f4;
+      border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7);
+      width: 95%;
+      max-width: 700px;
+      max-height: 95vh;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+    ">
+      <!-- Header -->
+      <div style="padding: 16px 20px; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: space-between;">
+        <h2 style="margin: 0; font-size: 16px; font-weight: 600;">🎵 Sync &amp; Merge Audio</h2>
+        <button id="sync-preview-close-btn" style="background: none; border: none; color: #cdd6f4; font-size: 20px; cursor: pointer; padding: 4px 8px; opacity: 0.7;">×</button>
+      </div>
+
+      <!-- Content -->
+      <div style="padding: 20px; display: flex; flex-direction: column; gap: 16px;">
+
+        <!-- Video player -->
+        <video id="sync-preview-video" style="
+          width: 100%;
+          max-height: 320px;
+          background: black;
+          border-radius: 6px;
+          outline: none;
+        "></video>
+
+        <!-- Audio file picker -->
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <label style="
+            padding: 8px 14px;
+            background: #313244;
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            white-space: nowrap;
+          ">
+            📁 Load Audio File
+            <input type="file" id="sync-preview-audio-input" accept="audio/*" style="display: none;">
+          </label>
+          <span id="sync-preview-audio-name" style="font-size: 11px; opacity: 0.6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">No audio file loaded</span>
+        </div>
+
+        <!-- Hidden audio element -->
+        <audio id="sync-preview-audio" style="display: none;"></audio>
+
+        <!-- Offset slider -->
+        <div>
+          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px;">
+            <label style="font-size: 12px; min-width: 100px;">Audio Offset:</label>
+            <input type="range" id="sync-preview-offset"
+              min="-10000" max="10000" step="50" value="0"
+              style="flex: 1; cursor: pointer; accent-color: #7c3aed;">
+            <span id="sync-preview-offset-display" style="
+              font-size: 13px;
+              font-weight: bold;
+              min-width: 52px;
+              text-align: right;
+              font-variant-numeric: tabular-nums;
+              color: #cba6f7;
+            ">0.0s</span>
+          </div>
+          <div style="font-size: 10px; opacity: 0.5; text-align: center;">
+            Negative = audio starts earlier &nbsp;|&nbsp; Positive = audio starts later (delayed)
+          </div>
+        </div>
+
+        <!-- Transport controls -->
+        <div style="display: flex; gap: 10px; justify-content: center;">
+          <button id="sync-preview-play-btn" style="
+            padding: 10px 28px;
+            background: #7c3aed;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            min-width: 120px;
+          ">▶ Play</button>
+          <button id="sync-preview-reset-btn" style="
+            padding: 10px 20px;
+            background: #313244;
+            color: #cdd6f4;
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+          ">⏹ Reset</button>
+        </div>
+
+        <!-- Merge progress (shown during FFmpeg merge) -->
+        <div id="sync-preview-merge-progress" style="display: none;">
+          <div style="font-size: 12px; margin-bottom: 6px; color: #89b4fa;">
+            <span id="sync-preview-merge-status">Merging...</span>
+            <span id="sync-preview-merge-percent"></span>
+          </div>
+          <div style="background: rgba(255,255,255,0.1); height: 6px; border-radius: 3px; overflow: hidden;">
+            <div id="sync-preview-merge-bar" style="background: #7c3aed; height: 100%; width: 0%; transition: width 0.3s;"></div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Footer -->
+      <div style="padding: 16px 20px; border-top: 1px solid rgba(255,255,255,0.1); display: flex; gap: 10px; justify-content: flex-end;">
+        <button id="sync-preview-cancel-btn" style="
+          padding: 10px 20px;
+          background: #313244;
+          color: #cdd6f4;
+          border: 1px solid rgba(255,255,255,0.15);
+          border-radius: 8px;
+          font-size: 13px;
+          cursor: pointer;
+        ">Cancel</button>
+        <button id="sync-preview-merge-btn" disabled style="
+          padding: 10px 20px;
+          background: #059669;
+          color: white;
+          border: none;
+          border-radius: 8px;
+          font-size: 13px;
+          font-weight: bold;
+          cursor: pointer;
+          opacity: 0.5;
+        ">Merge with this offset</button>
       </div>
     </div>
   </div>
