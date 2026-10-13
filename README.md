@@ -16,7 +16,7 @@ No kit handy? Click **⌨️ Keyboard pads** and play with `A S D F G H J K L ;`
 
 ## Getting started
 
-1. Plug in your kit and open the app. Click **Allow** when the browser asks about MIDI.
+1. Plug in your kit and open the app. Click **Connect**, then **Allow** when the browser asks about MIDI devices. If it was blocked, the app shows how to unblock it for your browser.
 2. Hit a few drums. The default mapping follows the General MIDI drum map that most kits (Roland, Alesis, Yamaha, …) use, so many kits work immediately.
 3. If a pad doesn't paint, click **🥁 Kit Setup**, then hit each drum when it's named. That's all the mapping there is.
 4. Play. Press **S** to save the painting, **Space** to record a video, **Backspace** to start over (**Ctrl/⌘+Z** brings it back).

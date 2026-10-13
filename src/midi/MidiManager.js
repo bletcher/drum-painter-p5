@@ -6,7 +6,6 @@
 import { DRUM_KIT_CONFIG } from '../config/drumKit.js';
 import { DeviceRegistry } from './DeviceRegistry.js';
 import { debugLog, debugWarn, debugError, infoLog } from '../utils/debug.js';
-import { showUserFriendlyError } from '../utils/errorMessages.js';
 import { Ticker } from '../timing/Ticker.js';
 
 /**
@@ -271,12 +270,9 @@ export class MidiManager {
   onMIDIFailure(error) {
     debugError('MIDI Access failed:', error);
     if (this.onMidiStatusChange) {
-      // Usually the browser's permission prompt was blocked or dismissed
-      this.onMidiStatusChange(false, 'MIDI blocked: click to retry');
-    }
-    // Show user-visible error notification with helpful suggestions
-    if (window.notificationSystem) {
-      showUserFriendlyError(window.notificationSystem, 'MIDI_ACCESS_DENIED', error);
+      // Usually the browser's permission prompt was blocked or dismissed;
+      // the connect card explains how to fix it
+      this.onMidiStatusChange(false, 'MIDI blocked: click to fix');
     }
   }
 

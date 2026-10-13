@@ -52,6 +52,7 @@ import { KitSetupWizard } from './features/KitSetupWizard.js';
 import { LatencyCalibrator } from './features/LatencyCalibrator.js';
 import { KeyboardPads } from './features/KeyboardPads.js';
 import { DemoGroove } from './features/DemoGroove.js';
+import { MidiConnectCard, queryMidiPermission } from './features/MidiConnectCard.js';
 import './styles/features.css';
 import { initPanels } from './ui/panels.js';
 import { initAccessibility } from './ui/a11y.js';
@@ -99,6 +100,7 @@ let overlayCanvas = null; // Raw HTML canvas overlay – visible but not capture
 let overlayHasContent = true; // Whether the overlay needs clearing when leaving time-based layouts
 let kitSetupWizard = null;
 let keyboardPads = null;
+let midiConnectCard = null;
 
 // Higher densities quadruple fill and memory cost for no visible gain here
 const MAX_PIXEL_DENSITY = 2;
@@ -350,7 +352,7 @@ window.setup = async function() {
 
     if (statusIndicator) {
       // Green = connected, Red = no MIDI, Yellow = checking
-      statusIndicator.style.background = connected ? '#10b981' : (/No|blocked/.test(message) ? '#ef4444' : '#fbbf24');
+      statusIndicator.style.background = connected ? '#10b981' : (/^No |blocked/.test(message) ? '#ef4444' : '#fbbf24');
     }
 
     if (deviceNameEl) {
@@ -515,32 +517,29 @@ window.setup = async function() {
   // Setup MIDI devices modal
   initMidiDevicesModal(() => midiManager.connectedDevices);
 
-  // If MIDI access was refused (blocked or dismissed permission prompt),
-  // clicking the status box asks again instead of opening the device list
+  // Until MIDI is connected, clicking the status box opens the connect card
+  // instead of the device list
   document.getElementById('midi-status')?.addEventListener('click', async (e) => {
     if (midiManager.midiReady || !navigator.requestMIDIAccess) return;
     e.stopImmediatePropagation();
-    if (await midiManager.setup()) {
-      migrateDrumMappingsToStableKeys();
-      populateMidiOutputSelect(midiManager.getOutputDevices());
-      notificationSystem.show('MIDI connected', 'success');
-    } else {
-      notificationSystem.show('Still blocked. Allow "MIDI devices" in the site settings (icon left of the address bar), then reload.', 'warning');
-    }
+    midiConnectCard?.open(await queryMidiPermission());
   }, true);
 
   // Load saved settings before MIDI connects, so device migrations and
   // reconnect handling work on the user's real mappings
   const isFirstRun = !stateManager.hasSavedSettings();
   await loadSavedSettings();
-
-  // Setup MIDI
-  const midiAvailable = await midiManager.setup();
   migrateDrumIdChanges();
-  // Upgrade old mappings to stable device keys (survive reconnects)
-  migrateDrumMappingsToStableKeys();
-  checkForDuplicateNoteMappings();
-  populateMidiOutputSelect(midiManager.getOutputDevices());
+
+  // Connect straight away only when the browser won't need to prompt (already
+  // allowed), or for returning users on browsers that can't report the
+  // permission. Otherwise the connect card explains first and asks on a click.
+  const permission = navigator.requestMIDIAccess ? await queryMidiPermission() : 'unsupported';
+  const connectNow = permission === 'granted' || (permission === 'unknown' && !isFirstRun);
+  const midiAvailable = connectNow ? await connectMidi() : false;
+  if (!connectNow && permission !== 'unsupported') {
+    midiManager.onMidiStatusChange(false, 'Not connected: click to connect');
+  }
 
   // Always regenerate timeline lanes after loading settings
   // This ensures custom drums are available in timeline mode even if we start in freeform
@@ -597,7 +596,19 @@ window.setup = async function() {
   });
 
   initFeatures();
-  showWelcome(isFirstRun, midiAvailable);
+  midiConnectCard = new MidiConnectCard({
+    connect: connectMidi,
+    getDeviceCount: () => midiManager.connectedDevices.length,
+    onConnected: () => {
+      if (midiManager.connectedDevices.length > 0) showWelcome(isFirstRun, true);
+    },
+    tryWithoutKit: () => keyboardPads.toggle(true)
+  });
+  if (connectNow || permission === 'unsupported') {
+    showWelcome(isFirstRun, midiAvailable);
+  } else {
+    midiConnectCard.open(permission);
+  }
 
   // Optional developer tools
   const debugBtn = document.getElementById('debug-btn');
@@ -684,6 +695,21 @@ function initFeatures() {
   });
 
   document.getElementById('show-shortcuts-btn')?.addEventListener('click', () => window.toggleShortcutsPanel?.());
+}
+
+/**
+ * Ask the browser for MIDI and finish device setup
+ * @returns {Promise<boolean>} - Whether access was granted
+ */
+async function connectMidi() {
+  const ok = await midiManager.setup();
+  if (ok) {
+    // Upgrade old mappings to stable device keys (survive reconnects)
+    migrateDrumMappingsToStableKeys();
+    checkForDuplicateNoteMappings();
+    populateMidiOutputSelect(midiManager.getOutputDevices());
+  }
+  return ok;
 }
 
 /**
