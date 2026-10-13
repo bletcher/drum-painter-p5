@@ -7,6 +7,28 @@ import { DRUM_KIT_CONFIG } from '../config/drumKit.js';
 import { DeviceRegistry } from './DeviceRegistry.js';
 import { debugLog, debugWarn, debugError, infoLog } from '../utils/debug.js';
 import { showUserFriendlyError } from '../utils/errorMessages.js';
+import { Ticker } from '../timing/Ticker.js';
+
+/**
+ * Best estimate of when a MIDI message actually arrived, on the performance.now() clock.
+ * Web MIDI stamps each message on arrival; fall back to now if the stamp is missing
+ * or implausible.
+ */
+function messageTime(message) {
+  const now = performance.now();
+  const ts = message.timeStamp;
+  if (!(ts > 0) || ts > now + 5 || now - ts > 1000) return now;
+  return ts;
+}
+
+/**
+ * Map a raw controller value to 0-1 using a calibrated range
+ */
+export function normalizeCC(value, ccMin = 0, ccMax = 127) {
+  const range = ccMax - ccMin;
+  if (range <= 0) return value >= ccMax ? 1 : 0;
+  return Math.max(0, Math.min(1, (value - ccMin) / range));
+}
 
 export class MidiManager {
   constructor(onPaintCallback) {
@@ -75,10 +97,9 @@ export class MidiManager {
 
     // MIDI Clock — sends 24 ppq clock pulses so the DAW locks to Drum Painter's BPM
     this.sendClockEnabled = false;
-    this._clockAudioCtx = null;        // AudioContext used for accurate scheduling
     this._clockBpm = 120;
-    this._nextClockTime = 0;           // Next scheduled clock tick (AudioContext seconds)
-    this._clockSchedulerTimeout = null;
+    this._nextClockTime = 0;           // Next clock pulse (performance.now() ms)
+    this._clockTicker = null;
 
     // Callbacks
     this.onMidiStatusChange = null;
@@ -97,7 +118,7 @@ export class MidiManager {
 
     try {
       const midi = await navigator.requestMIDIAccess();
-      this.onMIDISuccess(midi);
+      await this.onMIDISuccess(midi);
       return true;
     } catch (error) {
       this.onMIDIFailure(error);
@@ -172,15 +193,24 @@ export class MidiManager {
 
       if (e.port.type === 'input') {
         if (e.port.state === 'connected') {
-          // Register new device in registry
-          const stableKey = this.deviceRegistry.registerDevice(e.port);
+          // Opening a port fires another statechange for the same device; only
+          // register (and remap drums) when it is genuinely new or reconnected
+          const known = this.deviceRegistry.getDeviceById(e.port.id);
+          const isNew = !known || known.state !== 'connected';
+          const stableKey = isNew
+            ? this.deviceRegistry.registerDevice(e.port)
+            : this.deviceRegistry.getStableKey(e.port.id);
 
           // Connect to new input - open if not already open
           if (e.port.connection !== 'open') {
-            await e.port.open();
+            try {
+              await e.port.open();
+            } catch (error) {
+              debugWarn(`⚠️ Failed to open ${e.port.name}:`, error);
+            }
           }
           e.port.onmidimessage = (message) => this.handleMIDIMessage(message, e.port.id);
-          infoLog(`🔌 Newly connected: ${e.port.name} (${stableKey}, state: ${e.port.connection})`);
+          if (isNew) infoLog(`🔌 Newly connected: ${e.port.name} (${stableKey})`);
         } else if (e.port.state === 'disconnected') {
           // Mark device as disconnected in registry
           this.deviceRegistry.markDisconnected(e.port.id);
@@ -241,7 +271,10 @@ export class MidiManager {
    */
   handleMIDIMessage(message, deviceId) {
     try {
-      const [command, note, velocity] = message.data;
+      const data = message.data;
+      const command = data[0];
+      const note = data[1];
+      const velocity = data[2];
 
       // Extract MIDI channel (channels 1-16 from command byte)
       const channel = (command & 0x0F) + 1;
@@ -251,7 +284,7 @@ export class MidiManager {
         this.lastChannel = channel;
         this.lastNote = note;
         this.lastVelocity = velocity;
-        this.handleNoteOn(note, velocity, deviceId);
+        this.handleNoteOn(note, velocity, deviceId, messageTime(message));
         if (this.onMidiActivity) {
           this.onMidiActivity(channel, note, velocity, deviceId);
         }
@@ -282,7 +315,7 @@ export class MidiManager {
   /**
    * Handle Note On message
    */
-  handleNoteOn(note, velocity, deviceId) {
+  handleNoteOn(note, velocity, deviceId, timeStamp = performance.now()) {
     // Handle bank mode pad learn
     if (this.bankLearnMode && this.bankLearnType === 'pad' && this.bankLearnTarget) {
       this.bankPadAssignments[this.bankLearnTarget].note = note;
@@ -317,10 +350,10 @@ export class MidiManager {
       return;
     }
 
-    // Normal painting - normalize velocity to 0-1 and pass device ID
+    // Normal painting - normalize velocity to 0-1 and pass device ID and arrival time
     const vel = velocity / 127;
     if (this.onPaintCallback) {
-      this.onPaintCallback(note, vel, deviceId);
+      this.onPaintCallback(note, vel, deviceId, timeStamp);
     }
   }
 
@@ -439,10 +472,8 @@ export class MidiManager {
 
       // Match both CC number and device (or deviceId is null for "any device")
       if (assignment.cc === ccNumber && (!assignment.deviceId || assignment.deviceId === deviceId)) {
-        // Map CC value using detected range
-        const ccMin = assignment.ccMin || 0;
-        const ccMax = assignment.ccMax || 127;
-        const normalizedValue = (ccValue - ccMin) / (ccMax - ccMin);
+        // Map CC value using detected range (clamped; a zero-width range acts as a switch)
+        const normalizedValue = normalizeCC(ccValue, assignment.ccMin ?? 0, assignment.ccMax ?? 127);
 
         // Callback to update UI and settings
         if (this.handleBankCCCallback) {
@@ -539,34 +570,32 @@ export class MidiManager {
     const note = this.recordOutputNote & 0x7F;
     const velocity = isStart ? 127 : 64; // Different velocities for start vs stop
 
-    output.send([0x90 | channel, note, velocity]); // Note On
-    setTimeout(() => {
-      try { output.send([0x80 | channel, note, 0]); } catch (e) { /* port may have closed */ }
-    }, 50); // Note Off after 50ms
+    const now = performance.now();
+    output.send([0x90 | channel, note, velocity], now); // Note On
+    output.send([0x80 | channel, note, 0], now + 50);   // Note Off 50ms later
 
     debugLog(`📤 MIDI out: Note ${note} vel ${velocity} → ${output.name}`);
   }
 
   /**
    * Start sending MIDI Clock (24 ppq) at the given BPM.
-   * Sends MIDI Start (0xFA) immediately, then schedules 0xF8 clock pulses via
-   * AudioContext look-ahead scheduling for sub-millisecond accuracy.
+   * Sends MIDI Start (0xFA) immediately, then schedules 0xF8 clock pulses ahead
+   * of time with MIDIOutput.send timestamps (the browser delivers them exactly),
+   * driven by a worker ticker so it keeps going when the tab is in the background.
    */
   startMidiClock(bpm) {
     if (!this.recordOutputPortId || !this.midiAccess) return;
 
     this._clockBpm = bpm;
 
-    if (!this._clockAudioCtx) {
-      this._clockAudioCtx = new AudioContext();
-    }
-    if (this._clockAudioCtx.state === 'suspended') {
-      this._clockAudioCtx.resume();
-    }
-
+    const now = performance.now();
     this._sendOutputNow([0xFA]); // MIDI Start — resets DAW bar counter
-    this._nextClockTime = this._clockAudioCtx.currentTime + 0.002;
-    this._runClockScheduler();
+    this._nextClockTime = now + 2;
+
+    if (!this._clockTicker) {
+      this._clockTicker = new Ticker(() => this._runClockScheduler(), 25);
+    }
+    this._clockTicker.start();
     debugLog(`📤 MIDI Clock started at ${bpm} BPM`);
   }
 
@@ -574,9 +603,8 @@ export class MidiManager {
    * Stop MIDI Clock and send MIDI Stop (0xFC).
    */
   stopMidiClock() {
-    if (this._clockSchedulerTimeout) {
-      clearTimeout(this._clockSchedulerTimeout);
-      this._clockSchedulerTimeout = null;
+    if (this._clockTicker) {
+      this._clockTicker.stop();
     }
     this._sendOutputNow([0xFC]); // MIDI Stop
     debugLog('📤 MIDI Clock stopped');
@@ -590,21 +618,23 @@ export class MidiManager {
   }
 
   _runClockScheduler() {
-    if (!this._clockAudioCtx || !this.recordOutputPortId || !this.midiAccess) return;
+    if (!this.recordOutputPortId || !this.midiAccess) return;
     const output = this.midiAccess.outputs.get(this.recordOutputPortId);
     if (!output) return;
 
-    const now = this._clockAudioCtx.currentTime;
-    const lookAhead = 0.1; // schedule 100ms ahead
-    const tickInterval = 60 / (this._clockBpm * 24); // seconds between clock pulses
+    const now = performance.now();
+    const lookAhead = document.hidden ? 1000 : 100; // ms
+    const tickInterval = 60000 / (this._clockBpm * 24); // ms between clock pulses
 
-    while (this._nextClockTime < now + lookAhead) {
-      const msOffset = (this._nextClockTime - now) * 1000;
-      output.send([0xF8], Math.max(performance.now(), performance.now() + msOffset));
-      this._nextClockTime += tickInterval;
+    // If the scheduler fell far behind (machine asleep), don't flood the port
+    if (this._nextClockTime < now - 100) {
+      this._nextClockTime = now;
     }
 
-    this._clockSchedulerTimeout = setTimeout(() => this._runClockScheduler(), 25);
+    while (this._nextClockTime < now + lookAhead) {
+      output.send([0xF8], this._nextClockTime);
+      this._nextClockTime += tickInterval;
+    }
   }
 
   _sendOutputNow(data) {

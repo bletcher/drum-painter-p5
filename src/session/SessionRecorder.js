@@ -3,7 +3,7 @@
  * Records MIDI events with timing for external export
  */
 
-import { debugLog, debugWarn, infoLog } from '../utils/debug.js';
+import { debugWarn, infoLog } from '../utils/debug.js';
 import { showUserFriendlyError } from '../utils/errorMessages.js';
 
 export class SessionRecorder {
@@ -13,6 +13,14 @@ export class SessionRecorder {
     this.sessionData = null;
     this.events = [];
     this.startTime = null;
+    this.resetTotals();
+  }
+
+  resetTotals() {
+    this.velocitySum = 0;
+    this.minVelocity = Infinity;
+    this.maxVelocity = -Infinity;
+    this.eventsByDrum = {};
   }
 
   /**
@@ -27,6 +35,7 @@ export class SessionRecorder {
     this.isRecording = true;
     this.startTime = performance.now();
     this.events = [];
+    this.resetTotals();
     this.sessionData = {
       version: '1.0',
       startTimestamp: new Date().toISOString(),
@@ -69,26 +78,28 @@ export class SessionRecorder {
   /**
    * Record a MIDI event
    * @param {number} note - MIDI note number
-   * @param {number} velocity - MIDI velocity (0-127)
+   * @param {number} velocityNormalized - Velocity scaled to 0-1
    * @param {string} deviceId - MIDI device ID
    * @param {string} drumId - Drum ID that was triggered
+   * @param {number} hitTime - performance.now() time of the hit (MIDI timestamp)
    */
-  recordEvent(note, velocity, deviceId, drumId) {
+  recordEvent(note, velocityNormalized, deviceId, drumId, hitTime = performance.now()) {
     if (!this.isRecording) return;
 
-    const timestamp = performance.now() - this.startTime; // Time since recording started (ms)
-
-    const event = {
-      timestamp,
+    const velocity = Math.round(velocityNormalized * 127);
+    this.events.push({
+      timestamp: hitTime - this.startTime, // Time since recording started (ms)
       note,
       velocity,
       deviceId,
       drumId,
-      velocityNormalized: velocity / 127
-    };
+      velocityNormalized
+    });
 
-    this.events.push(event);
-    debugLog(`📝 Recorded event: note=${note}, vel=${velocity}, drum=${drumId}, time=${timestamp.toFixed(2)}ms`);
+    this.velocitySum += velocity;
+    this.minVelocity = Math.min(this.minVelocity, velocity);
+    this.maxVelocity = Math.max(this.maxVelocity, velocity);
+    this.eventsByDrum[drumId] = (this.eventsByDrum[drumId] || 0) + 1;
   }
 
   /**
@@ -139,6 +150,7 @@ export class SessionRecorder {
     this.events = [];
     this.startTime = null;
     this.isRecording = false;
+    this.resetTotals();
 
     infoLog('🗑️ Session data cleared');
     if (this.notificationSystem) {
@@ -158,27 +170,16 @@ export class SessionRecorder {
       };
     }
 
-    const eventsByDrum = {};
-    this.events.forEach(event => {
-      if (!eventsByDrum[event.drumId]) {
-        eventsByDrum[event.drumId] = 0;
-      }
-      eventsByDrum[event.drumId]++;
-    });
-
-    const velocities = this.events.map(e => e.velocity);
-    const avgVelocity = velocities.length > 0
-      ? velocities.reduce((a, b) => a + b, 0) / velocities.length
-      : 0;
-
+    // Running totals, so this stays cheap however long the session is
+    const count = this.events.length;
     return {
       hasData: true,
-      totalEvents: this.events.length,
+      totalEvents: count,
       duration: this.sessionData.durationSeconds || 0,
-      eventsByDrum,
-      averageVelocity: avgVelocity,
-      minVelocity: Math.min(...velocities),
-      maxVelocity: Math.max(...velocities),
+      eventsByDrum: { ...this.eventsByDrum },
+      averageVelocity: count > 0 ? this.velocitySum / count : 0,
+      minVelocity: count > 0 ? this.minVelocity : 0,
+      maxVelocity: count > 0 ? this.maxVelocity : 0,
       startTime: this.sessionData.startTimestamp,
       endTime: this.sessionData.endTimestamp
     };
