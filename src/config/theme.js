@@ -5,23 +5,31 @@
 
 // ===== COLOR PALETTE =====
 
+// Neutral tokens (surfaces, text, borders, tinted backgrounds) are CSS variable
+// references defined in src/styles/app.css, so panels built in JS follow the
+// light/dark theme automatically. The hex after the comma is only a fallback.
+// Never do string math on these values (e.g. appending alpha) — use CSS instead.
+// Saturated fills (main/light/dark) stay as plain hex and work in both themes.
+
 export const COLORS = {
   // Primary brand colors
   primary: {
-    main: '#667eea',
+    main: '#5a67d8',
     light: '#8b9aff',
     dark: '#4c5ed4',
-    bg: '#f8f9ff',
-    bgGradient: 'linear-gradient(135deg, #f8f9ff 0%, #e8eaff 100%)'
+    text: 'var(--primary-text, #4c51bf)',
+    bg: 'var(--primary-soft, #f8f9ff)',
+    bgGradient: 'var(--primary-soft-gradient, linear-gradient(135deg, #f8f9ff 0%, #e8eaff 100%))'
   },
 
   // Success/positive colors (used for calculated values, confirmations)
   success: {
-    main: '#28a745',
-    light: '#3cb368ff',
+    main: '#15803d',
+    light: '#3cb368',
     dark: '#166534',
-    bg: '#f0fff4',
-    bgGradient: 'linear-gradient(135deg, #f0fff4 0%, #dcfce7 100%)'
+    text: 'var(--success-text, #166534)',
+    bg: 'var(--success-soft, #f0fff4)',
+    bgGradient: 'var(--success-soft-gradient, linear-gradient(135deg, #f0fff4 0%, #dcfce7 100%))'
   },
 
   // Warning/input colors (used for input indicators, velocity)
@@ -30,34 +38,37 @@ export const COLORS = {
     light: '#fbbf24',
     dark: '#92400e',
     darkest: '#78350f',
-    bg: '#fffbeb',
-    bgLight: '#fef3c7',
-    bgGradient: 'linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)'
+    text: 'var(--warning-text, #92400e)',
+    bg: 'var(--warning-soft, #fffbeb)',
+    bgLight: 'var(--warning-soft-2, #fef3c7)',
+    bgGradient: 'var(--warning-soft-gradient, linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%))'
   },
 
   // Error/danger colors
   error: {
-    main: '#dc3545',
-    light: '#db3e3eff',
+    main: '#c53030',
+    light: '#db3e3e',
     dark: '#b91c1c',
-    bg: '#fef2f2'
+    text: 'var(--danger-text, #b91c1c)',
+    bg: 'var(--danger-soft, #fef2f2)'
   },
 
   // Info colors
   info: {
-    main: '#3c79daff',
+    main: '#2563eb',
     light: '#60a5fa',
     dark: '#1e40af',
-    bg: '#eff6ff'
+    text: 'var(--info-text, #1e40af)',
+    bg: 'var(--info-soft, #eff6ff)'
   },
 
-  // Neutral grays
+  // Neutral grays (50–400 are used as surfaces/borders, so they follow the theme)
   gray: {
-    50: '#f9fafb',
-    100: '#f3f4f6',
-    200: '#e5e7eb',
-    300: '#d1d5db',
-    400: '#9ca3af',
+    50: 'var(--gray-50, #f9fafb)',
+    100: 'var(--gray-100, #f3f4f6)',
+    200: 'var(--gray-200, #e5e7eb)',
+    300: 'var(--gray-300, #d1d5db)',
+    400: 'var(--gray-400, #9ca3af)',
     500: '#6b7280',
     600: '#4b5563',
     700: '#374151',
@@ -67,27 +78,27 @@ export const COLORS = {
 
   // Background colors
   background: {
-    primary: '#ffffff',
-    secondary: '#f8f9fa',
-    tertiary: '#f5f5f5',
-    overlay: 'rgba(0, 0, 0, 0.5)',
+    primary: 'var(--panel-solid, #ffffff)',
+    secondary: 'var(--surface, #f8f9fa)',
+    tertiary: 'var(--surface-2, #f5f5f5)',
+    overlay: 'var(--scrim, rgba(0, 0, 0, 0.5))',
     overlayLight: 'rgba(0, 0, 0, 0.3)'
   },
 
   // Text colors
   text: {
-    primary: '#333333',
-    secondary: '#666666',
-    muted: '#999999',
-    light: '#ffffff',
-    dark: '#000000'
+    primary: 'var(--text, #333333)',
+    secondary: 'var(--text-muted, #555555)',
+    muted: 'var(--text-subtle, #666a70)',
+    light: 'var(--text-on-color, #ffffff)',
+    dark: 'var(--text-strong, #000000)'
   },
 
   // Border colors
   border: {
-    light: '#f0f0f0',
-    medium: '#ddd',
-    dark: '#ccc'
+    light: 'var(--border-soft, #f0f0f0)',
+    medium: 'var(--border-input, #8f959e)',
+    dark: 'var(--border-strong, #b5b9c0)'
   }
 };
 
@@ -134,9 +145,9 @@ export const TYPOGRAPHY = {
     monospace: '"Courier New", Courier, monospace'
   },
   fontSize: {
-    xs: '9px',
-    sm: '10px',
-    base: '11px',
+    xs: '11px',  // nothing smaller than 11px, for legibility
+    sm: '11px',
+    base: '12px',
     md: '12px',
     lg: '13px',
     xl: '16px',
@@ -185,9 +196,9 @@ export const SHADOWS = {
 export const DEBUG_PANEL = {
   header: {
     collapsed: {
-      chevronColor: COLORS.primary.main,
+      chevronColor: COLORS.primary.text,
       borderColor: COLORS.primary.main,
-      textColor: COLORS.primary.main
+      textColor: COLORS.primary.text
     }
   },
   fixedSettings: {
@@ -198,16 +209,16 @@ export const DEBUG_PANEL = {
   velocity: {
     background: COLORS.warning.bgGradient,
     borderColor: COLORS.warning.main,
-    labelColor: COLORS.warning.dark,
-    valueColor: COLORS.warning.dark,
-    badgeColor: COLORS.warning.darkest
+    labelColor: COLORS.warning.text,
+    valueColor: COLORS.warning.text,
+    badgeColor: COLORS.warning.text
   },
   calculated: {
     background: COLORS.success.bgGradient,
     borderColor: COLORS.success.light,
-    labelColor: COLORS.success.dark,
-    valueColor: COLORS.success.dark,
-    tableRowBorder: 'rgba(22, 101, 52, 0.1)'
+    labelColor: COLORS.success.text,
+    valueColor: COLORS.success.text,
+    tableRowBorder: 'var(--border-soft, rgba(22, 101, 52, 0.1))'
   }
 };
 
@@ -229,8 +240,8 @@ export const CUSTOMIZATION_PANEL = {
   },
   ccButton: {
     learn: COLORS.primary.main,
-    learning: '#ff6b35',
-    mapped: COLORS.primary.main,
+    learning: '#c2410c', // orange dark enough for white text
+    mapped: COLORS.primary.text,
     remove: COLORS.error.main
   }
 };
@@ -243,10 +254,12 @@ export const MIDI_MAPPING_PANEL = {
   },
   learnButton: {
     idle: COLORS.primary.main,
-    active: '#ff6b35'
+    active: '#c2410c'
   }
 };
 
+// QUICK_SETTINGS_PANEL / CONTROLS_PANEL button colors are no longer applied from JS;
+// index.html buttons are styled by classes in app.css. Kept for compatibility.
 export const QUICK_SETTINGS_PANEL = {
   buttons: {
     customize: 'linear-gradient(135deg, #8362a1ff 0%, #764ba2 100%)',
@@ -259,7 +272,7 @@ export const QUICK_SETTINGS_PANEL = {
     videoRecord: '#da3939ff'
   },
   panel: {
-    background: 'rgba(255, 255, 255, 0.95)',
+    background: 'var(--panel-bg, rgba(255, 255, 255, 0.95))',
     borderRadius: RADIUS.xl,
     shadow: SHADOWS.md
   }
@@ -267,7 +280,7 @@ export const QUICK_SETTINGS_PANEL = {
 
 export const CONTROLS_PANEL = {
   panel: {
-    background: 'rgba(255, 255, 255, 0.95)',
+    background: 'var(--panel-bg, rgba(255, 255, 255, 0.95))',
     borderRadius: RADIUS.xl,
     shadow: SHADOWS.md
   },

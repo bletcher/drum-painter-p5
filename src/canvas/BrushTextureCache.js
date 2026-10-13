@@ -2,152 +2,196 @@
  * Brush Texture Cache
  * Generates and caches brush stroke textures for realistic painting effects
  * Uses organic noise patterns and bristle simulation
+ *
+ * Performance design (textures are requested on EVERY drum hit):
+ * - Requested sizes are quantized onto a small geometric ladder of canonical
+ *   "bucket" sizes (TEXTURE_BUCKET_MIN * TEXTURE_BUCKET_RATIO^n). Callers draw the
+ *   texture scaled to the exact requested size, so the visual size is unchanged.
+ * - Each (kind, bucket) has a fixed pool of TEXTURE_VARIANTS seeds; callers pick
+ *   a variant at random per hit (and add rotation/flip) to hide repetition.
+ * - Generation parameters are read through visualStyleManager.getConstant() so
+ *   MIDI CC overrides take effect. The style "generation" counter is part of the
+ *   cache key, so a knob change invalidates lazily (old entries age out via LRU).
+ * - Textures are created at pixelDensity(1) since they are always scaled anyway.
+ * - Generation seeds p5's global RNG for reproducible variants, then always
+ *   reseeds it with a fresh random value so the rest of the app stays random.
  */
 
-import {
-  BRUSH_CLUSTER_SPACING_DIVISOR,
-  BRUSH_CLUSTER_SPACING_OFFSET,
-  BRUSH_BRISTLES_PER_CLUSTER_MIN,
-  BRUSH_BRISTLES_PER_CLUSTER_MAX,
-  BRUSH_BRISTLE_THICKNESS_MIN,
-  BRUSH_BRISTLE_THICKNESS_MAX,
-  BRUSH_BRISTLE_LENGTH_MIN,
-  BRUSH_BRISTLE_LENGTH_MAX,
-  BRUSH_BRISTLE_ROTATION_VARIATION,
-  BRUSH_BRISTLE_ALPHA_MIN,
-  BRUSH_BRISTLE_ALPHA_MAX,
-  BRUSH_DETAIL_PROBABILITY,
-  BRUSH_DETAIL_ALPHA_MIN,
-  BRUSH_DETAIL_ALPHA_MAX,
-  BRUSH_DETAIL_LENGTH_MIN,
-  BRUSH_DETAIL_LENGTH_MAX,
-  BRUSH_DETAIL_THICKNESS_MIN,
-  BRUSH_DETAIL_THICKNESS_MAX,
-  BRUSH_PRESSURE_SIGMA,
-  BRUSH_PRESSURE_MIN,
-  BRUSH_EDGE_MASK_TOP_MIN,
-  BRUSH_EDGE_MASK_TOP_MAX,
-  BRUSH_EDGE_MASK_BOTTOM_MIN,
-  BRUSH_EDGE_MASK_BOTTOM_MAX,
-  BRUSH_EDGE_MASK_LEFT_MAX,
-  BRUSH_EDGE_MASK_RIGHT_MIN,
-  SPLATTER_DROPLET_COUNT_MIN,
-  SPLATTER_DROPLET_COUNT_MAX,
-  SPLATTER_DROPLET_DISTANCE_MIN,
-  SPLATTER_DROPLET_DISTANCE_MAX,
-  SPLATTER_DROPLET_SIZE_MIN,
-  SPLATTER_DROPLET_SIZE_MAX,
-  SPLATTER_DROPLET_ALPHA_MIN,
-  SPLATTER_DROPLET_ALPHA_MAX,
-  SPLATTER_BLOB_RADIUS,
-  SPLATTER_BLOB_ALPHA,
-  SPLATTER_BLOB_CORE_POINTS,
-  SPLATTER_BLOB_RADIUS_VARIATION,
-  SPLATTER_CONNECTION_PROBABILITY,
-  SPLATTER_CONNECTION_START_RADIUS,
-  SPLATTER_CONNECTION_BASE_WIDTH,
-  SPLATTER_CONNECTION_STRENGTH_MIN,
-  SPLATTER_CONNECTION_STRENGTH_MAX,
-  SPLATTER_CONNECTION_PINCH_WIDTH,
-  SPLATTER_CONNECTION_ALPHA_MIN,
-  SPLATTER_CONNECTION_ALPHA_MAX,
-  SPLATTER_TAIL_PROBABILITY,
-  SPLATTER_SPRAY_COUNT_MIN,
-  SPLATTER_SPRAY_COUNT_MAX,
-  SPLATTER_SPRAY_DISTANCE_MIN,
-  SPLATTER_SPRAY_DISTANCE_MAX,
-  SPLATTER_SPRAY_SIZE_MIN,
-  SPLATTER_SPRAY_SIZE_MAX,
-  SPLATTER_SPRAY_ALPHA_MIN,
-  SPLATTER_SPRAY_ALPHA_MAX,
-  INK_BLOT_CORE_RADIUS,
-  INK_BLOT_CORE_ALPHA,
-  INK_BLOT_CORE_VERTICES,
-  INK_BLOT_BLEED_LAYERS,
-  INK_BLOT_BLEED_SPREAD_MIN,
-  INK_BLOT_BLEED_SPREAD_MAX,
-  INK_BLOT_BLEED_ALPHA_START,
-  INK_BLOT_BLEED_ALPHA_DECAY,
-  INK_BLOT_EDGE_NOISE_SCALE,
-  INK_BLOT_EDGE_NOISE_AMOUNT,
-  INK_BLOT_FEATHER_COUNT_MIN,
-  INK_BLOT_FEATHER_COUNT_MAX,
-  INK_BLOT_FEATHER_LENGTH_MIN,
-  INK_BLOT_FEATHER_LENGTH_MAX,
-  INK_BLOT_FEATHER_WIDTH,
-  INK_BLOT_FEATHER_ALPHA_MIN,
-  INK_BLOT_FEATHER_ALPHA_MAX
-} from '../config/constants.js';
+import { visualStyleManager } from './VisualStyleManager.js';
+import { debugLog } from '../utils/debug.js';
+
+/** Smallest canonical texture size (px) */
+export const TEXTURE_BUCKET_MIN = 16;
+/** Geometric ratio between consecutive canonical sizes */
+export const TEXTURE_BUCKET_RATIO = 1.25;
+/** Sizes above this are clamped before quantizing (bounds texture memory) */
+export const TEXTURE_BUCKET_MAX_INPUT = 360;
+/** Number of random variants generated per (kind, bucket) */
+export const TEXTURE_VARIANTS = 6;
+
+const LOG_BUCKET_RATIO = Math.log(TEXTURE_BUCKET_RATIO);
+
+/**
+ * Quantize a requested size onto the canonical bucket ladder
+ * @param {number} size - Requested size in pixels
+ * @returns {number} Canonical (integer) bucket size
+ */
+export function quantizeTextureSize(size) {
+  if (!(size > TEXTURE_BUCKET_MIN)) return TEXTURE_BUCKET_MIN;
+  const clamped = Math.min(size, TEXTURE_BUCKET_MAX_INPUT);
+  const step = Math.round(Math.log(clamped / TEXTURE_BUCKET_MIN) / LOG_BUCKET_RATIO);
+  return Math.round(TEXTURE_BUCKET_MIN * Math.pow(TEXTURE_BUCKET_RATIO, step));
+}
+
+/**
+ * Pick a random variant index (uses Math.random so it never touches p5's RNG)
+ * @returns {number} Variant index in [0, TEXTURE_VARIANTS)
+ */
+export function randomTextureVariant() {
+  return Math.floor(Math.random() * TEXTURE_VARIANTS);
+}
+
+/**
+ * Read a (possibly MIDI-overridden) constant
+ * @param {string} name - Constant name from config/constants.js
+ * @returns {number}
+ */
+function C(name) {
+  return visualStyleManager.getConstant(name);
+}
+
+/**
+ * Read a MIN/MAX constant pair as a range.
+ * Some MIDI mappings set both MIN and MAX to the same value; in that case the
+ * override is treated as the center of a ±20% range so variation is preserved.
+ * @param {string} minName - Name of the MIN constant
+ * @param {string} maxName - Name of the MAX constant
+ * @returns {number[]} [min, max]
+ */
+function range(minName, maxName) {
+  const lo = C(minName);
+  const hi = C(maxName);
+  if (lo === hi) {
+    return [lo * 0.8, hi * 1.2];
+  }
+  return [lo, hi];
+}
+
+/**
+ * Run a texture generator with p5's global RNG seeded, always restoring
+ * non-deterministic randomness afterwards (randomSeed/noiseSeed are global).
+ * @param {number} seed - Seed for reproducible variant
+ * @param {Function} fn - Generator function
+ * @returns {*} Result of fn
+ */
+function withSeed(seed, fn) {
+  randomSeed(seed);
+  noiseSeed(seed);
+  try {
+    return fn();
+  } finally {
+    randomSeed(Math.floor(Math.random() * 2147483647));
+    noiseSeed(Math.floor(Math.random() * 2147483647));
+  }
+}
+
+/**
+ * Create a texture graphics buffer at pixel density 1
+ * @param {number} w - Width
+ * @param {number} h - Height
+ * @returns {p5.Graphics}
+ */
+function createTextureGraphics(w, h) {
+  const pg = createGraphics(Math.max(1, Math.ceil(w)), Math.max(1, Math.ceil(h)));
+  pg.pixelDensity(1);
+  return pg;
+}
 
 /**
  * Cache for brush textures
- * Generates textures on-demand and caches them by size
+ * Generates textures on-demand and caches them by kind, bucket size and variant
  */
 export class BrushTextureCache {
   constructor() {
     this.cache = new Map();
-    this.maxCacheSize = 50; // Limit cache to prevent memory issues
+    // Textures are small and bounded (few buckets x TEXTURE_VARIANTS variants)
+    this.maxCacheSize = 200;
   }
 
   /**
-   * Get or generate a brush texture
+   * Look up a texture (LRU touch on hit) or generate and insert it
+   * @param {string} key - Cache key
+   * @param {Function} generate - Generator returning a p5.Graphics
+   * @returns {p5.Graphics}
+   */
+  _getOrCreate(key, generate) {
+    const cached = this.cache.get(key);
+    if (cached) {
+      // Move to the end (most recently used)
+      this.cache.delete(key);
+      this.cache.set(key, cached);
+      return cached;
+    }
+
+    const texture = generate();
+    texture.textureGeneration = visualStyleManager.generation || 0;
+
+    // Evict least recently used entries
+    while (this.cache.size >= this.maxCacheSize) {
+      const firstKey = this.cache.keys().next().value;
+      const oldTexture = this.cache.get(firstKey);
+      if (oldTexture && oldTexture.remove) {
+        oldTexture.remove(); // Free canvas memory
+      }
+      this.cache.delete(firstKey);
+    }
+
+    this.cache.set(key, texture);
+    return texture;
+  }
+
+  /**
+   * Get or generate a brush texture.
+   * Width/height are quantized to canonical bucket sizes; the returned texture
+   * has textureBaseWidth/textureBaseHeight set and should be drawn scaled.
    * @param {number} width - Width of the brush stroke
    * @param {number} height - Height of the brush stroke
-   * @param {number} seed - Random seed for variation
+   * @param {number} seed - Variant index (wrapped to TEXTURE_VARIANTS)
    * @returns {p5.Graphics} Graphics buffer with brush texture
    */
   getTexture(width, height, seed = 0) {
-    const key = `brush_${Math.round(width)}_${Math.round(height)}_${seed}`;
+    const bw = quantizeTextureSize(width);
+    const bh = quantizeTextureSize(height);
+    const variant = Math.abs(Math.floor(seed)) % TEXTURE_VARIANTS;
+    const gen = visualStyleManager.generation || 0;
+    const key = `brush_${bw}x${bh}_v${variant}_g${gen}`;
 
-    if (this.cache.has(key)) {
-      return this.cache.get(key);
-    }
-
-    const texture = this.generateTexture(width, height, seed);
-
-    // Add to cache with size limit
-    if (this.cache.size >= this.maxCacheSize) {
-      // Remove oldest entry and dispose its graphics object
-      const firstKey = this.cache.keys().next().value;
-      const oldTexture = this.cache.get(firstKey);
-      if (oldTexture && oldTexture.remove) {
-        oldTexture.remove(); // Free GPU memory
-      }
-      this.cache.delete(firstKey);
-    }
-
-    this.cache.set(key, texture);
-    return texture;
+    return this._getOrCreate(key, () => {
+      const pg = this.generateTexture(bw, bh, variant);
+      pg.textureBaseWidth = bw;
+      pg.textureBaseHeight = bh;
+      return pg;
+    });
   }
 
   /**
-   * Get or generate a splatter texture
+   * Get or generate a splatter texture.
+   * Size is quantized; the returned texture has textureBaseSize set.
    * @param {number} size - Size of the splatter
-   * @param {number} seed - Random seed for variation
+   * @param {number} seed - Variant index (wrapped to TEXTURE_VARIANTS)
    * @returns {p5.Graphics} Graphics buffer with splatter texture
    */
   getSplatterTexture(size, seed = 0) {
-    const key = `splatter_${Math.round(size)}_${seed}`;
+    const bucket = quantizeTextureSize(size);
+    const variant = Math.abs(Math.floor(seed)) % TEXTURE_VARIANTS;
+    const gen = visualStyleManager.generation || 0;
+    const key = `splatter_${bucket}_v${variant}_g${gen}`;
 
-    if (this.cache.has(key)) {
-      return this.cache.get(key);
-    }
-
-    const texture = this.generateSplatterTexture(size, seed);
-
-    // Add to cache with size limit
-    if (this.cache.size >= this.maxCacheSize) {
-      // Remove oldest entry and dispose its graphics object
-      const firstKey = this.cache.keys().next().value;
-      const oldTexture = this.cache.get(firstKey);
-      if (oldTexture && oldTexture.remove) {
-        oldTexture.remove(); // Free GPU memory
-      }
-      this.cache.delete(firstKey);
-    }
-
-    this.cache.set(key, texture);
-    return texture;
+    return this._getOrCreate(key, () => {
+      const pg = this.generateSplatterTexture(bucket, variant + 100);
+      pg.textureBaseSize = bucket;
+      return pg;
+    });
   }
 
   /**
@@ -158,27 +202,26 @@ export class BrushTextureCache {
    * @returns {p5.Graphics} Graphics buffer with brush texture
    */
   generateTexture(width, height, seed) {
-    const pg = createGraphics(Math.ceil(width), Math.ceil(height));
+    debugLog(`🖌️ Generating brush texture ${width}x${height} (seed ${seed})`);
+    const pg = createTextureGraphics(width, height);
 
-    randomSeed(seed);
-    noiseSeed(seed);
+    return withSeed(seed, () => {
+      pg.clear();
 
-    pg.clear();
-    pg.background(255, 255, 255, 0); // Transparent background
+      // Create bristle-based texture
+      this.drawBristlePattern(pg, width, height);
 
-    // Create bristle-based texture
-    this.drawBristlePattern(pg, width, height);
+      // Add organic noise overlay
+      this.addNoiseTexture(pg, width, height);
 
-    // Add organic noise overlay
-    this.addNoiseTexture(pg, width, height);
+      // Add edge variation (missing bristles)
+      this.addEdgeVariation(pg, width, height);
 
-    // Add edge variation (missing bristles)
-    this.addEdgeVariation(pg, width, height);
+      // Apply organic edge mask AFTER all drawing is complete
+      this.createOrganicEdgeMask(pg, width, height);
 
-    // Apply organic edge mask AFTER all drawing is complete
-    this.createOrganicEdgeMask(pg, width, height);
-
-    return pg;
+      return pg;
+    });
   }
 
   /**
@@ -188,11 +231,30 @@ export class BrushTextureCache {
    * @param {number} height - Height
    */
   drawBristlePattern(pg, width, height) {
+    const spacingDivisor = C('BRUSH_CLUSTER_SPACING_DIVISOR');
+    const spacingOffset = C('BRUSH_CLUSTER_SPACING_OFFSET');
+    const [bristlesMin, bristlesMax] = range('BRUSH_BRISTLES_PER_CLUSTER_MIN', 'BRUSH_BRISTLES_PER_CLUSTER_MAX');
+    const thicknessMin = C('BRUSH_BRISTLE_THICKNESS_MIN');
+    const thicknessMax = C('BRUSH_BRISTLE_THICKNESS_MAX');
+    const lengthMin = C('BRUSH_BRISTLE_LENGTH_MIN');
+    const lengthMax = C('BRUSH_BRISTLE_LENGTH_MAX');
+    const rotationVariation = C('BRUSH_BRISTLE_ROTATION_VARIATION');
+    const [alphaMin, alphaMax] = range('BRUSH_BRISTLE_ALPHA_MIN', 'BRUSH_BRISTLE_ALPHA_MAX');
+    const detailProbability = C('BRUSH_DETAIL_PROBABILITY');
+    const detailAlphaMin = C('BRUSH_DETAIL_ALPHA_MIN');
+    const detailAlphaMax = C('BRUSH_DETAIL_ALPHA_MAX');
+    const detailLengthMin = C('BRUSH_DETAIL_LENGTH_MIN');
+    const detailLengthMax = C('BRUSH_DETAIL_LENGTH_MAX');
+    const detailThicknessMin = C('BRUSH_DETAIL_THICKNESS_MIN');
+    const detailThicknessMax = C('BRUSH_DETAIL_THICKNESS_MAX');
+    const sigma = C('BRUSH_PRESSURE_SIGMA');
+    const pressureMin = C('BRUSH_PRESSURE_MIN');
+
     pg.push();
     pg.noStroke();
 
     // Number of bristle clusters along the stroke
-    const numClusters = Math.floor(width / 6) + 8;
+    const numClusters = Math.floor(width / spacingDivisor) + spacingOffset;
 
     for (let i = 0; i < numClusters; i++) {
       const x = map(i, 0, numClusters - 1, width * 0.05, width * 0.95);
@@ -200,15 +262,14 @@ export class BrushTextureCache {
       // Pressure variation (thicker in middle)
       const t = i / (numClusters - 1);
       const center = 0.5;
-      const sigma = 0.3;
       const pressure = exp(-pow(t - center, 2) / (2 * sigma * sigma));
-      const clusterPressure = constrain(pressure, 0.3, 1.0);
+      const clusterPressure = constrain(pressure, pressureMin, 1.0);
 
       // Height variation based on pressure (organic edges)
       const edgeHeight = height * clusterPressure * random(0.8, 1.0);
 
       // Each cluster has multiple bristles
-      const bristlesInCluster = floor(random(4, 10));
+      const bristlesInCluster = floor(random(bristlesMin, bristlesMax));
 
       for (let b = 0; b < bristlesInCluster; b++) {
         // Y position within the organic edge boundary
@@ -216,24 +277,24 @@ export class BrushTextureCache {
         const y = height / 2 + yOffset;
 
         // Bristle dimensions - running PARALLEL to stroke (horizontal)
-        const bristleThickness = clusterPressure * height * random(0.08, 0.15);
-        const bristleLength = width * random(0.15, 0.35); // Length along x-axis
+        const bristleThickness = clusterPressure * height * random(thicknessMin, thicknessMax);
+        const bristleLength = width * random(lengthMin, lengthMax); // Length along x-axis
 
         // Draw bristle as elongated shape parallel to stroke
         pg.push();
         pg.translate(x, y);
-        pg.rotate(randomGaussian() * 0.08); // Slight rotation variation
+        pg.rotate(randomGaussian() * rotationVariation); // Slight rotation variation
 
-        // Use WHITE with alpha so tint() can apply color properly
-        pg.fill(255, 255, 255, random(60, 120));
+        // Use WHITE with alpha so colorize can apply color properly
+        pg.fill(255, 255, 255, random(alphaMin, alphaMax));
         // Width x Height - horizontal bristles parallel to stroke
         pg.ellipse(0, 0, bristleLength, bristleThickness);
 
         // Add some finer detail lines
-        if (random(1) < 0.4) {
-          pg.fill(255, 255, 255, random(20, 50));
-          const detailLength = bristleLength * random(0.4, 0.7);
-          const detailThickness = bristleThickness * random(0.3, 0.6);
+        if (random(1) < detailProbability) {
+          pg.fill(255, 255, 255, random(detailAlphaMin, detailAlphaMax));
+          const detailLength = bristleLength * random(detailLengthMin, detailLengthMax);
+          const detailThickness = bristleThickness * random(detailThicknessMin, detailThicknessMax);
           pg.ellipse(random(-detailLength/4, detailLength/4), 0, detailLength, detailThickness);
         }
 
@@ -251,6 +312,20 @@ export class BrushTextureCache {
    * @param {number} height - Height
    */
   createOrganicEdgeMask(pg, width, height) {
+    const topMin = C('BRUSH_EDGE_MASK_TOP_MIN');
+    const topMax = C('BRUSH_EDGE_MASK_TOP_MAX');
+    let bottomMin = C('BRUSH_EDGE_MASK_BOTTOM_MIN');
+    const bottomMax = C('BRUSH_EDGE_MASK_BOTTOM_MAX');
+    const leftMax = C('BRUSH_EDGE_MASK_LEFT_MAX');
+    const rightMin = C('BRUSH_EDGE_MASK_RIGHT_MIN');
+
+    // The "brushEdgeSoftness" MIDI mapping writes the same small value (0.1-0.25)
+    // to both TOP_MAX and BOTTOM_MIN. For the bottom edge that value is an inset
+    // from the bottom, so mirror it (default 0.85 === 1 - 0.15).
+    if (bottomMin < 0.5) {
+      bottomMin = 1 - bottomMin;
+    }
+
     pg.push();
     pg.erase(255, 255); // Erase both color and alpha
 
@@ -264,7 +339,7 @@ export class BrushTextureCache {
       const x = map(i, 0, numEdgePoints, -10, width + 10);
       const noiseVal = noise(i * 0.2 + random(0, 0.2));
       // Very aggressive variation - erase deeply into the stroke
-      const y = map(noiseVal, 0, 1, -height * 0.7, height * 0.15);
+      const y = map(noiseVal, 0, 1, height * topMin, height * topMax);
       pg.vertex(x, y);
     }
     pg.vertex(width + 20, -20); // End well outside canvas
@@ -277,7 +352,7 @@ export class BrushTextureCache {
       const x = map(i, 0, numEdgePoints, -10, width + 10);
       const noiseVal = noise(i * 0.2 + 100 + random(0, 0.2));
       // Very aggressive variation - erase deeply into the stroke
-      const y = map(noiseVal, 0, 1, height * 0.85, height * 1.7);
+      const y = map(noiseVal, 0, 1, height * bottomMin, height * bottomMax);
       pg.vertex(x, y);
     }
     pg.vertex(width + 20, height + 20); // End well outside canvas
@@ -291,7 +366,7 @@ export class BrushTextureCache {
     for (let i = 0; i <= numEdgePoints; i++) {
       const y = map(i, 0, numEdgePoints, height + 10, -10);
       const noiseVal = noise(i * 0.2 + 200 + random(0, 0.2));
-      const x = map(noiseVal, 0, 1, -10, width * 0.15);
+      const x = map(noiseVal, 0, 1, -10, width * leftMax);
       pg.vertex(x, y);
     }
     pg.endShape(CLOSE);
@@ -303,7 +378,7 @@ export class BrushTextureCache {
     for (let i = 0; i <= numEdgePoints; i++) {
       const y = map(i, 0, numEdgePoints, -10, height + 10);
       const noiseVal = noise(i * 0.2 + 300 + random(0, 0.2));
-      const x = map(noiseVal, 0, 1, width * 0.85, width + 10);
+      const x = map(noiseVal, 0, 1, width * rightMin, width + 10);
       pg.vertex(x, y);
     }
     pg.endShape(CLOSE);
@@ -315,28 +390,36 @@ export class BrushTextureCache {
   /**
    * Add organic noise texture overlay
    * @param {p5.Graphics} pg - Graphics buffer
-   * @param {number} width - Width
-   * @param {number} height - Height
+   * @param {number} width - Width (logical)
+   * @param {number} height - Height (logical)
    */
   addNoiseTexture(pg, width, height) {
     pg.loadPixels();
 
-    const noiseScale = 0.05;
+    // Index pixels using the physical backing size (defensive against density != 1)
+    const density = pg.pixelDensity();
+    const stride = (pg.elt && pg.elt.width) || Math.round(pg.width * density);
+    const rows = (pg.elt && pg.elt.height) || Math.round(pg.height * density);
+    const cols = Math.min(stride, Math.round(width * density));
+    const maxRows = Math.min(rows, Math.round(height * density));
+    const pixels = pg.pixels;
+
+    const noiseScale = 0.05 / density;
     const noiseStrength = 30;
 
-    for (let x = 0; x < width; x++) {
-      for (let y = 0; y < height; y++) {
-        const idx = (x + y * width) * 4;
+    for (let x = 0; x < cols; x++) {
+      for (let y = 0; y < maxRows; y++) {
+        const idx = (x + y * stride) * 4;
 
         // Only add noise where there's already some alpha
-        if (pg.pixels[idx + 3] > 10) {
+        if (pixels[idx + 3] > 10) {
           const n = noise(x * noiseScale, y * noiseScale);
-          const variation = map(n, 0, 1, -noiseStrength, noiseStrength);
+          const variation = (n * 2 - 1) * noiseStrength;
 
-          // Darken based on noise
-          pg.pixels[idx] = constrain(pg.pixels[idx] + variation, 0, 255);
-          pg.pixels[idx + 1] = constrain(pg.pixels[idx + 1] + variation, 0, 255);
-          pg.pixels[idx + 2] = constrain(pg.pixels[idx + 2] + variation, 0, 255);
+          // Darken based on noise (Uint8ClampedArray clamps to 0-255)
+          pixels[idx] += variation;
+          pixels[idx + 1] += variation;
+          pixels[idx + 2] += variation;
         }
       }
     }
@@ -378,104 +461,124 @@ export class BrushTextureCache {
    * @returns {p5.Graphics} Graphics buffer with splatter texture
    */
   generateSplatterTexture(size, seed) {
+    debugLog(`💦 Generating splatter texture ${size} (seed ${seed})`);
     const canvasSize = Math.ceil(size * 2.5); // Extra space for droplets
-    const pg = createGraphics(canvasSize, canvasSize);
+    const pg = createTextureGraphics(canvasSize, canvasSize);
 
-    randomSeed(seed);
-    noiseSeed(seed);
+    return withSeed(seed, () => {
+      const [dropletCountMin, dropletCountMax] = range('SPLATTER_DROPLET_COUNT_MIN', 'SPLATTER_DROPLET_COUNT_MAX');
+      const dropletDistMin = C('SPLATTER_DROPLET_DISTANCE_MIN');
+      const dropletDistMax = C('SPLATTER_DROPLET_DISTANCE_MAX');
+      const dropletSizeMin = C('SPLATTER_DROPLET_SIZE_MIN');
+      const dropletSizeMax = C('SPLATTER_DROPLET_SIZE_MAX');
+      const dropletAlphaMin = C('SPLATTER_DROPLET_ALPHA_MIN');
+      const dropletAlphaMax = C('SPLATTER_DROPLET_ALPHA_MAX');
+      const blobRadiusFactor = C('SPLATTER_BLOB_RADIUS');
+      const connectionProbability = C('SPLATTER_CONNECTION_PROBABILITY');
+      const connectionStartRadius = C('SPLATTER_CONNECTION_START_RADIUS');
+      const connectionBaseWidth = C('SPLATTER_CONNECTION_BASE_WIDTH');
+      const strengthMin = C('SPLATTER_CONNECTION_STRENGTH_MIN');
+      const strengthMax = C('SPLATTER_CONNECTION_STRENGTH_MAX');
+      const tailProbability = C('SPLATTER_TAIL_PROBABILITY');
+      const [sprayCountMin, sprayCountMax] = range('SPLATTER_SPRAY_COUNT_MIN', 'SPLATTER_SPRAY_COUNT_MAX');
+      const sprayDistMin = C('SPLATTER_SPRAY_DISTANCE_MIN');
+      const sprayDistMax = C('SPLATTER_SPRAY_DISTANCE_MAX');
+      const [spraySizeMin, spraySizeMax] = range('SPLATTER_SPRAY_SIZE_MIN', 'SPLATTER_SPRAY_SIZE_MAX');
+      const sprayAlphaMin = C('SPLATTER_SPRAY_ALPHA_MIN');
+      const sprayAlphaMax = C('SPLATTER_SPRAY_ALPHA_MAX');
 
-    pg.clear();
-    pg.background(255, 255, 255, 0);
+      pg.clear();
 
-    const centerX = canvasSize / 2;
-    const centerY = canvasSize / 2;
+      const centerX = canvasSize / 2;
+      const centerY = canvasSize / 2;
 
-    pg.noStroke();
+      pg.noStroke();
 
-    // Generate droplet data first
-    const numDroplets = floor(random(12, 25));
-    const droplets = [];
-    for (let i = 0; i < numDroplets; i++) {
-      const angle = random(TWO_PI);
-      const distance = random(size * 0.5, size * 1.0);
-      const dropletX = centerX + cos(angle) * distance;
-      const dropletY = centerY + sin(angle) * distance;
-      const dropletSize = random(size * 0.08, size * 0.2) * (1 - distance / (size * 1.2));
+      // Generate droplet data first
+      const numDroplets = floor(random(dropletCountMin, dropletCountMax));
+      const droplets = [];
+      for (let i = 0; i < numDroplets; i++) {
+        const angle = random(TWO_PI);
+        const distance = random(size * dropletDistMin, size * dropletDistMax);
+        const dropletX = centerX + cos(angle) * distance;
+        const dropletY = centerY + sin(angle) * distance;
+        const dropletSize = random(size * dropletSizeMin, size * dropletSizeMax) * (1 - distance / (size * 1.2));
 
-      droplets.push({ x: dropletX, y: dropletY, size: dropletSize, angle, distance });
-    }
-
-    // 1. Draw connection lines FIRST (so they appear behind everything)
-    const blobRadius = size * 0.4; // Match the core radius
-    for (let droplet of droplets) {
-      const connectionStrength = random(0.5, 1.0);
-      if (random(1) < 0.7) { // 70% of droplets have visible connections
-        // Calculate starting point slightly inside blob edge to ensure overlap (no gap)
-        const startRadius = blobRadius * 0.85; // Start inside blob to prevent gaps
-        const edgeX = centerX + cos(droplet.angle) * startRadius;
-        const edgeY = centerY + sin(droplet.angle) * startRadius;
-        // Draw organic blob-like connection from edge to droplet
-        // Base width on blob size, will taper down to droplet
-        const baseWidth = size * 0.1; // Width at blob end (proportional to blob)
-        this.drawOrganicConnection(pg, edgeX, edgeY, droplet.x, droplet.y, baseWidth * connectionStrength, droplet.size, droplet.angle);
+        droplets.push({ x: dropletX, y: dropletY, size: dropletSize, angle, distance });
       }
-    }
 
-    // 2. Draw organic central core (on top of connections)
-    // First erase the blob area to mask connections underneath
-    pg.push();
-    pg.erase(255, 255); // Erase both color and alpha
-    this.drawOrganicCore(pg, centerX, centerY, size * 0.4);
-    pg.noErase();
-    pg.pop();
-
-    // Now draw the actual visible blob
-    this.drawOrganicCore(pg, centerX, centerY, size * 0.4);
-
-    // 3. Draw droplets and tails (on top of core)
-    for (let droplet of droplets) {
-      // Draw droplet
-      pg.fill(255, 255, 255, random(100, 180));
-      pg.circle(droplet.x, droplet.y, droplet.size);
-
-      // Some droplets have directional tails
-      if (random(1) < 0.4) {
-        this.drawDropletTail(pg, droplet.x, droplet.y, droplet.angle, droplet.size);
+      // 1. Draw connection lines FIRST (so they appear behind everything)
+      const blobRadius = size * blobRadiusFactor; // Match the core radius
+      for (let droplet of droplets) {
+        const connectionStrength = random(strengthMin, strengthMax);
+        if (random(1) < connectionProbability) {
+          // Start slightly inside blob edge to ensure overlap (no gap)
+          const startRadius = blobRadius * connectionStartRadius;
+          const edgeX = centerX + cos(droplet.angle) * startRadius;
+          const edgeY = centerY + sin(droplet.angle) * startRadius;
+          // Base width on blob size, will taper down to droplet
+          const baseWidth = size * connectionBaseWidth;
+          this.drawOrganicConnection(pg, edgeX, edgeY, droplet.x, droplet.y, baseWidth * connectionStrength, droplet.size, droplet.angle);
+        }
       }
-    }
 
-    // 3. Add small spray dots (smaller disconnected dots)
-    const numSpray = floor(random(15, 30));
-    for (let i = 0; i < numSpray; i++) {
-      const angle = random(TWO_PI);
-      const distance = random(size * 0.8, size * 1.3);
+      // 2. Draw organic central core (on top of connections)
+      // First erase the blob area to mask connections underneath
+      pg.push();
+      pg.erase(255, 255); // Erase both color and alpha
+      this.drawOrganicCore(pg, centerX, centerY, blobRadius);
+      pg.noErase();
+      pg.pop();
 
-      const sprayX = centerX + cos(angle) * distance;
-      const sprayY = centerY + sin(angle) * distance;
-      const spraySize = random(size * 0.02, size * 0.06);
+      // Now draw the actual visible blob
+      this.drawOrganicCore(pg, centerX, centerY, blobRadius);
 
-      pg.fill(255, 255, 255, random(60, 120));
-      pg.circle(sprayX, sprayY, spraySize);
-    }
+      // 3. Draw droplets and tails (on top of core)
+      for (let droplet of droplets) {
+        pg.fill(255, 255, 255, random(dropletAlphaMin, dropletAlphaMax));
+        pg.circle(droplet.x, droplet.y, droplet.size);
 
-    return pg;
+        // Some droplets have directional tails
+        if (random(1) < tailProbability) {
+          this.drawDropletTail(pg, droplet.x, droplet.y, droplet.angle, droplet.size);
+        }
+      }
+
+      // 4. Add small spray dots (smaller disconnected dots)
+      const numSpray = floor(random(sprayCountMin, sprayCountMax));
+      for (let i = 0; i < numSpray; i++) {
+        const angle = random(TWO_PI);
+        const distance = random(size * sprayDistMin, size * sprayDistMax);
+
+        const sprayX = centerX + cos(angle) * distance;
+        const sprayY = centerY + sin(angle) * distance;
+        const spraySize = random(size * spraySizeMin, size * spraySizeMax);
+
+        pg.fill(255, 255, 255, random(sprayAlphaMin, sprayAlphaMax));
+        pg.circle(sprayX, sprayY, spraySize);
+      }
+
+      return pg;
+    });
   }
 
   /**
    * Draw organic central core (irregular blob, not circle)
    */
   drawOrganicCore(pg, x, y, radius) {
+    const numPoints = C('SPLATTER_BLOB_CORE_POINTS');
+    const variation = C('SPLATTER_BLOB_RADIUS_VARIATION');
+
     pg.push();
     pg.translate(x, y);
 
-    pg.fill(255, 255, 255, 200);
+    pg.fill(255, 255, 255, C('SPLATTER_BLOB_ALPHA'));
     pg.beginShape();
 
-    const numPoints = 20;
     for (let i = 0; i < numPoints; i++) {
       const angle = map(i, 0, numPoints, 0, TWO_PI);
-      // Use noise for organic variation
-      const radiusVariation = noise(i * 0.5) * 0.4 + 0.8; // 0.8 to 1.2
+      // Use noise for organic variation (default 0.8 to 1.2)
+      const radiusVariation = noise(i * 0.5) * variation + (1 - variation / 2);
       const r = radius * radiusVariation;
       const vx = cos(angle) * r;
       const vy = sin(angle) * r;
@@ -492,15 +595,25 @@ export class BrushTextureCache {
    * Tapers from wide at blob (baseWidth) to narrow at droplet (dropletSize)
    */
   drawOrganicConnection(pg, x1, y1, x2, y2, baseWidth, dropletSize, angle) {
+    const pinchWidthFactor = C('SPLATTER_CONNECTION_PINCH_WIDTH');
+
     pg.push();
 
     const numSegments = 15;
 
     // Calculate perpendicular angle for width
     const perpAngle = angle + HALF_PI;
+    const perpCos = cos(perpAngle);
+    const perpSin = sin(perpAngle);
+
+    // Pinch in middle: wide at blob, narrow in middle, wider at droplet
+    const pinchPoint = 0.5;
+    const minPinchWidth = baseWidth * pinchWidthFactor; // Minimum width at pinch point
+    const widthAtBlob = baseWidth;
+    const widthAtDroplet = dropletSize * 0.8;
 
     // Build organic shape with irregular edges
-    pg.fill(255, 255, 255, random(100, 160));
+    pg.fill(255, 255, 255, random(C('SPLATTER_CONNECTION_ALPHA_MIN'), C('SPLATTER_CONNECTION_ALPHA_MAX')));
     pg.noStroke();
     pg.beginShape();
 
@@ -510,30 +623,16 @@ export class BrushTextureCache {
       const cx = lerp(x1, x2, t);
       const cy = lerp(y1, y2, t);
 
-      // Create pinch in middle: wide at blob, narrow in middle, wider at droplet
-      const pinchPoint = 0.5;
-      const minPinchWidth = baseWidth * 0.25; // Minimum width at pinch point
-      const widthAtBlob = baseWidth;
-      const widthAtDroplet = dropletSize * 0.8;
-
-      // Distance from pinch point (0 at pinch, 0.5 at ends)
-      const distFromPinch = abs(t - pinchPoint);
-      // Normalize to 0-1 (0 at pinch, 1 at ends)
-      const pinchFactor = distFromPinch / 0.5;
-
-      // Target width at the end we're approaching
+      // Normalized distance from pinch point (0 at pinch, 1 at ends)
+      const pinchFactor = abs(t - pinchPoint) / 0.5;
       const targetEndWidth = t < 0.5 ? widthAtBlob : widthAtDroplet;
-
-      // Width varies from narrow at pinch to wide at ends
       const width = lerp(minPinchWidth, targetEndWidth, pinchFactor);
 
       // Add organic noise variation to edge
       const noiseOffset = noise(i * 0.4) * width * 0.3;
       const edgeWidth = (width / 2) + noiseOffset;
 
-      const edgeX = cx + cos(perpAngle) * edgeWidth;
-      const edgeY = cy + sin(perpAngle) * edgeWidth;
-      pg.vertex(edgeX, edgeY);
+      pg.vertex(cx + perpCos * edgeWidth, cy + perpSin * edgeWidth);
     }
 
     // Draw back along the other side (with different noise)
@@ -542,14 +641,7 @@ export class BrushTextureCache {
       const cx = lerp(x1, x2, t);
       const cy = lerp(y1, y2, t);
 
-      // Same pinch calculation
-      const pinchPoint = 0.5;
-      const minPinchWidth = baseWidth * 0.25;
-      const widthAtBlob = baseWidth;
-      const widthAtDroplet = dropletSize * 0.8;
-
-      const distFromPinch = abs(t - pinchPoint);
-      const pinchFactor = distFromPinch / 0.5;
+      const pinchFactor = abs(t - pinchPoint) / 0.5;
       const targetEndWidth = t < 0.5 ? widthAtBlob : widthAtDroplet;
       const width = lerp(minPinchWidth, targetEndWidth, pinchFactor);
 
@@ -557,9 +649,7 @@ export class BrushTextureCache {
       const noiseOffset = noise(i * 0.4 + 100) * width * 0.3;
       const edgeWidth = (width / 2) + noiseOffset;
 
-      const edgeX = cx - cos(perpAngle) * edgeWidth;
-      const edgeY = cy - sin(perpAngle) * edgeWidth;
-      pg.vertex(edgeX, edgeY);
+      pg.vertex(cx - perpCos * edgeWidth, cy - perpSin * edgeWidth);
     }
 
     pg.endShape(CLOSE);
@@ -590,33 +680,23 @@ export class BrushTextureCache {
   }
 
   /**
-   * Get or generate an ink blot texture
+   * Get or generate an ink blot texture.
+   * Size is quantized; the returned texture has textureBaseSize set.
    * @param {number} size - Size of the ink blot
-   * @param {number} seed - Random seed for variation
+   * @param {number} seed - Variant index (wrapped to TEXTURE_VARIANTS)
    * @returns {p5.Graphics} Graphics buffer with ink blot texture
    */
   getInkBlotTexture(size, seed = 0) {
-    const key = `inkblot_${Math.round(size)}_${seed}`;
+    const bucket = quantizeTextureSize(size);
+    const variant = Math.abs(Math.floor(seed)) % TEXTURE_VARIANTS;
+    const gen = visualStyleManager.generation || 0;
+    const key = `inkblot_${bucket}_v${variant}_g${gen}`;
 
-    if (this.cache.has(key)) {
-      return this.cache.get(key);
-    }
-
-    const texture = this.generateInkBlotTexture(size, seed);
-
-    // Add to cache with size limit
-    if (this.cache.size >= this.maxCacheSize) {
-      // Remove oldest entry and dispose its graphics object
-      const firstKey = this.cache.keys().next().value;
-      const oldTexture = this.cache.get(firstKey);
-      if (oldTexture && oldTexture.remove) {
-        oldTexture.remove(); // Free GPU memory
-      }
-      this.cache.delete(firstKey);
-    }
-
-    this.cache.set(key, texture);
-    return texture;
+    return this._getOrCreate(key, () => {
+      const pg = this.generateInkBlotTexture(bucket, variant + 200);
+      pg.textureBaseSize = bucket;
+      return pg;
+    });
   }
 
   /**
@@ -626,74 +706,95 @@ export class BrushTextureCache {
    * @returns {p5.Graphics} Graphics buffer with ink blot texture
    */
   generateInkBlotTexture(size, seed) {
-    randomSeed(seed);
-    noiseSeed(seed);
+    debugLog(`🖋️ Generating ink blot texture ${size} (seed ${seed})`);
+
+    const coreRadius = C('INK_BLOT_CORE_RADIUS');
+    const coreAlpha = C('INK_BLOT_CORE_ALPHA');
+    const bleedLayers = C('INK_BLOT_BLEED_LAYERS');
+    const bleedSpreadMin = C('INK_BLOT_BLEED_SPREAD_MIN');
+    const bleedSpreadMax = C('INK_BLOT_BLEED_SPREAD_MAX');
+    const bleedAlphaStart = C('INK_BLOT_BLEED_ALPHA_START');
+    const bleedAlphaDecay = C('INK_BLOT_BLEED_ALPHA_DECAY');
+    const edgeNoiseAmount = C('INK_BLOT_EDGE_NOISE_AMOUNT');
+    const featherCountMin = C('INK_BLOT_FEATHER_COUNT_MIN');
+    const featherCountMax = C('INK_BLOT_FEATHER_COUNT_MAX');
+    const featherLengthMin = C('INK_BLOT_FEATHER_LENGTH_MIN');
+    const featherLengthMax = C('INK_BLOT_FEATHER_LENGTH_MAX');
+    const featherWidth = C('INK_BLOT_FEATHER_WIDTH');
+    const featherAlphaMin = C('INK_BLOT_FEATHER_ALPHA_MIN');
+    const featherAlphaMax = C('INK_BLOT_FEATHER_ALPHA_MAX');
 
     // Calculate buffer size to fit everything without truncation
-    const baseRadius = size * INK_BLOT_CORE_RADIUS;
-    const maxBleedRadius = baseRadius + (size * INK_BLOT_BLEED_SPREAD_MAX * INK_BLOT_BLEED_LAYERS);
-    const maxFeatherExtent = maxBleedRadius + (size * INK_BLOT_FEATHER_LENGTH_MAX);
-    const edgeNoiseMargin = maxFeatherExtent * INK_BLOT_EDGE_NOISE_AMOUNT;
+    const baseRadius = size * coreRadius;
+    const maxBleedRadius = baseRadius + (size * bleedSpreadMax * bleedLayers);
+    const maxFeatherExtent = maxBleedRadius + (size * featherLengthMax);
+    const edgeNoiseMargin = maxFeatherExtent * edgeNoiseAmount;
     const bufferSize = Math.ceil((maxFeatherExtent + edgeNoiseMargin) * 2.2); // 2.2x for safety margin
 
-    const pg = createGraphics(bufferSize, bufferSize);
+    const pg = createTextureGraphics(bufferSize, bufferSize);
     const centerX = bufferSize / 2;
     const centerY = bufferSize / 2;
 
-    pg.clear();
-    pg.noStroke();
+    return withSeed(seed, () => {
+      pg.clear();
+      pg.noStroke();
 
-    // 1. Draw bleeding layers (from outermost to innermost for proper layering)
-    let currentAlpha = INK_BLOT_BLEED_ALPHA_START;
+      // 1. Draw bleeding layers (from outermost to innermost for proper layering)
+      let currentAlpha = bleedAlphaStart;
 
-    for (let layer = INK_BLOT_BLEED_LAYERS; layer > 0; layer--) {
-      const spreadAmount = random(INK_BLOT_BLEED_SPREAD_MIN, INK_BLOT_BLEED_SPREAD_MAX);
-      const layerRadius = baseRadius + (size * spreadAmount * layer);
+      for (let layer = bleedLayers; layer > 0; layer--) {
+        const spreadAmount = random(bleedSpreadMin, bleedSpreadMax);
+        const layerRadius = baseRadius + (size * spreadAmount * layer);
 
-      pg.fill(255, 255, 255, currentAlpha);
-      this.drawOrganicBlob(pg, centerX, centerY, layerRadius, seed + layer);
+        pg.fill(255, 255, 255, currentAlpha);
+        this.drawOrganicBlob(pg, centerX, centerY, layerRadius, seed + layer);
 
-      currentAlpha *= INK_BLOT_BLEED_ALPHA_DECAY;
-    }
+        currentAlpha *= bleedAlphaDecay;
+      }
 
-    // 2. Draw core blob
-    pg.fill(255, 255, 255, INK_BLOT_CORE_ALPHA);
-    this.drawOrganicBlob(pg, centerX, centerY, baseRadius, seed);
+      // 2. Draw core blob
+      pg.fill(255, 255, 255, coreAlpha);
+      this.drawOrganicBlob(pg, centerX, centerY, baseRadius, seed);
 
-    // 3. Draw feathering (organic tendrils extending from edges) - ON TOP
-    const featherCount = floor(random(INK_BLOT_FEATHER_COUNT_MIN, INK_BLOT_FEATHER_COUNT_MAX));
-    for (let i = 0; i < featherCount; i++) {
-      const angle = (i / featherCount) * TWO_PI + random(-0.3, 0.3);
-      const startDist = baseRadius * random(0.6, 0.9); // Start closer to center so they're visible
-      const length = size * random(INK_BLOT_FEATHER_LENGTH_MIN, INK_BLOT_FEATHER_LENGTH_MAX);
-      const width = size * INK_BLOT_FEATHER_WIDTH * random(0.8, 1.2); // Vary width
-      const alpha = random(INK_BLOT_FEATHER_ALPHA_MIN, INK_BLOT_FEATHER_ALPHA_MAX);
+      // 3. Draw feathering (organic tendrils extending from edges) - ON TOP
+      const featherCount = floor(random(featherCountMin, featherCountMax));
+      for (let i = 0; i < featherCount; i++) {
+        const angle = (i / featherCount) * TWO_PI + random(-0.3, 0.3);
+        const startDist = baseRadius * random(0.6, 0.9); // Start closer to center so they're visible
+        const length = size * random(featherLengthMin, featherLengthMax);
+        const width = size * featherWidth * random(0.8, 1.2); // Vary width
+        const alpha = random(featherAlphaMin, featherAlphaMax);
 
-      const startX = centerX + cos(angle) * startDist;
-      const startY = centerY + sin(angle) * startDist;
-      const endX = centerX + cos(angle) * (startDist + length);
-      const endY = centerY + sin(angle) * (startDist + length);
+        const startX = centerX + cos(angle) * startDist;
+        const startY = centerY + sin(angle) * startDist;
+        const endX = centerX + cos(angle) * (startDist + length);
+        const endY = centerY + sin(angle) * (startDist + length);
 
-      this.drawFeatherTendril(pg, startX, startY, endX, endY, width, alpha, seed + i + 1000);
-    }
+        this.drawFeatherTendril(pg, startX, startY, endX, endY, width, alpha, seed + i + 1000);
+      }
 
-    return pg;
+      return pg;
+    });
   }
 
   /**
    * Draw an organic blob shape with noise-based edge variation
    */
   drawOrganicBlob(pg, x, y, radius, seed) {
+    const numVertices = C('INK_BLOT_CORE_VERTICES');
+    const noiseScale = C('INK_BLOT_EDGE_NOISE_SCALE');
+    const noiseAmount = C('INK_BLOT_EDGE_NOISE_AMOUNT');
+
     pg.push();
     pg.beginShape();
 
-    for (let i = 0; i < INK_BLOT_CORE_VERTICES; i++) {
-      const angle = (i / INK_BLOT_CORE_VERTICES) * TWO_PI;
+    for (let i = 0; i < numVertices; i++) {
+      const angle = (i / numVertices) * TWO_PI;
       const noiseVal = noise(
-        cos(angle) * INK_BLOT_EDGE_NOISE_SCALE + seed,
-        sin(angle) * INK_BLOT_EDGE_NOISE_SCALE + seed
+        cos(angle) * noiseScale + seed,
+        sin(angle) * noiseScale + seed
       );
-      const radiusVariation = 1 + (noiseVal - 0.5) * INK_BLOT_EDGE_NOISE_AMOUNT;
+      const radiusVariation = 1 + (noiseVal - 0.5) * noiseAmount;
       const r = radius * radiusVariation;
 
       const vx = x + cos(angle) * r;
@@ -754,13 +855,34 @@ export class BrushTextureCache {
   }
 
   /**
+   * Remove textures generated under an older visual-style generation
+   * (called debounced by VisualStyleManager after MIDI CC changes settle)
+   * @param {number} currentGeneration - Generation to keep
+   */
+  evictStaleGenerations(currentGeneration) {
+    let removed = 0;
+    for (const [key, texture] of this.cache) {
+      if (texture && texture.textureGeneration !== currentGeneration) {
+        if (texture.remove) {
+          texture.remove(); // Free canvas memory
+        }
+        this.cache.delete(key);
+        removed++;
+      }
+    }
+    if (removed > 0) {
+      debugLog(`🗑️ Evicted ${removed} stale textures`);
+    }
+  }
+
+  /**
    * Clear the entire cache and dispose all graphics objects
    */
   clearCache() {
     // Dispose all graphics objects before clearing
     for (const texture of this.cache.values()) {
       if (texture && texture.remove) {
-        texture.remove(); // Free GPU memory
+        texture.remove(); // Free canvas memory
       }
     }
     this.cache.clear();

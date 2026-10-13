@@ -12,6 +12,17 @@ export class Particle {
     this.size = size;
     this.col = col;
     this.life = PARTICLE_LIFETIME;
+
+    // Cache RGB once (p5.Color.levels is [r, g, b, a]); avoids per-frame red()/green()/blue()
+    if (col && col.levels) {
+      this.r = col.levels[0];
+      this.g = col.levels[1];
+      this.b = col.levels[2];
+    } else {
+      this.r = red(col);
+      this.g = green(col);
+      this.b = blue(col);
+    }
   }
 
   update() {
@@ -19,15 +30,17 @@ export class Particle {
   }
 
   display(offsetX, offsetY, scaleFactor) {
-    let alpha = map(this.life, 0, PARTICLE_LIFETIME, 0, 255);
-    let x = offsetX + this.x * scaleFactor;
-    let y = offsetY + this.y * scaleFactor;
-    let s = this.size * scaleFactor * (1 + (PARTICLE_LIFETIME - this.life) * PARTICLE_SIZE_GROWTH);
-    let r = red(this.col), g = green(this.col), b = blue(this.col);
+    if (this.life <= 0) return; // Fully transparent, nothing to draw
 
+    const alpha = (this.life / PARTICLE_LIFETIME) * 255;
+    const x = offsetX + this.x * scaleFactor;
+    const y = offsetY + this.y * scaleFactor;
+    const s = this.size * scaleFactor * (1 + (PARTICLE_LIFETIME - this.life) * PARTICLE_SIZE_GROWTH);
+
+    // push/pop kept so the global fill/stroke state is not leaked to later drawing
     push();
     noFill();
-    stroke(r, g, b, alpha);
+    stroke(this.r, this.g, this.b, alpha);
     strokeWeight(2);
     circle(x, y, s);
     pop();

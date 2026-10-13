@@ -4,7 +4,7 @@
  * across reconnects using name+manufacturer as stable key
  */
 
-import { debugLog, debugWarn, debugError, infoLog } from '../utils/debug.js';
+import { debugLog, infoLog } from '../utils/debug.js';
 
 export class DeviceRegistry {
   constructor() {

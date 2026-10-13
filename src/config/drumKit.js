@@ -35,15 +35,20 @@ import { SCALING_CURVES } from './constants.js';
 //
 // ═══════════════════════════════════════════════════════════════
 
+// Default notes follow the General MIDI drum map, which most electronic kits
+// (Roland, Alesis, Yamaha, …) send out of the box. Use Kit Setup to re-learn
+// any pad that sends something different.
 export const DRUM_KIT_CONFIG = [
-  { id: 'kick', name: 'Kick', defaultMidiNote: 51, defaultColor: '#141E50' },
-  { id: 'snare', name: 'Snare', defaultMidiNote: 49, defaultColor: '#C82832' },
-  { id: 'snare_rim', name: 'Snare Rim', defaultMidiNote: 50, defaultColor: '#DC8C64' },
-  { id: 'floor_tom', name: 'Floor Tom', defaultMidiNote: 39, defaultColor: '#DC6428' }
-  // 💡 ADD MORE DRUMS HERE! Examples:
-  // { id: 'hi_hat', name: 'Hi-Hat', defaultMidiNote: 42, defaultColor: '#FFC300' },
-  // { id: 'crash', name: 'Crash', defaultMidiNote: 49, defaultColor: '#FF5733' },
-  // { id: 'ride', name: 'Ride', defaultMidiNote: 51, defaultColor: '#DAF7A6' }
+  { id: 'kick', name: 'Kick', defaultMidiNote: 36, defaultColor: '#141E50' },
+  { id: 'snare', name: 'Snare', defaultMidiNote: 38, defaultColor: '#C82832' },
+  { id: 'snare_rim', name: 'Snare Rim', defaultMidiNote: 40, defaultColor: '#DC8C64' },
+  { id: 'hihat_closed', name: 'Hi-Hat', defaultMidiNote: 42, defaultColor: '#E0A800' },
+  { id: 'hihat_open', name: 'Open Hi-Hat', defaultMidiNote: 46, defaultColor: '#F2C94C' },
+  { id: 'tom_high', name: 'High Tom', defaultMidiNote: 48, defaultColor: '#2D9C8F' },
+  { id: 'tom_mid', name: 'Mid Tom', defaultMidiNote: 45, defaultColor: '#3A7CA5' },
+  { id: 'floor_tom', name: 'Floor Tom', defaultMidiNote: 43, defaultColor: '#DC6428' },
+  { id: 'crash', name: 'Crash', defaultMidiNote: 49, defaultColor: '#8E44AD' },
+  { id: 'ride', name: 'Ride', defaultMidiNote: 51, defaultColor: '#6C8E3E' }
 ];
 
 // Generate DRUM_IDS object from config (for backwards compatibility)
@@ -59,34 +64,44 @@ DRUM_KIT_CONFIG.forEach(drum => {
 export function generateFactorySettings() {
   const settings = {};
   DRUM_KIT_CONFIG.forEach(drum => {
-    settings[drum.id] = {
-      name: drum.name,
-      midiNote: drum.defaultMidiNote,
-      midiDevice: null, // Volatile device ID (auto-updated on reconnect)
-      midiDeviceStable: null, // Stable device key (name::manufacturer) - persists across reconnects
-      color: drum.defaultColor,
-      shape: 'circle',
-      opacity: 1.0,
-      opacityScaling: SCALING_CURVES.ONE_TO_ONE,
-      size: 1.0,
-      sizeScaling: SCALING_CURVES.ONE_TO_ONE,
-      strokeEnabled: false,
-      strokeWeight: 2,
-      strokeColor: '#000000',
-      hueVariation: 0,
-      hueScaling: SCALING_CURVES.ONE_TO_ONE,
-      rotation: 0,
-      // MIDI CC live control mappings (min/max match slider display ranges)
-      midiCC: {
-        size: { cc: null, min: 30, max: 300, ccMin: 0, ccMax: 127 },           // 30% to 300% (slider range)
-        opacity: { cc: null, min: 10, max: 100, ccMin: 0, ccMax: 127 },        // 10% to 100% (slider range)
-        hueVariation: { cc: null, min: 0, max: 60, ccMin: 0, ccMax: 127 },     // 0° to 60°
-        rotation: { cc: null, min: 0, max: 360, ccMin: 0, ccMax: 127 },        // 0° to 360°
-        strokeWeight: { cc: null, min: 1, max: 10, ccMin: 0, ccMax: 127 }      // 1px to 10px
-      }
-    };
+    settings[drum.id] = createDrumSettings(drum.name, drum.defaultMidiNote, drum.defaultColor);
   });
   return settings;
+}
+
+/**
+ * Default settings for one drum
+ * @param {string} name
+ * @param {number|null} midiNote
+ * @param {string} color - '#rrggbb'
+ */
+export function createDrumSettings(name, midiNote, color) {
+  return {
+    name,
+    midiNote,
+    midiDevice: null, // Volatile device ID (auto-updated on reconnect)
+    midiDeviceStable: null, // Stable device key (name::manufacturer) - persists across reconnects
+    color,
+    shape: 'circle',
+    opacity: 1.0,
+    opacityScaling: SCALING_CURVES.ONE_TO_ONE,
+    size: 1.0,
+    sizeScaling: SCALING_CURVES.ONE_TO_ONE,
+    strokeEnabled: false,
+    strokeWeight: 2,
+    strokeColor: '#000000',
+    hueVariation: 0,
+    hueScaling: SCALING_CURVES.ONE_TO_ONE,
+    rotation: 0,
+    // MIDI CC live control mappings (min/max match slider display ranges)
+    midiCC: {
+      size: { cc: null, min: 30, max: 300, ccMin: 0, ccMax: 127 },           // 30% to 300% (slider range)
+      opacity: { cc: null, min: 10, max: 100, ccMin: 0, ccMax: 127 },        // 10% to 100% (slider range)
+      hueVariation: { cc: null, min: 0, max: 60, ccMin: 0, ccMax: 127 },     // 0° to 60°
+      rotation: { cc: null, min: 0, max: 360, ccMin: 0, ccMax: 127 },        // 0° to 360°
+      strokeWeight: { cc: null, min: 1, max: 10, ccMin: 0, ccMax: 127 }      // 1px to 10px
+    }
+  };
 }
 
 /**

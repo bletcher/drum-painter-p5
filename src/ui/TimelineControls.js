@@ -4,7 +4,7 @@
  * Plus record, stop, start over, continue buttons
  */
 
-import { debugLog, debugWarn, debugError, infoLog } from '../utils/debug.js';
+import { debugLog, debugWarn } from '../utils/debug.js';
 
 export class TimelineControls {
   constructor(timelineMode, notificationSystem, videoRecorder = null) {
@@ -32,8 +32,9 @@ export class TimelineControls {
     const bpmInput = document.getElementById('timeline-bpm');
     if (bpmInput) {
       bpmInput.addEventListener('change', (e) => {
-        const bpm = parseInt(e.target.value);
-        this.timelineMode.bpm = Math.max(40, Math.min(240, bpm));
+        const bpm = parseInt(e.target.value) || this.timelineMode.bpm;
+        // During a take the change lands on the next bar line
+        this.timelineMode.setBpm(Math.max(40, Math.min(240, bpm)));
         this.updateBPMDisplay();
         if (this.onBpmOrTimeSigChange) {
           this.onBpmOrTimeSigChange(this.timelineMode.bpm, this.timelineMode.beatsPerMeasure);
@@ -47,7 +48,7 @@ export class TimelineControls {
     if (subdivisionSelect) {
       subdivisionSelect.addEventListener('change', (e) => {
         this.timelineMode.subdivision = parseInt(e.target.value);
-        this.timelineMode.lastMetronomeClick = -1; // Reset metronome
+        this.timelineMode.resyncScheduler(); // Continue from the next line of the new grid
         this.scheduleAutoSave();
       });
     }
@@ -57,7 +58,7 @@ export class TimelineControls {
     if (timeSignatureSelect) {
       timeSignatureSelect.addEventListener('change', (e) => {
         this.timelineMode.beatsPerMeasure = parseInt(e.target.value);
-        this.timelineMode.lastMetronomeClick = -1; // Reset metronome
+        this.timelineMode.resyncScheduler();
         if (this.onBpmOrTimeSigChange) {
           this.onBpmOrTimeSigChange(this.timelineMode.bpm, this.timelineMode.beatsPerMeasure);
         }
@@ -186,11 +187,19 @@ export class TimelineControls {
       });
     }
 
-    // Show grid checkbox
+    // Show grid checkbox + color picker
     const showGridCheckbox = document.getElementById('timeline-show-grid');
     if (showGridCheckbox) {
       showGridCheckbox.addEventListener('change', (e) => {
         this.timelineMode.showGrid = e.target.checked;
+        this.scheduleAutoSave();
+      });
+    }
+
+    const gridColorPicker = document.getElementById('timeline-grid-color');
+    if (gridColorPicker) {
+      gridColorPicker.addEventListener('input', (e) => {
+        this.timelineMode.gridColor = e.target.value;
         this.scheduleAutoSave();
       });
     }
@@ -239,6 +248,7 @@ export class TimelineControls {
     if (videoQualitySelect && this.videoRecorder) {
       videoQualitySelect.addEventListener('change', (e) => {
         this.videoRecorder.setQuality(e.target.value);
+        this.scheduleAutoSave();
       });
     }
 
@@ -247,6 +257,7 @@ export class TimelineControls {
     if (videoFormatSelect && this.videoRecorder) {
       videoFormatSelect.addEventListener('change', (e) => {
         this.videoRecorder.setFormat(e.target.value);
+        this.scheduleAutoSave();
       });
     }
 
@@ -304,10 +315,10 @@ export class TimelineControls {
       cancelBtn.addEventListener('click', () => this.handleCancelSave());
     }
 
-    // Keyboard shortcuts for Save Recording Modal
+    // Keyboard shortcuts for Save Recording Modal (timeline context only)
     this.saveRecordingKeyHandler = (e) => {
       const modal = document.getElementById('save-recording-backdrop');
-      if (modal && modal.style.display === 'flex') {
+      if (modal && modal.style.display === 'flex' && modal.dataset.context === 'timeline') {
         if (e.key === 's' || e.key === 'S') {
           e.preventDefault();
           this.handleSaveRecording();
@@ -437,9 +448,10 @@ export class TimelineControls {
         this.timelineMode.stopRecording();
       }
 
-      // Show the save/discard modal
+      // Show the save/discard modal (timeline context)
       const modal = document.getElementById('save-recording-backdrop');
       if (modal) {
+        modal.dataset.context = 'timeline';
         modal.style.display = 'flex';
       }
     } else {
@@ -460,22 +472,23 @@ export class TimelineControls {
   handleSaveRecording() {
     // Close modal
     const modal = document.getElementById('save-recording-backdrop');
-    if (modal) {
-      modal.style.display = 'none';
-    }
+    if (modal && modal.dataset.context !== 'timeline') return; // Not our modal
+    if (modal) modal.style.display = 'none';
 
     // Stop recording (keeps the recording)
     this.timelineMode.stopRecording();
 
     // Stop and save video recording if it's running
     if (this.videoRecorder && this.videoRecorder.isRecording) {
-      this.videoRecorder.stopRecording();
+      // autoConfirmNext=true → saveRecording() will call confirmSave() directly (no second modal)
+      this.videoRecorder.autoConfirmNext = true;
+      this.videoRecorder.stopRecording(false);
       if (window.updateVideoRecordingUI) {
         window.updateVideoRecordingUI(false);
       }
       // Re-enable Quick Settings video button
       this.hideChronicleRecordingInfo();
-      this.notificationSystem.show('Timeline saved • Video saved');
+      this.notificationSystem.show('Timeline saved');
     } else {
       this.notificationSystem.show('Timeline saved');
     }
@@ -490,13 +503,14 @@ export class TimelineControls {
   handleDiscardRecording() {
     // Close modal
     const modal = document.getElementById('save-recording-backdrop');
-    if (modal) {
-      modal.style.display = 'none';
-    }
+    if (modal && modal.dataset.context !== 'timeline') return; // Not our modal
+    if (modal) modal.style.display = 'none';
 
     // Stop video recording if it's running (without saving)
     if (this.videoRecorder && this.videoRecorder.isRecording) {
-      this.videoRecorder.stopRecording();
+      // cancelled=true → ondataavailable/saveRecording skip (no blob saved, no modal)
+      this.videoRecorder.cancelled = true;
+      this.videoRecorder.stopRecording(false);
       if (window.updateVideoRecordingUI) {
         window.updateVideoRecordingUI(false);
       }
@@ -516,9 +530,8 @@ export class TimelineControls {
   handleCancelSave() {
     // Close modal
     const modal = document.getElementById('save-recording-backdrop');
-    if (modal) {
-      modal.style.display = 'none';
-    }
+    if (modal && modal.dataset.context !== 'timeline') return; // Not our modal
+    if (modal) modal.style.display = 'none';
 
     // Resume recording (unpause) - false means don't start over, resume from where we paused
     this.timelineMode.startRecording(false);
@@ -739,6 +752,8 @@ export class TimelineControls {
     if (metronomeCheckbox) metronomeCheckbox.checked = this.timelineMode.metronomeEnabled;
     if (latencyInput) latencyInput.value = this.timelineMode.midiLatencyMs;
     if (showGridCheckbox) showGridCheckbox.checked = this.timelineMode.showGrid;
+    const gridColorPickerSync = document.getElementById('timeline-grid-color');
+    if (gridColorPickerSync) gridColorPickerSync.value = this.timelineMode.gridColor || '#b0b0b0';
     if (showDeviationCheckbox) showDeviationCheckbox.checked = this.timelineMode.showDeviationGraph;
 
     // Deviation graph mode select

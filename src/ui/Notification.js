@@ -1,163 +1,82 @@
 /**
  * Notification System
- * Shows temporary toast notifications with icons and animations
+ * Shows temporary toast notifications as DOM elements (not on the canvas), so
+ * they never end up in video recordings and are announced by screen readers.
  */
+
+const ICONS = { success: '✓', error: '✕', warning: '⚠', info: 'ℹ' };
+const DURATION_MS = 3000;
+const ACTION_DURATION_MS = 7000;
 
 export class NotificationSystem {
   constructor() {
-    this.notifications = []; // Queue of notifications
     this.maxNotifications = 3; // Maximum visible notifications
+    this.muted = false; // When true, non-error notifications are suppressed
+
+    this.container = document.createElement('div');
+    this.container.id = 'toast-container';
+    this.container.setAttribute('role', 'status');
+    this.container.setAttribute('aria-live', 'polite');
+    document.body.appendChild(this.container);
   }
 
   /**
    * Show a notification
    * @param {string} text - Text to display
    * @param {string} type - Type of notification: 'info', 'success', 'warning', 'error'
+   * @param {{actionLabel?: string, onAction?: Function}} options - Optional action button
    */
-  show(text, type = 'info') {
-    const notification = {
-      text,
-      type,
-      alpha: 0, // Start transparent
-      targetAlpha: 255,
-      life: 180, // Frames to show (3 seconds at 60fps)
-      slideOffset: 50, // Slide in animation
-      id: Date.now() + Math.random()
-    };
+  show(text, type = 'info', options = {}) {
+    if (this.muted && type !== 'error') return;
 
-    this.notifications.push(notification);
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
 
-    // Remove oldest if too many
-    if (this.notifications.length > this.maxNotifications) {
-      this.notifications.shift();
+    const icon = document.createElement('span');
+    icon.className = 'toast-icon';
+    icon.setAttribute('aria-hidden', 'true');
+    icon.textContent = ICONS[type] || ICONS.info;
+
+    const message = document.createElement('span');
+    message.className = 'toast-text';
+    message.textContent = text;
+
+    toast.append(icon, message);
+
+    if (options.actionLabel && options.onAction) {
+      const action = document.createElement('button');
+      action.type = 'button';
+      action.className = 'toast-action';
+      action.textContent = options.actionLabel;
+      action.addEventListener('click', () => {
+        options.onAction();
+        this.dismiss(toast);
+      });
+      toast.appendChild(action);
     }
+
+    this.container.appendChild(toast);
+    // Trigger the CSS enter transition on the next frame
+    requestAnimationFrame(() => toast.classList.add('toast-visible'));
+
+    while (this.container.children.length > this.maxNotifications) {
+      this.container.firstElementChild.remove();
+    }
+
+    const duration = options.actionLabel ? ACTION_DURATION_MS : DURATION_MS;
+    toast._timer = setTimeout(() => this.dismiss(toast), duration);
   }
 
   /**
-   * Update all notifications
+   * Fade out and remove a toast
    */
-  update() {
-    for (let i = this.notifications.length - 1; i >= 0; i--) {
-      const notif = this.notifications[i];
-
-      // Fade in animation
-      if (notif.alpha < notif.targetAlpha) {
-        notif.alpha += 15;
-      }
-
-      // Slide in animation
-      if (notif.slideOffset > 0) {
-        notif.slideOffset -= 3;
-      }
-
-      // Decrease life
-      notif.life--;
-
-      // Fade out when life is low
-      if (notif.life < 30) {
-        notif.targetAlpha = 0;
-        if (notif.alpha > 0) {
-          notif.alpha -= 10;
-        }
-      }
-
-      // Remove when faded out
-      if (notif.life <= 0 && notif.alpha <= 0) {
-        this.notifications.splice(i, 1);
-      }
-    }
+  dismiss(toast) {
+    clearTimeout(toast._timer);
+    toast.classList.remove('toast-visible');
+    setTimeout(() => toast.remove(), 250);
   }
 
-  /**
-   * Get icon for notification type
-   */
-  getIcon(type) {
-    switch(type) {
-      case 'success':
-        return '✓';
-      case 'error':
-        return '✕';
-      case 'warning':
-        return '⚠';
-      default:
-        return 'ℹ';
-    }
-  }
-
-  /**
-   * Get color for notification type
-   */
-  getColor(type) {
-    switch(type) {
-      case 'success':
-        return { r: 72, g: 187, b: 120 }; // Green
-      case 'error':
-        return { r: 239, g: 68, b: 68 }; // Red
-      case 'warning':
-        return { r: 251, g: 191, b: 36 }; // Yellow
-      default:
-        return { r: 59, g: 130, b: 246 }; // Blue
-    }
-  }
-
-  /**
-   * Draw all notifications on screen
-   * @param {number} canvasWidth - Canvas width
-   * @param {number} canvasHeight - Canvas height
-   */
-  draw(canvasWidth, canvasHeight) {
-    if (this.notifications.length === 0) return;
-
-    push();
-
-    const notifWidth = 320;
-    const notifHeight = 60;
-    const spacing = 10;
-    const rightMargin = 20;
-    const topMargin = 80;
-
-    // Draw from top to bottom
-    this.notifications.forEach((notif, index) => {
-      if (notif.alpha <= 0) return;
-
-      const x = canvasWidth - notifWidth - rightMargin + notif.slideOffset;
-      const y = topMargin + (notifHeight + spacing) * index;
-
-      const color = this.getColor(notif.type);
-      const icon = this.getIcon(notif.type);
-
-      // Shadow
-      fill(0, 0, 0, notif.alpha * 0.15);
-      noStroke();
-      rect(x + 4, y + 4, notifWidth, notifHeight, 8);
-
-      // Background
-      fill(255, 255, 255, notif.alpha);
-      rect(x, y, notifWidth, notifHeight, 8);
-
-      // Left accent bar
-      fill(color.r, color.g, color.b, notif.alpha);
-      rect(x, y, 5, notifHeight, 8, 0, 0, 8);
-
-      // Icon circle
-      fill(color.r, color.g, color.b, notif.alpha * 0.15);
-      circle(x + 30, y + notifHeight / 2, 32);
-
-      // Icon
-      fill(color.r, color.g, color.b, notif.alpha);
-      textAlign(CENTER, CENTER);
-      textSize(18);
-      textStyle(BOLD);
-      text(icon, x + 30, y + notifHeight / 2);
-
-      // Text
-      fill(60, 60, 60, notif.alpha);
-      textAlign(LEFT, CENTER);
-      textSize(13);
-      textStyle(NORMAL);
-      text(notif.text, x + 55, y + notifHeight / 2);
-    });
-
-    pop();
-  }
+  // Kept for compatibility with the old canvas-drawn notifications
+  update() {}
+  draw() {}
 }

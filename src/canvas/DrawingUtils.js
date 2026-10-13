@@ -3,7 +3,7 @@
  * Functions for drawing shapes and dots on the canvas
  */
 
-import { getBrushTextureCache } from './BrushTextureCache.js';
+import { getBrushTextureCache, randomTextureVariant } from './BrushTextureCache.js';
 import {
   INK_BLOT_CORE_RADIUS,
   INK_BLOT_CORE_ALPHA,
@@ -24,6 +24,43 @@ import {
   INK_BLOT_FEATHER_ALPHA_MAX
 } from '../config/constants.js';
 
+/** Cache of parsed stroke hex colors: '#rrggbb' -> [r, g, b] */
+const strokeColorCache = new Map();
+const STROKE_COLOR_CACHE_LIMIT = 64;
+
+/**
+ * Get [r, g, b] for a p5.Color, using the fast .levels array when available
+ * @param {p5.Color} col - Color object
+ * @returns {number[]} Array whose first three entries are r, g, b (0-255)
+ */
+function getRGB(col) {
+  if (col && col.levels) {
+    return col.levels;
+  }
+  return [red(col), green(col), blue(col)];
+}
+
+/**
+ * Parse a '#rrggbb' stroke color, cached per string
+ * @param {string} hex - Hex color string
+ * @returns {number[]} [r, g, b]
+ */
+function parseStrokeColor(hex) {
+  let rgb = strokeColorCache.get(hex);
+  if (!rgb) {
+    rgb = [
+      parseInt(hex.slice(1, 3), 16),
+      parseInt(hex.slice(3, 5), 16),
+      parseInt(hex.slice(5, 7), 16)
+    ];
+    if (strokeColorCache.size >= STROKE_COLOR_CACHE_LIMIT) {
+      strokeColorCache.clear();
+    }
+    strokeColorCache.set(hex, rgb);
+  }
+  return rgb;
+}
+
 /**
  * Paint a dot on the canvas with specified shape and style
  * @param {p5.Graphics} paintCanvas - The canvas to draw on
@@ -38,24 +75,20 @@ import {
  * @param {number} strokeAlpha - Optional alpha for stroke (defaults to same as fill alpha)
  */
 export function paintDot(paintCanvas, x, y, size, col, alpha, shape = 'circle', stroke = null, rotation = 0, strokeAlpha = null) {
-  let r = red(col), g = green(col), b = blue(col);
+  const rgb = getRGB(col);
+  const r = rgb[0], g = rgb[1], b = rgb[2];
 
-  // For brushstroke, use p5.brush which has its own color system
-  if (shape === 'brushstroke') {
-    // p5.brush handles colors differently, pass them to the drawing function
-    // We'll set colors inside drawBrushStroke
-  } else {
+  // Textured shapes colorize their texture directly; others use p5 fill
+  if (shape !== 'brushstroke') {
     paintCanvas.fill(r, g, b, alpha);
   }
 
   // Apply stroke if enabled
   if (stroke && stroke.enabled) {
-    let sr = parseInt(stroke.color.slice(1, 3), 16);
-    let sg = parseInt(stroke.color.slice(3, 5), 16);
-    let sb = parseInt(stroke.color.slice(5, 7), 16);
+    const srgb = parseStrokeColor(stroke.color);
     // Use provided strokeAlpha if available, otherwise use same alpha as fill
     let sa = strokeAlpha !== null ? strokeAlpha : alpha;
-    paintCanvas.stroke(sr, sg, sb, sa);
+    paintCanvas.stroke(srgb[0], srgb[1], srgb[2], sa);
     paintCanvas.strokeWeight(stroke.weight);
   } else {
     paintCanvas.noStroke();
@@ -86,13 +119,13 @@ export function paintDot(paintCanvas, x, y, size, col, alpha, shape = 'circle', 
         drawHexagon(paintCanvas, 0, 0, size / 2);
         break;
       case 'splatter':
-        drawSplatter(paintCanvas, 0, 0, size, col, alpha);
+        drawSplatterRGB(paintCanvas, 0, 0, size, r, g, b, alpha);
         break;
       case 'inkblot':
-        drawInkBlot(paintCanvas, 0, 0, size, col, alpha);
+        drawInkBlotRGB(paintCanvas, 0, 0, size, r, g, b, alpha);
         break;
       case 'brushstroke':
-        drawBrushStroke(paintCanvas, 0, 0, size, 0, col, alpha);
+        drawBrushStrokeTexturedRGB(paintCanvas, 0, 0, size, 0, r, g, b, alpha);
         break;
       default:
         paintCanvas.circle(0, 0, size);
@@ -123,13 +156,13 @@ export function paintDot(paintCanvas, x, y, size, col, alpha, shape = 'circle', 
         drawHexagon(paintCanvas, x, y, size / 2);
         break;
       case 'splatter':
-        drawSplatter(paintCanvas, x, y, size, col, alpha);
+        drawSplatterRGB(paintCanvas, x, y, size, r, g, b, alpha);
         break;
       case 'inkblot':
-        drawInkBlot(paintCanvas, x, y, size, col, alpha);
+        drawInkBlotRGB(paintCanvas, x, y, size, r, g, b, alpha);
         break;
       case 'brushstroke':
-        drawBrushStroke(paintCanvas, x, y, size, radians(rotation), col, alpha);
+        drawBrushStrokeTexturedRGB(paintCanvas, x, y, size, radians(rotation), r, g, b, alpha);
         break;
       default:
         paintCanvas.circle(x, y, size);
@@ -237,22 +270,32 @@ export function drawHexagonCanvas(ctx, x, y, radius) {
  * @param {number} alpha - Alpha/opacity value
  */
 export function drawSplatter(canvas, x, y, size, col, alpha) {
+  const rgb = getRGB(col);
+  drawSplatterRGB(canvas, x, y, size, rgb[0], rgb[1], rgb[2], alpha);
+}
+
+/**
+ * Splatter implementation taking pre-extracted RGB components
+ * Uses a cached canonical-size texture variant drawn scaled to the requested size,
+ * with random rotation and flip to hide repetition.
+ * @param {p5.Graphics} canvas - Canvas to draw on
+ * @param {number} x - X coordinate
+ * @param {number} y - Y coordinate
+ * @param {number} size - Size of the splatter effect
+ * @param {number} r - Red (0-255)
+ * @param {number} g - Green (0-255)
+ * @param {number} b - Blue (0-255)
+ * @param {number} alpha - Alpha/opacity value (0-255)
+ */
+function drawSplatterRGB(canvas, x, y, size, r, g, b, alpha) {
+  const texture = getBrushTextureCache().getSplatterTexture(size, randomTextureVariant());
+  const scale = size / (texture.textureBaseSize || size);
+
   canvas.push();
   canvas.translate(x, y);
-
-  // Get or generate splatter texture
-  const cache = getBrushTextureCache();
-  const seed = floor(random(1000)); // Random variation
-  const texture = cache.getSplatterTexture(size, seed);
-
-  // Apply color tint and alpha
-  canvas.tint(red(col), green(col), blue(col), alpha);
-  canvas.blendMode(BLEND);
-
-  // Draw the texture centered
-  canvas.imageMode(CENTER);
-  canvas.image(texture, 0, 0);
-
+  drawColorizedTexture(canvas, texture, r, g, b, alpha,
+    texture.width * scale, texture.height * scale,
+    Math.random() * Math.PI * 2, Math.random() < 0.5, false);
   canvas.pop();
 }
 
@@ -266,22 +309,32 @@ export function drawSplatter(canvas, x, y, size, col, alpha) {
  * @param {number} alpha - Alpha/opacity value
  */
 export function drawInkBlot(canvas, x, y, size, col, alpha) {
+  const rgb = getRGB(col);
+  drawInkBlotRGB(canvas, x, y, size, rgb[0], rgb[1], rgb[2], alpha);
+}
+
+/**
+ * Ink blot implementation taking pre-extracted RGB components
+ * Uses a cached canonical-size texture variant drawn scaled to the requested size,
+ * with random rotation and flip to hide repetition.
+ * @param {p5.Graphics} canvas - Canvas to draw on
+ * @param {number} x - X coordinate
+ * @param {number} y - Y coordinate
+ * @param {number} size - Size of the ink blot
+ * @param {number} r - Red (0-255)
+ * @param {number} g - Green (0-255)
+ * @param {number} b - Blue (0-255)
+ * @param {number} alpha - Alpha/opacity value (0-255)
+ */
+function drawInkBlotRGB(canvas, x, y, size, r, g, b, alpha) {
+  const texture = getBrushTextureCache().getInkBlotTexture(size, randomTextureVariant());
+  const scale = size / (texture.textureBaseSize || size);
+
   canvas.push();
   canvas.translate(x, y);
-
-  // Get or generate ink blot texture
-  const cache = getBrushTextureCache();
-  const seed = floor(random(1000)); // Random variation
-  const texture = cache.getInkBlotTexture(size, seed);
-
-  // Apply color tint and alpha
-  canvas.tint(red(col), green(col), blue(col), alpha);
-  canvas.blendMode(BLEND);
-
-  // Draw the texture centered
-  canvas.imageMode(CENTER);
-  canvas.image(texture, 0, 0);
-
+  drawColorizedTexture(canvas, texture, r, g, b, alpha,
+    texture.width * scale, texture.height * scale,
+    Math.random() * Math.PI * 2, Math.random() < 0.5, false);
   canvas.pop();
 }
 
@@ -317,30 +370,120 @@ export function drawBrushStroke(canvas, x, y, size, rotation, col, alpha, method
  * @param {number} alpha - Alpha/opacity value
  */
 function drawBrushStrokeTextured(canvas, x, y, size, rotation, col, alpha) {
+  const rgb = getRGB(col);
+  drawBrushStrokeTexturedRGB(canvas, x, y, size, rotation, rgb[0], rgb[1], rgb[2], alpha);
+}
+
+/**
+ * Textured brush stroke implementation taking pre-extracted RGB components
+ * Orientation comes from the caller's rotation; a random vertical flip is
+ * added to hide repetition of the cached texture variants.
+ * @param {p5.Graphics} canvas - Canvas to draw on
+ * @param {number} x - X coordinate
+ * @param {number} y - Y coordinate
+ * @param {number} size - Size of the brush stroke
+ * @param {number} rotation - Rotation angle in radians
+ * @param {number} r - Red (0-255)
+ * @param {number} g - Green (0-255)
+ * @param {number} b - Blue (0-255)
+ * @param {number} alpha - Alpha/opacity value (0-255)
+ */
+function drawBrushStrokeTexturedRGB(canvas, x, y, size, rotation, r, g, b, alpha) {
+  const strokeLength = size * 2.5;
+  const strokeWidth = size * 0.8;
+
+  const texture = getBrushTextureCache().getTexture(strokeLength, strokeWidth, randomTextureVariant());
+  const scaleX = strokeLength / (texture.textureBaseWidth || strokeLength);
+  const scaleY = strokeWidth / (texture.textureBaseHeight || strokeWidth);
+
   canvas.push();
   canvas.translate(x, y);
   canvas.rotate(rotation);
-
-  let strokeLength = size * 2.5;
-  let strokeWidth = size * 0.8;
-
-  // Get or generate brush texture
-  const cache = getBrushTextureCache();
-  const seed = floor(random(1000)); // Random variation
-  const texture = cache.getTexture(strokeLength, strokeWidth, seed);
-
-  // Apply color tint and alpha
-  // Using BLEND mode with tint works better with white textures
-  canvas.push();
-  canvas.tint(red(col), green(col), blue(col), alpha);
-  canvas.blendMode(BLEND);
-
-  // Draw the texture centered
-  canvas.imageMode(CENTER);
-  canvas.image(texture, 0, 0);
-
+  drawColorizedTexture(canvas, texture, r, g, b, alpha,
+    texture.width * scaleX, texture.height * scaleY,
+    0, false, Math.random() < 0.5);
   canvas.pop();
-  canvas.pop();
+}
+
+/** Reusable scratch canvas for colorizing textures (grown as needed) */
+let scratchCanvas = null;
+let scratchCtx = null;
+
+/**
+ * Get the scratch 2D context, growing the canvas to at least w x h
+ * @param {number} w - Required width in device pixels
+ * @param {number} h - Required height in device pixels
+ * @returns {CanvasRenderingContext2D}
+ */
+function getScratchContext(w, h) {
+  if (!scratchCanvas) {
+    scratchCanvas = document.createElement('canvas');
+    scratchCanvas.width = Math.max(1, w);
+    scratchCanvas.height = Math.max(1, h);
+    scratchCtx = scratchCanvas.getContext('2d');
+  } else if (scratchCanvas.width < w || scratchCanvas.height < h) {
+    // Resizing resets the context state, which is fine (we set it every use)
+    scratchCanvas.width = Math.max(scratchCanvas.width, w);
+    scratchCanvas.height = Math.max(scratchCanvas.height, h);
+  }
+  return scratchCtx;
+}
+
+/**
+ * Draw a white/alpha texture colorized with an RGB color, centered at the
+ * current origin of the destination graphics (callers translate/rotate first).
+ * GPU-friendly replacement for p5 tint(), which reads back pixels on the CPU
+ * in the 2D renderer. RGB is multiplied (like tint) and the texture's own
+ * alpha is preserved; overall opacity is applied with globalAlpha.
+ * Always draws with source-over (BLEND), regardless of the canvas blend mode.
+ * @param {p5.Graphics} canvas - Destination graphics
+ * @param {p5.Graphics} texture - Source texture
+ * @param {number} r - Red (0-255)
+ * @param {number} g - Green (0-255)
+ * @param {number} b - Blue (0-255)
+ * @param {number} alpha - Opacity (0-255)
+ * @param {number} dw - Destination width (logical units)
+ * @param {number} dh - Destination height (logical units)
+ * @param {number} angle - Extra rotation in radians
+ * @param {boolean} flipX - Mirror horizontally
+ * @param {boolean} flipY - Mirror vertically
+ */
+function drawColorizedTexture(canvas, texture, r, g, b, alpha, dw, dh, angle, flipX, flipY) {
+  if (!(alpha > 0) || !(dw > 0) || !(dh > 0)) return;
+
+  const src = texture.elt || texture.canvas;
+  const dctx = canvas.drawingContext;
+  if (!src || !dctx) return;
+
+  // Source size in backing (device) pixels
+  const sw = src.width;
+  const sh = src.height;
+
+  // 1. Colorize on the scratch canvas
+  const sctx = getScratchContext(sw, sh);
+  sctx.globalAlpha = 1;
+  sctx.globalCompositeOperation = 'source-over';
+  sctx.clearRect(0, 0, sw, sh);
+  sctx.drawImage(src, 0, 0);
+  sctx.globalCompositeOperation = 'multiply';
+  sctx.fillStyle = `rgb(${Math.round(r)},${Math.round(g)},${Math.round(b)})`;
+  sctx.fillRect(0, 0, sw, sh);
+  sctx.globalCompositeOperation = 'destination-in';
+  sctx.drawImage(src, 0, 0);
+  sctx.globalCompositeOperation = 'source-over';
+
+  // 2. Draw onto destination (already has pixelDensity scale + translate/rotate)
+  dctx.save();
+  dctx.globalAlpha = Math.min(1, alpha / 255);
+  dctx.globalCompositeOperation = 'source-over';
+  if (angle) {
+    dctx.rotate(angle);
+  }
+  if (flipX || flipY) {
+    dctx.scale(flipX ? -1 : 1, flipY ? -1 : 1);
+  }
+  dctx.drawImage(scratchCanvas, 0, 0, sw, sh, -dw / 2, -dh / 2, dw, dh);
+  dctx.restore();
 }
 
 /**
@@ -359,7 +502,8 @@ function drawBrushStrokeProcedural(canvas, x, y, size, rotation, col, alpha) {
   canvas.translate(x, y);
   canvas.rotate(rotation);
 
-  let r = red(col), g = green(col), b = blue(col);
+  const rgb = getRGB(col);
+  let r = rgb[0], g = rgb[1], b = rgb[2];
   let strokeLength = size * 2.5;
   let tipSize = size * 0.45;
 
@@ -402,7 +546,7 @@ function drawBrushStrokeProcedural(canvas, x, y, size, rotation, col, alpha) {
       // Add smaller "bristle" details around main tip
       if (pass === 0 && random(1) < 0.3) {
         let numBristles = floor(random(2, 5));
-        for (let b = 0; b < numBristles; b++) {
+        for (let bi = 0; bi < numBristles; bi++) {
           let bristleOffset = random(currentTipSize * 0.3, currentTipSize * 0.6);
           let bristleAngle = random(TWO_PI);
           let bx = xPos + jitterX + cos(bristleAngle) * bristleOffset;

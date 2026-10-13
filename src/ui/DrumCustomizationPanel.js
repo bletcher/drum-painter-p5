@@ -7,7 +7,19 @@ import { DRUM_KIT_CONFIG } from '../config/drumKit.js';
 import { SCALING_CURVES, SCALING_CURVE_NAMES, SHAPE_OPTIONS } from '../config/constants.js';
 import { CUSTOMIZATION_PANEL, COLORS, SPACING, RADIUS, TYPOGRAPHY, SHADOWS } from '../config/theme.js';
 import { drawSplatterCanvas, drawBrushStrokeCanvas, drawInkBlotCanvas } from '../canvas/DrawingUtils.js';
+import { PALETTES, getPalettesForCount } from '../config/palettes.js';
 import { debugLog, debugWarn, debugError, infoLog } from '../utils/debug.js';
+import { escapeHtml } from '../utils/escapeHtml.js';
+
+/**
+ * Only allow simple color syntaxes into inline CSS (values can come from imported files).
+ * @param {*} value
+ * @param {string} [fallback]
+ */
+function safeColor(value, fallback = '#888888') {
+  const s = String(value ?? '').trim();
+  return /^(#[0-9a-f]{3,8}|(rgb|rgba|hsl|hsla)\([\d\s.,%+-]+\)|[a-z]{3,20})$/i.test(s) ? s : fallback;
+}
 
 export class DrumCustomizationPanel {
   constructor(drumSettings, midiManager, stateManager, notificationSystem, chronicleMode, darkModeManager) {
@@ -21,11 +33,16 @@ export class DrumCustomizationPanel {
     this.isVisible = false;
     this.draggedTabIndex = null;
 
+    // Palette sub-view state
+    this.paletteView = null; // null when closed; object when open
+    this._draggedAssignmentSlot = null;
+    this.lastPaletteDrumIds = null; // remembers the last-applied drum selection
+
     // Panel drag state
     this._dragState = null;
     this._onDragStart = this._onDragStart.bind(this);
-    this._onDragMouseMove = this._onDragMouseMove.bind(this);
-    this._onDragMouseUp = this._onDragMouseUp.bind(this);
+    this._onDragMove = this._onDragMove.bind(this);
+    this._onDragEnd = this._onDragEnd.bind(this);
   }
 
   /**
@@ -51,6 +68,10 @@ export class DrumCustomizationPanel {
       backdrop.style.display = 'block';
       this._setupDrag();
     } else {
+      // If the palette sub-view is open, cancel it (restore colors) before closing
+      if (this.paletteView) {
+        this.closePaletteView(false);
+      }
       panel.style.display = 'none';
       backdrop.style.display = 'none';
       this._teardownDrag();
@@ -61,25 +82,32 @@ export class DrumCustomizationPanel {
     }
   }
 
+  // Dragging the dialog by its header (Pointer Events: mouse, touch and pen)
   _setupDrag() {
     const header = document.getElementById('customization-panel-header');
     if (!header) return;
-    header.removeEventListener('mousedown', this._onDragStart);
-    header.addEventListener('mousedown', this._onDragStart);
+    header.removeEventListener('pointerdown', this._onDragStart);
+    header.addEventListener('pointerdown', this._onDragStart);
   }
 
   _teardownDrag() {
     const header = document.getElementById('customization-panel-header');
-    if (header) header.removeEventListener('mousedown', this._onDragStart);
-    document.removeEventListener('mousemove', this._onDragMouseMove);
-    document.removeEventListener('mouseup', this._onDragMouseUp);
+    if (header) {
+      header.removeEventListener('pointerdown', this._onDragStart);
+      header.removeEventListener('pointermove', this._onDragMove);
+      header.removeEventListener('pointerup', this._onDragEnd);
+      header.removeEventListener('pointercancel', this._onDragEnd);
+    }
     this._dragState = null;
   }
 
   _onDragStart(e) {
-    // Don't drag if clicking the close button
-    if (e.target.closest('#close-customize-btn')) return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    // Don't drag from buttons (close) or on small screens where the dialog is docked
+    if (e.target.closest('button')) return;
+    if (window.matchMedia?.('(max-width: 760px)').matches) return;
 
+    const header = e.currentTarget;
     const panel = document.getElementById('customization-panel');
     const rect = panel.getBoundingClientRect();
 
@@ -89,20 +117,25 @@ export class DrumCustomizationPanel {
     panel.style.left = rect.left + 'px';
 
     this._dragState = {
+      pointerId: e.pointerId,
       offsetX: e.clientX - rect.left,
       offsetY: e.clientY - rect.top
     };
 
-    const header = document.getElementById('customization-panel-header');
-    if (header) header.style.cursor = 'grabbing';
-
-    document.addEventListener('mousemove', this._onDragMouseMove);
-    document.addEventListener('mouseup', this._onDragMouseUp);
+    header.style.cursor = 'grabbing';
+    try {
+      header.setPointerCapture(e.pointerId);
+    } catch {
+      // ignore — dragging still works while the pointer is over the header
+    }
+    header.addEventListener('pointermove', this._onDragMove);
+    header.addEventListener('pointerup', this._onDragEnd);
+    header.addEventListener('pointercancel', this._onDragEnd);
     e.preventDefault();
   }
 
-  _onDragMouseMove(e) {
-    if (!this._dragState) return;
+  _onDragMove(e) {
+    if (!this._dragState || e.pointerId !== this._dragState.pointerId) return;
     const panel = document.getElementById('customization-panel');
 
     let newLeft = e.clientX - this._dragState.offsetX;
@@ -117,12 +150,20 @@ export class DrumCustomizationPanel {
     panel.style.top = newTop + 'px';
   }
 
-  _onDragMouseUp() {
-    this._dragState = null;
+  _onDragEnd(e) {
     const header = document.getElementById('customization-panel-header');
-    if (header) header.style.cursor = 'grab';
-    document.removeEventListener('mousemove', this._onDragMouseMove);
-    document.removeEventListener('mouseup', this._onDragMouseUp);
+    if (header) {
+      header.style.cursor = '';
+      try {
+        if (e && header.hasPointerCapture?.(e.pointerId)) header.releasePointerCapture(e.pointerId);
+      } catch {
+        // ignore
+      }
+      header.removeEventListener('pointermove', this._onDragMove);
+      header.removeEventListener('pointerup', this._onDragEnd);
+      header.removeEventListener('pointercancel', this._onDragEnd);
+    }
+    this._dragState = null;
   }
 
   /**
@@ -152,6 +193,8 @@ export class DrumCustomizationPanel {
 
     // Create tab navigation
     const tabNav = document.createElement('div');
+    tabNav.className = 'dc-tabs';
+    tabNav.setAttribute('aria-label', 'Drums (drag to reorder)');
     tabNav.style.cssText = `
       display: flex;
       gap: 5px;
@@ -184,7 +227,10 @@ export class DrumCustomizationPanel {
 
     // Add "+" button to add new drum
     const addButton = document.createElement('button');
-    addButton.innerHTML = '+';
+    addButton.type = 'button';
+    addButton.textContent = '+';
+    addButton.title = 'Add a drum';
+    addButton.setAttribute('aria-label', 'Add a drum');
     addButton.style.cssText = `
       padding: 10px 20px;
       border: 2px dashed ${COLORS.border.dark};
@@ -209,11 +255,7 @@ export class DrumCustomizationPanel {
 
     container.appendChild(tabNav);
     container.appendChild(tabContent);
-
-    // Apply dark mode if enabled
-    if (this.darkModeManager) {
-      this.darkModeManager.apply();
-    }
+    // Theme colors come from CSS variables (theme.js tokens), so no dark-mode pass is needed here.
   }
 
   /**
@@ -221,7 +263,10 @@ export class DrumCustomizationPanel {
    */
   createTabButton(drum, settings, index, isActive) {
     const tabButton = document.createElement('button');
+    tabButton.type = 'button';
     tabButton.id = `tab-btn-${drum.id}`;
+    tabButton.className = isActive ? 'dc-tab is-active' : 'dc-tab';
+    if (isActive) tabButton.setAttribute('aria-current', 'true');
     tabButton.draggable = true;
     tabButton.dataset.drumId = drum.id;
     tabButton.dataset.drumIndex = index;
@@ -230,7 +275,7 @@ export class DrumCustomizationPanel {
       padding: 10px;
       border: none;
       background: ${isActive ? CUSTOMIZATION_PANEL.tab.active : CUSTOMIZATION_PANEL.tab.inactive};
-      border-top: 3px solid ${isActive ? settings.color : 'transparent'};
+      border-top: 3px solid ${isActive ? safeColor(settings.color) : 'transparent'};
       border-radius: ${RADIUS.xl} ${RADIUS.xl} 0 0;
       cursor: pointer;
       font-weight: ${isActive ? 'bold' : 'normal'};
@@ -361,6 +406,7 @@ export class DrumCustomizationPanel {
 
     // First row: Name, MIDI Note, Color, Shape (4 columns)
     const topRow = document.createElement('div');
+    topRow.className = 'dc-top-row';
     topRow.style.cssText = 'display: grid; grid-template-columns: 2fr 1.5fr 1fr 1.5fr; gap: 6px; margin-bottom: 8px;';
     topRow.appendChild(this.createNameSection(drum.id, settings));
     topRow.appendChild(this.createMidiNoteSection(drum.id, settings));
@@ -370,6 +416,7 @@ export class DrumCustomizationPanel {
 
     // Create 2-column grid container for remaining controls
     const grid = document.createElement('div');
+    grid.className = 'dc-grid';
     grid.style.cssText = 'display: grid; grid-template-columns: 1fr 1fr; gap: 8px; row-gap: 6px;';
 
     // Left column
@@ -398,14 +445,17 @@ export class DrumCustomizationPanel {
   createNameSection(drumId, settings) {
     const group = document.createElement('div');
     group.style.cssText = 'margin-bottom: 0;';
+    const safeId = escapeHtml(drumId);
     group.innerHTML = `
-      <label style="display: block; margin-bottom: 3px; font-weight: 600; font-size: ${TYPOGRAPHY.fontSize.sm}; color: ${COLORS.text.secondary};">Name</label>
-      <input type="text" id="name-${drumId}" value="${settings.name}"
+      <label for="name-${safeId}" style="display: block; margin-bottom: 3px; font-weight: 600; font-size: ${TYPOGRAPHY.fontSize.sm}; color: ${COLORS.text.secondary};">Name</label>
+      <input type="text" id="name-${safeId}"
         style="width: 100%; padding: 5px; border: 1px solid ${COLORS.border.medium}; border-radius: ${RADIUS.sm}; font-size: ${TYPOGRAPHY.fontSize.md};"
         placeholder="Drum name">
     `;
 
-    const input = group.querySelector(`#name-${drumId}`);
+    const input = group.querySelector('input[type="text"]');
+    // Set via the DOM property: names can come from imported settings files
+    input.value = settings.name ?? '';
     input.onchange = () => {
       const newName = input.value.trim() || 'Untitled Drum';
 
@@ -436,12 +486,13 @@ export class DrumCustomizationPanel {
     const group = document.createElement('div');
     group.style.cssText = 'margin-bottom: 0;';
 
+    const safeId = escapeHtml(drumId);
     group.innerHTML = `
-      <label style="display: block; margin-bottom: 3px; font-weight: 600; font-size: ${TYPOGRAPHY.fontSize.sm}; color: ${COLORS.text.secondary};">Note</label>
+      <label for="midinote-${safeId}" style="display: block; margin-bottom: 3px; font-weight: 600; font-size: ${TYPOGRAPHY.fontSize.sm}; color: ${COLORS.text.secondary};">Note</label>
       <div style="display: flex; gap: 3px;">
-        <input type="number" id="midinote-${drumId}" value="${settings.midiNote !== null && settings.midiNote !== undefined ? settings.midiNote : ''}" min="0" max="127"
+        <input type="number" id="midinote-${safeId}" min="0" max="127"
           style="width: 100%; padding: 5px 4px; border: 1px solid ${COLORS.border.medium}; border-radius: ${RADIUS.sm}; font-size: ${TYPOGRAPHY.fontSize.md}; text-align: center;">
-        <button id="learn-${drumId}" title="Learn MIDI Note" style="
+        <button type="button" id="learn-${safeId}" title="Learn MIDI note: click, then hit the pad" aria-label="Learn MIDI note from the next pad hit" style="
           padding: 5px 7px;
           background: ${CUSTOMIZATION_PANEL.ccButton.learn};
           color: white;
@@ -454,13 +505,14 @@ export class DrumCustomizationPanel {
       </div>
     `;
 
-    const input = group.querySelector(`#midinote-${drumId}`);
+    const input = group.querySelector('input[type="number"]');
+    input.value = settings.midiNote !== null && settings.midiNote !== undefined ? settings.midiNote : '';
     input.onchange = () => {
       this.drumSettings[drumId].midiNote = parseInt(input.value);
       this.scheduleAutoSave();
     };
 
-    const learnButton = group.querySelector(`#learn-${drumId}`);
+    const learnButton = group.querySelector('button');
     learnButton.onclick = () => {
       this.midiManager.startMidiLearn(drumId);
       learnButton.textContent = '⏳';
@@ -487,6 +539,7 @@ export class DrumCustomizationPanel {
    */
   createDeleteButton(drumId) {
     const button = document.createElement('button');
+    button.type = 'button';
     button.textContent = '🗑 Delete This Drum';
     button.style.cssText = `
       width: 100%;
@@ -509,13 +562,15 @@ export class DrumCustomizationPanel {
   createColorSection(drumId, settings) {
     const group = document.createElement('div');
     group.style.cssText = 'margin-bottom: 0;';
+    const safeId = escapeHtml(drumId);
     group.innerHTML = `
-      <label style="display: block; margin-bottom: 3px; font-weight: 600; font-size: ${TYPOGRAPHY.fontSize.sm}; color: ${COLORS.text.secondary};">Color</label>
-      <input type="color" id="color-${drumId}" value="${settings.color}"
+      <label for="color-${safeId}" style="display: block; margin-bottom: 3px; font-weight: 600; font-size: ${TYPOGRAPHY.fontSize.sm}; color: ${COLORS.text.secondary};">Color</label>
+      <input type="color" id="color-${safeId}"
         style="width: 100%; height: 28px; border: 1px solid ${COLORS.border.medium}; border-radius: ${RADIUS.sm}; cursor: pointer;">
     `;
 
-    const input = group.querySelector(`#color-${drumId}`);
+    const input = group.querySelector('input[type="color"]');
+    input.value = settings.color || '#000000';
     input.oninput = () => {
       const newColor = input.value;
 
@@ -533,7 +588,7 @@ export class DrumCustomizationPanel {
       // Update tab color
       const tabBtn = document.getElementById(`tab-btn-${drumId}`);
       if (tabBtn && drumId === this.currentTab) {
-        tabBtn.style.borderTopColor = newColor;
+        tabBtn.style.borderTopColor = safeColor(newColor);
       }
 
       this.scheduleAutoSave();
@@ -548,14 +603,15 @@ export class DrumCustomizationPanel {
   createShapeSection(drumId, settings) {
     const group = document.createElement('div');
     group.style.cssText = 'margin-bottom: 0;';
+    const safeId = escapeHtml(drumId);
     group.innerHTML = `
-      <label style="display: block; margin-bottom: 3px; font-weight: 600; font-size: ${TYPOGRAPHY.fontSize.sm}; color: ${COLORS.text.secondary};">Shape</label>
-      <select id="shape-${drumId}" style="width: 100%; padding: 5px; border: 1px solid ${COLORS.border.medium}; border-radius: ${RADIUS.sm}; font-size: ${TYPOGRAPHY.fontSize.base}; cursor: pointer;">
-        ${SHAPE_OPTIONS.map(shape => `<option value="${shape}" ${settings.shape === shape ? 'selected' : ''}>${shape.charAt(0).toUpperCase() + shape.slice(1)}</option>`).join('')}
+      <label for="shape-${safeId}" style="display: block; margin-bottom: 3px; font-weight: 600; font-size: ${TYPOGRAPHY.fontSize.sm}; color: ${COLORS.text.secondary};">Shape</label>
+      <select id="shape-${safeId}" style="width: 100%; padding: 5px; border: 1px solid ${COLORS.border.medium}; border-radius: ${RADIUS.sm}; font-size: ${TYPOGRAPHY.fontSize.base}; cursor: pointer;">
+        ${SHAPE_OPTIONS.map(shape => `<option value="${escapeHtml(shape)}" ${settings.shape === shape ? 'selected' : ''}>${escapeHtml(shape.charAt(0).toUpperCase() + shape.slice(1))}</option>`).join('')}
       </select>
     `;
 
-    const select = group.querySelector(`#shape-${drumId}`);
+    const select = group.querySelector('select');
     select.onchange = () => {
       this.drumSettings[drumId].shape = select.value;
       this.updatePreview(drumId);
@@ -652,15 +708,15 @@ export class DrumCustomizationPanel {
     const header = document.createElement('div');
     header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;';
     header.innerHTML = `
-      <label style="font-weight: bold; font-size: 12px;">Stroke Outline</label>
+      <span style="font-weight: bold; font-size: 12px;">Stroke Outline</span>
       <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
-        <input type="checkbox" id="stroke-enabled-${drumId}" ${settings.strokeEnabled ? 'checked' : ''}>
+        <input type="checkbox" id="stroke-enabled-${escapeHtml(drumId)}" ${settings.strokeEnabled ? 'checked' : ''}>
         <span style="font-size: 11px;">Enabled</span>
       </label>
     `;
     group.appendChild(header);
 
-    const checkbox = header.querySelector(`#stroke-enabled-${drumId}`);
+    const checkbox = header.querySelector('input[type="checkbox"]');
     checkbox.onchange = () => {
       this.drumSettings[drumId].strokeEnabled = checkbox.checked;
       controls.style.display = checkbox.checked ? 'block' : 'none';
@@ -674,14 +730,16 @@ export class DrumCustomizationPanel {
     // Stroke color
     const colorDiv = document.createElement('div');
     colorDiv.style.cssText = 'margin-bottom: 10px;';
+    const safeId = escapeHtml(drumId);
     colorDiv.innerHTML = `
-      <label style="display: block; margin-bottom: 5px; font-size: ${TYPOGRAPHY.fontSize.base};">Stroke Color</label>
-      <input type="color" id="stroke-color-${drumId}" value="${settings.strokeColor || '#000000'}"
+      <label for="stroke-color-${safeId}" style="display: block; margin-bottom: 5px; font-size: ${TYPOGRAPHY.fontSize.base};">Stroke Color</label>
+      <input type="color" id="stroke-color-${safeId}"
         style="width: 100%; height: 30px; border: 1px solid ${COLORS.border.medium}; border-radius: ${RADIUS.md}; cursor: pointer;">
     `;
     controls.appendChild(colorDiv);
 
-    const colorInput = colorDiv.querySelector(`#stroke-color-${drumId}`);
+    const colorInput = colorDiv.querySelector('input[type="color"]');
+    colorInput.value = settings.strokeColor || '#000000';
     colorInput.oninput = () => {
       this.drumSettings[drumId].strokeColor = colorInput.value;
       this.updatePreview(drumId);
@@ -713,10 +771,12 @@ export class DrumCustomizationPanel {
 
     const labelDiv = document.createElement('div');
     labelDiv.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;';
+    const sliderId = `${paramKey}-${drumId}`;
     labelDiv.innerHTML = `
-      <label style="font-weight: 600; font-size: ${TYPOGRAPHY.fontSize.sm}; color: ${COLORS.text.secondary};">${label}</label>
-      <span id="${paramKey}-val-${drumId}" style="font-size: ${TYPOGRAPHY.fontSize.sm}; font-weight: bold; color: ${COLORS.text.secondary};">${value}${unit}</span>
+      <label for="${escapeHtml(sliderId)}" style="font-weight: 600; font-size: ${TYPOGRAPHY.fontSize.sm}; color: ${COLORS.text.secondary};">${escapeHtml(label)}</label>
+      <span id="${escapeHtml(`${paramKey}-val-${drumId}`)}" style="font-size: ${TYPOGRAPHY.fontSize.sm}; font-weight: bold; color: ${COLORS.text.secondary};">${escapeHtml(`${value}${unit}`)}</span>
     `;
+    const valueLabel = labelDiv.querySelector('span');
     group.appendChild(labelDiv);
 
     const controls = document.createElement('div');
@@ -734,7 +794,7 @@ export class DrumCustomizationPanel {
       const val = parseFloat(slider.value);
       const displayVal = (paramKey === 'size' || paramKey === 'opacity') ? val / 100 : val;
       this.drumSettings[drumId][paramKey] = displayVal;
-      labelDiv.querySelector(`#${paramKey}-val-${drumId}`).textContent = `${val}${unit}`;
+      valueLabel.textContent = `${val}${unit}`;
       if (paramKey === 'rotation' || paramKey === 'strokeWeight') {
         this.updatePreview(drumId);
       }
@@ -797,6 +857,8 @@ export class DrumCustomizationPanel {
     // Velocity scaling dropdown
     const scalingSelect = document.createElement('select');
     scalingSelect.id = `${paramKey}-scaling-${drumId}`;
+    scalingSelect.setAttribute('aria-label', `${label} velocity curve`);
+    scalingSelect.title = 'How hit velocity affects this value';
     scalingSelect.style.cssText = `min-width: 60px; padding: 2px; border: 1px solid ${COLORS.border.medium}; border-radius: ${RADIUS.sm}; font-size: ${TYPOGRAPHY.fontSize.xs}; cursor: pointer;`;
     scalingSelect.innerHTML = Object.entries(SCALING_CURVE_NAMES).map(([key, name]) =>
       `<option value="${key}" ${scalingCurve === key ? 'selected' : ''}>${name}</option>`
@@ -837,8 +899,10 @@ export class DrumCustomizationPanel {
       ccDisplay.style.cssText = `font-size: ${TYPOGRAPHY.fontSize.xs}; color: ${CUSTOMIZATION_PANEL.ccButton.mapped}; font-weight: bold; padding: 2px 4px; background: ${COLORS.primary.bg}; border-radius: ${RADIUS.sm};`;
 
       const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
       removeBtn.textContent = '×';
       removeBtn.title = 'Remove MIDI CC mapping';
+      removeBtn.setAttribute('aria-label', `Remove MIDI CC mapping for ${paramKey}`);
       removeBtn.style.cssText = `padding: 1px 4px; font-size: ${TYPOGRAPHY.fontSize.sm}; background: ${CUSTOMIZATION_PANEL.ccButton.remove}; color: white; border: none; border-radius: ${RADIUS.sm}; cursor: pointer;`;
       removeBtn.onclick = () => {
         this.drumSettings[drumId].midiCC[paramKey].cc = null;
@@ -852,8 +916,10 @@ export class DrumCustomizationPanel {
     } else {
       // Show learn button
       const learnBtn = document.createElement('button');
+      learnBtn.type = 'button';
       learnBtn.textContent = '🎛';
       learnBtn.title = 'Learn MIDI CC';
+      learnBtn.setAttribute('aria-label', `Learn MIDI CC for ${paramKey}`);
       learnBtn.style.cssText = `padding: 2px 5px; font-size: ${TYPOGRAPHY.fontSize.base}; background: ${CUSTOMIZATION_PANEL.ccButton.learn}; color: white; border: none; border-radius: ${RADIUS.sm}; cursor: pointer;`;
       learnBtn.onclick = () => {
         this.midiManager.startCCLearn(drumId, paramKey);
@@ -885,7 +951,7 @@ export class DrumCustomizationPanel {
     group.style.cssText = `text-align: center; padding: 6px; background: ${COLORS.background.primary}; border-radius: ${RADIUS.sm}; border: 1px solid ${COLORS.gray[200]}; margin-bottom: 0;`;
     group.innerHTML = `
       <small style="color: ${COLORS.text.secondary}; display: block; margin-bottom: 2px; font-size: ${TYPOGRAPHY.fontSize.xs};">Preview</small>
-      <div id="preview-${drumId}" style="display: inline-block;"></div>
+      <div id="preview-${escapeHtml(drumId)}" style="display: inline-block;"></div>
     `;
 
     // Initial preview will be rendered after the element is in DOM
@@ -1123,5 +1189,501 @@ export class DrumCustomizationPanel {
 
     this.notificationSystem.show('Drum deleted');
     this.scheduleAutoSave();
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // Palette sub-view: pick a palette and apply it to selected drums
+  // ═══════════════════════════════════════════════════════════════
+
+  /**
+   * Enter the palette sub-view. Replaces the main drum editor content.
+   * Also backs up current colors so Cancel can restore them.
+   */
+  openPaletteView() {
+    const backup = {};
+    DRUM_KIT_CONFIG.forEach(d => {
+      backup[d.id] = this.drumSettings[d.id]?.color;
+    });
+
+    // Use last-applied selection if available, filtered to still-existing drums.
+    // Fall back to all drums if there's no prior selection or every prior drum is gone.
+    const allDrumIds = DRUM_KIT_CONFIG.map(d => d.id);
+    let initialSelection = allDrumIds;
+    if (Array.isArray(this.lastPaletteDrumIds) && this.lastPaletteDrumIds.length > 0) {
+      const stillPresent = this.lastPaletteDrumIds.filter(id => allDrumIds.includes(id));
+      if (stillPresent.length > 0) initialSelection = stillPresent;
+    }
+
+    this.paletteView = {
+      backup,
+      selectedDrumIds: initialSelection,
+      selectedPaletteIndex: null, // index into the *filtered* palette list
+      assignment: []              // array of { drumId, colorIndex } in render order
+    };
+
+    this.rebuildAssignmentFromSelection();
+
+    document.getElementById('drum-settings-container').style.display = 'none';
+    const sub = document.getElementById('palette-subview-container');
+    sub.style.display = 'block';
+
+    // Swap the sticky footer: hide default controls, show palette Cancel/Apply
+    const defaultFooter = document.getElementById('default-footer-content');
+    const paletteFooter = document.getElementById('palette-footer-content');
+    if (defaultFooter) defaultFooter.style.display = 'none';
+    if (paletteFooter) paletteFooter.style.display = 'flex';
+
+    // Wire up the footer buttons (every open — cheap and avoids stale closures)
+    const cancelBtn = document.getElementById('palette-cancel-btn');
+    const applyBtn = document.getElementById('palette-apply-btn');
+    if (cancelBtn) cancelBtn.onclick = () => this.closePaletteView(false);
+    if (applyBtn) applyBtn.onclick = () => this.closePaletteView(true);
+
+    this.buildPaletteView();
+  }
+
+  /**
+   * Leave the palette sub-view. If commit is false, restore original colors.
+   */
+  closePaletteView(commit) {
+    if (!this.paletteView) return;
+
+    if (!commit) {
+      // Restore every drum to its pre-open color
+      Object.entries(this.paletteView.backup).forEach(([drumId, color]) => {
+        if (!color || !this.drumSettings[drumId]) return;
+        this.drumSettings[drumId].color = color;
+        const cfg = DRUM_KIT_CONFIG.find(d => d.id === drumId);
+        if (cfg) cfg.defaultColor = color;
+      });
+    } else {
+      // Remember this selection so the next open starts with the same drums checked
+      this.lastPaletteDrumIds = [...this.paletteView.selectedDrumIds];
+      this.scheduleAutoSave();
+      this.notificationSystem.show('Palette applied');
+    }
+
+    this.paletteView = null;
+    document.getElementById('palette-subview-container').style.display = 'none';
+    document.getElementById('drum-settings-container').style.display = 'block';
+
+    // Restore the default footer
+    const defaultFooter = document.getElementById('default-footer-content');
+    const paletteFooter = document.getElementById('palette-footer-content');
+    if (defaultFooter) defaultFooter.style.display = 'flex';
+    if (paletteFooter) paletteFooter.style.display = 'none';
+
+    this.build();
+  }
+
+  /**
+   * Rebuild the assignment array whenever the selection set changes.
+   * Preserves prior slot order for drums that are still selected so the
+   * user's drag-reassignments aren't lost, and appends newly-checked drums.
+   */
+  rebuildAssignmentFromSelection() {
+    const pv = this.paletteView;
+    if (!pv) return;
+
+    const selected = new Set(pv.selectedDrumIds);
+    // Keep existing order for still-selected drums
+    const kept = pv.assignment.filter(s => selected.has(s.drumId));
+    const keptIds = new Set(kept.map(s => s.drumId));
+    // Append newly-added drums in DRUM_KIT_CONFIG order
+    const added = DRUM_KIT_CONFIG
+      .filter(d => selected.has(d.id) && !keptIds.has(d.id))
+      .map(d => ({ drumId: d.id, colorIndex: 0 }));
+
+    const merged = [...kept, ...added];
+    // Re-assign colorIndex = slot position (so slot 0 gets palette[0], etc.)
+    pv.assignment = merged.map((s, i) => ({ drumId: s.drumId, colorIndex: i }));
+
+    // If the selected palette no longer has enough colors, clear it
+    const palette = this.getSelectedPalette();
+    if (palette && palette.colors.length !== pv.assignment.length) {
+      pv.selectedPaletteIndex = null;
+    }
+  }
+
+  getMatchingPalettes() {
+    const n = this.paletteView?.assignment.length || 0;
+    return getPalettesForCount(n);
+  }
+
+  getSelectedPalette() {
+    const pv = this.paletteView;
+    if (!pv || pv.selectedPaletteIndex === null) return null;
+    return this.getMatchingPalettes()[pv.selectedPaletteIndex] || null;
+  }
+
+  /**
+   * Push the current selected palette + assignment to the live drum colors.
+   * Called on palette click, drag-reassign, and shuffle for live preview.
+   */
+  applyPaletteLive() {
+    const pv = this.paletteView;
+    const palette = this.getSelectedPalette();
+    if (!pv || !palette) return;
+
+    pv.assignment.forEach(slot => {
+      const color = palette.colors[slot.colorIndex];
+      if (!color || !this.drumSettings[slot.drumId]) return;
+      this.drumSettings[slot.drumId].color = color;
+      const cfg = DRUM_KIT_CONFIG.find(d => d.id === slot.drumId);
+      if (cfg) cfg.defaultColor = color;
+    });
+  }
+
+  /**
+   * Build (or rebuild) the palette sub-view DOM.
+   */
+  buildPaletteView() {
+    const container = document.getElementById('palette-subview-container');
+    if (!container || !this.paletteView) return;
+    container.innerHTML = '';
+
+    // ─── Header: title only (Cancel/Apply live in the footer row) ──
+    const title = document.createElement('div');
+    title.textContent = 'Apply Palette';
+    title.style.cssText = `font-weight: 700; font-size: ${TYPOGRAPHY.fontSize.lg}; color: ${COLORS.text.primary}; margin-bottom: 14px;`;
+    container.appendChild(title);
+
+    // ─── Step 1: drum checkboxes ─────────────────────────────
+    container.appendChild(this._buildDrumSelectStep());
+
+    // ─── Step 2: palette grid ────────────────────────────────
+    container.appendChild(this._buildPaletteGridStep());
+
+    // ─── Step 3: assignment preview ──────────────────────────
+    container.appendChild(this._buildAssignmentStep());
+
+    // Keep the sticky footer's Apply button enabled/disabled in sync
+    const applyBtn = document.getElementById('palette-apply-btn');
+    if (applyBtn) {
+      const canApply = this.getSelectedPalette() !== null && this.paletteView.assignment.length > 0;
+      applyBtn.disabled = !canApply;
+      applyBtn.style.background = canApply ? '#7209b7' : '#c4c4c4';
+      applyBtn.style.cursor = canApply ? 'pointer' : 'not-allowed';
+      applyBtn.style.opacity = canApply ? '1' : '0.6';
+    }
+  }
+
+  _buildDrumSelectStep() {
+    const pv = this.paletteView;
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'margin-bottom: 16px;';
+
+    const heading = document.createElement('div');
+    heading.textContent = '① Choose drums to recolor';
+    heading.style.cssText = `font-weight: 700; font-size: ${TYPOGRAPHY.fontSize.md}; margin-bottom: 8px; color: ${COLORS.text.primary};`;
+    wrap.appendChild(heading);
+
+    const list = document.createElement('div');
+    list.style.cssText = `
+      display: flex; flex-wrap: wrap; gap: 6px;
+      padding: 10px; background: ${COLORS.background.secondary};
+      border-radius: ${RADIUS.md}; border: 1px solid ${COLORS.gray[200]};
+    `;
+
+    DRUM_KIT_CONFIG.forEach(drum => {
+      const settings = this.drumSettings[drum.id];
+      if (!settings) return;
+      const checked = pv.selectedDrumIds.includes(drum.id);
+
+      const label = document.createElement('label');
+      label.style.cssText = `
+        display: flex; align-items: center; gap: 6px;
+        padding: 4px 10px 4px 6px; background: ${COLORS.background.primary};
+        border: 1px solid ${checked ? '#7209b7' : COLORS.gray[200]};
+        border-radius: ${RADIUS.sm}; cursor: pointer;
+        font-size: ${TYPOGRAPHY.fontSize.sm};
+      `;
+
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = checked;
+      cb.style.cursor = 'pointer';
+      cb.onchange = () => {
+        if (cb.checked) {
+          if (!pv.selectedDrumIds.includes(drum.id)) pv.selectedDrumIds.push(drum.id);
+        } else {
+          pv.selectedDrumIds = pv.selectedDrumIds.filter(id => id !== drum.id);
+          // Restore this drum's pre-palette color — a live-preview may have
+          // tinted it while it was checked, but unchecking means "leave it alone".
+          const originalColor = pv.backup[drum.id];
+          if (originalColor && this.drumSettings[drum.id]) {
+            this.drumSettings[drum.id].color = originalColor;
+            const cfg = DRUM_KIT_CONFIG.find(d => d.id === drum.id);
+            if (cfg) cfg.defaultColor = originalColor;
+          }
+        }
+        this.rebuildAssignmentFromSelection();
+        this.applyPaletteLive();
+        this.buildPaletteView();
+      };
+
+      const chip = document.createElement('span');
+      chip.style.cssText = `
+        display: inline-block; width: 14px; height: 14px;
+        background: ${safeColor(settings.color)}; border-radius: 3px;
+        border: 1px solid ${COLORS.border.medium};
+      `;
+
+      const name = document.createElement('span');
+      name.textContent = settings.name;
+
+      label.appendChild(cb);
+      label.appendChild(chip);
+      label.appendChild(name);
+      list.appendChild(label);
+    });
+
+    wrap.appendChild(list);
+
+    const n = pv.assignment.length;
+    const matching = this.getMatchingPalettes();
+    const status = document.createElement('div');
+    status.style.cssText = `font-size: ${TYPOGRAPHY.fontSize.xs}; color: ${COLORS.text.secondary}; margin-top: 6px;`;
+    if (n === 0) {
+      status.textContent = 'Select at least one drum.';
+    } else {
+      status.textContent = `${n} drum${n === 1 ? '' : 's'} selected · ${matching.length} palette${matching.length === 1 ? '' : 's'} with ${n} color${n === 1 ? '' : 's'}`;
+    }
+    wrap.appendChild(status);
+
+    return wrap;
+  }
+
+  _buildPaletteGridStep() {
+    const pv = this.paletteView;
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'margin-bottom: 16px;';
+
+    const heading = document.createElement('div');
+    heading.textContent = '② Pick a palette';
+    heading.style.cssText = `font-weight: 700; font-size: ${TYPOGRAPHY.fontSize.md}; margin-bottom: 8px; color: ${COLORS.text.primary};`;
+    wrap.appendChild(heading);
+
+    const matching = this.getMatchingPalettes();
+
+    if (matching.length === 0) {
+      const empty = document.createElement('div');
+      empty.style.cssText = `
+        padding: 14px; background: ${COLORS.background.secondary};
+        border: 1px dashed ${COLORS.gray[300]}; border-radius: ${RADIUS.md};
+        color: ${COLORS.text.secondary}; font-size: ${TYPOGRAPHY.fontSize.sm}; text-align: center;
+      `;
+      empty.textContent = pv.assignment.length === 0
+        ? 'Select drums above to see matching palettes.'
+        : `No bundled palettes with ${pv.assignment.length} colors — try selecting fewer drums.`;
+      wrap.appendChild(empty);
+      return wrap;
+    }
+
+    const grid = document.createElement('div');
+    grid.style.cssText = 'display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 4px;';
+
+    matching.forEach((palette, idx) => {
+      const isSelected = pv.selectedPaletteIndex === idx;
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.title = palette.name;
+      card.setAttribute('aria-pressed', String(isSelected));
+      card.style.cssText = `
+        display: flex; flex-direction: column; align-items: stretch; gap: 3px;
+        padding: 3px; background: ${COLORS.background.primary};
+        border: ${isSelected ? '2px' : '1px'} solid ${isSelected ? '#7209b7' : COLORS.gray[200]};
+        border-radius: ${RADIUS.sm}; cursor: pointer; text-align: left;
+        box-shadow: ${isSelected ? '0 1px 4px rgba(114, 9, 183, 0.3)' : 'none'};
+        overflow: hidden;
+      `;
+
+      const swatchRow = document.createElement('div');
+      swatchRow.style.cssText = 'display: flex; height: 16px; border-radius: 2px; overflow: hidden;';
+      palette.colors.forEach(c => {
+        const sw = document.createElement('div');
+        sw.style.cssText = `flex: 1; background: ${safeColor(c)};`;
+        swatchRow.appendChild(sw);
+      });
+
+      const nameEl = document.createElement('div');
+      nameEl.textContent = palette.name;
+      nameEl.style.cssText = `
+        font-size: 11px; color: ${COLORS.text.secondary}; font-weight: 600;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        line-height: 1.1;
+      `;
+
+      card.appendChild(swatchRow);
+      card.appendChild(nameEl);
+
+      card.onclick = () => {
+        pv.selectedPaletteIndex = idx;
+        this.applyPaletteLive();
+        this.buildPaletteView();
+      };
+
+      grid.appendChild(card);
+    });
+
+    wrap.appendChild(grid);
+    return wrap;
+  }
+
+  _buildAssignmentStep() {
+    const pv = this.paletteView;
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'margin-bottom: 8px;';
+
+    const headingRow = document.createElement('div');
+    headingRow.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;';
+
+    const heading = document.createElement('div');
+    heading.textContent = '③ Preview assignment';
+    heading.style.cssText = `font-weight: 700; font-size: ${TYPOGRAPHY.fontSize.md}; color: ${COLORS.text.primary};`;
+    headingRow.appendChild(heading);
+
+    const palette = this.getSelectedPalette();
+    if (palette && pv.assignment.length > 1) {
+      const shuffleBtn = document.createElement('button');
+      shuffleBtn.type = 'button';
+      shuffleBtn.textContent = '⇄ Shuffle';
+      shuffleBtn.title = 'Rotate which palette color goes to which drum';
+      shuffleBtn.style.cssText = `
+        padding: 4px 10px; background: ${COLORS.gray[200]}; color: ${COLORS.text.primary};
+        border: none; border-radius: ${RADIUS.sm}; cursor: pointer;
+        font-size: ${TYPOGRAPHY.fontSize.xs}; font-weight: 600;
+      `;
+      shuffleBtn.onclick = () => {
+        // Rotate colorIndex values forward by 1
+        const n = pv.assignment.length;
+        pv.assignment = pv.assignment.map((s, i) => ({
+          drumId: s.drumId,
+          colorIndex: (s.colorIndex + 1) % n
+        }));
+        this.applyPaletteLive();
+        this.buildPaletteView();
+      };
+      headingRow.appendChild(shuffleBtn);
+    }
+
+    wrap.appendChild(headingRow);
+
+    const hint = document.createElement('div');
+    hint.textContent = palette
+      ? 'Drag a row to reassign which palette color goes to which drum.'
+      : 'Pick a palette above to preview the assignment.';
+    hint.style.cssText = `font-size: ${TYPOGRAPHY.fontSize.xs}; color: ${COLORS.text.secondary}; margin-bottom: 6px;`;
+    wrap.appendChild(hint);
+
+    const list = document.createElement('div');
+    list.style.cssText = `
+      display: flex; flex-direction: column; gap: 4px;
+      padding: 8px; background: ${COLORS.background.secondary};
+      border-radius: ${RADIUS.md}; border: 1px solid ${COLORS.gray[200]};
+      min-height: 40px;
+    `;
+
+    if (pv.assignment.length === 0) {
+      const empty = document.createElement('div');
+      empty.style.cssText = `color: ${COLORS.text.muted}; font-size: ${TYPOGRAPHY.fontSize.sm}; text-align: center; padding: 8px;`;
+      empty.textContent = 'No drums selected.';
+      list.appendChild(empty);
+    } else {
+      pv.assignment.forEach((slot, slotIndex) => {
+        const settings = this.drumSettings[slot.drumId];
+        if (!settings) return;
+
+        const color = palette ? palette.colors[slot.colorIndex] : settings.color;
+        const row = document.createElement('div');
+        row.draggable = !!palette;
+        row.dataset.slotIndex = slotIndex;
+        row.style.cssText = `
+          display: flex; align-items: center; gap: 10px;
+          padding: 6px 10px; background: ${COLORS.background.primary};
+          border: 1px solid ${COLORS.gray[200]}; border-radius: ${RADIUS.sm};
+          cursor: ${palette ? 'grab' : 'default'};
+          font-size: ${TYPOGRAPHY.fontSize.sm};
+        `;
+
+        const chip = document.createElement('span');
+        chip.style.cssText = `
+          display: inline-block; width: 22px; height: 22px;
+          background: ${safeColor(color)}; border-radius: 4px;
+          border: 1px solid ${COLORS.border.medium};
+          flex-shrink: 0;
+        `;
+
+        const arrow = document.createElement('span');
+        arrow.textContent = '→';
+        arrow.style.cssText = `color: ${COLORS.text.muted};`;
+
+        const drumName = document.createElement('span');
+        drumName.textContent = settings.name;
+        drumName.style.fontWeight = '600';
+
+        const handle = document.createElement('span');
+        handle.textContent = '⋮⋮';
+        handle.style.cssText = `margin-left: auto; color: ${COLORS.text.muted}; font-size: ${TYPOGRAPHY.fontSize.md}; display: ${palette ? 'inline' : 'none'};`;
+
+        row.appendChild(chip);
+        row.appendChild(arrow);
+        row.appendChild(drumName);
+        row.appendChild(handle);
+
+        if (palette) {
+          this._setupAssignmentDragDrop(row, slotIndex);
+        }
+
+        list.appendChild(row);
+      });
+    }
+
+    wrap.appendChild(list);
+    return wrap;
+  }
+
+  /**
+   * Drag-and-drop: dropping row A onto row B swaps their colorIndex values
+   * (the drums stay put, but the palette colors assigned to them swap).
+   */
+  _setupAssignmentDragDrop(row, slotIndex) {
+    row.ondragstart = (e) => {
+      this._draggedAssignmentSlot = slotIndex;
+      row.style.opacity = '0.5';
+      e.dataTransfer.effectAllowed = 'move';
+    };
+
+    row.ondragend = () => {
+      row.style.opacity = '1';
+    };
+
+    row.ondragover = (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      row.style.outline = `2px dashed #7209b7`;
+      row.style.outlineOffset = '-2px';
+    };
+
+    row.ondragleave = () => {
+      row.style.outline = 'none';
+    };
+
+    row.ondrop = (e) => {
+      e.preventDefault();
+      row.style.outline = 'none';
+      const from = this._draggedAssignmentSlot;
+      const to = slotIndex;
+      this._draggedAssignmentSlot = null;
+      if (from === null || from === to) return;
+
+      const pv = this.paletteView;
+      const tmp = pv.assignment[from].colorIndex;
+      pv.assignment[from].colorIndex = pv.assignment[to].colorIndex;
+      pv.assignment[to].colorIndex = tmp;
+
+      this.applyPaletteLive();
+      this.buildPaletteView();
+    };
   }
 }

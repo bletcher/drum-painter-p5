@@ -1,0 +1,272 @@
+/*
+ * Styles for Kit Setup, latency calibration and other feature dialogs.
+ * Uses the theme variables defined in app.css.
+ */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 15000;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(3px);
+  padding: 16px;
+}
+
+.modal {
+  width: min(520px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel-bg);
+  color: var(--text);
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+  font-family: var(--font-ui);
+}
+
+.modal-wide {
+  width: min(760px, 100%);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.modal-close {
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.modal-close:hover {
+  background: var(--surface-hover);
+}
+
+.modal-body {
+  padding: 20px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.modal-body p {
+  margin: 0 0 12px;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border);
+}
+
+.modal-footer:empty {
+  display: none;
+}
+
+/* ===== Kit Setup ===== */
+
+.kit-step {
+  text-align: center;
+  padding: 10px 0 4px;
+}
+
+.kit-step-progress {
+  color: var(--text-muted);
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.kit-step-prompt {
+  font-size: 15px;
+  color: var(--text-muted);
+}
+
+.kit-step-drum {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  margin: 8px 0 14px;
+  font-size: 32px;
+  font-weight: 700;
+}
+
+.kit-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  flex-shrink: 0;
+}
+
+.kit-step-current {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text-muted);
+  min-height: 20px;
+}
+
+.kit-step-learned {
+  animation: kit-flash 0.45s ease-out;
+}
+
+@keyframes kit-flash {
+  from { background: color-mix(in srgb, var(--success) 30%, transparent); }
+  to { background: transparent; }
+}
+
+.kit-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 6px;
+  margin-top: 16px;
+  font-size: 12px;
+}
+
+.kit-summary-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: var(--surface);
+  border: 1px solid transparent;
+  cursor: pointer;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+}
+
+.kit-summary-item[aria-current="step"] {
+  border-color: var(--accent);
+}
+
+.kit-summary-item .kit-swatch {
+  width: 12px;
+  height: 12px;
+  border-width: 1px;
+}
+
+.kit-summary-note {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+
+/* ===== Latency calibration ===== */
+
+.calibration-beat {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin: 18px 0;
+}
+
+.calibration-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--surface-hover);
+  transition: background 0.05s;
+}
+
+.calibration-dot.count-in {
+  outline: 2px dashed var(--border);
+  outline-offset: 2px;
+}
+
+.calibration-dot.active {
+  background: var(--accent);
+}
+
+.calibration-dot.hit {
+  background: var(--success);
+}
+
+.calibration-result {
+  font-size: 15px;
+  text-align: center;
+  min-height: 48px;
+}
+
+.calibration-result strong {
+  font-size: 26px;
+  display: block;
+}
+
+/* ===== Keyboard pads / demo toggles ===== */
+
+.btn[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--accent-contrast);
+  border-color: var(--accent);
+}
+
+#keyboard-pads-hint {
+  position: fixed;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  z-index: 900;
+  display: flex;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--panel-bg);
+  box-shadow: var(--shadow);
+  font: 12px var(--font-ui);
+  color: var(--text);
+  pointer-events: none;
+}
+
+.pad-key {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 44px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  border-bottom: 3px solid var(--pad-color, var(--accent));
+  background: var(--surface);
+  transition: transform 0.06s;
+}
+
+.pad-key kbd {
+  font: 700 14px var(--font-mono);
+}
+
+.pad-key span {
+  font-size: 10px;
+  color: var(--text-muted);
+  max-width: 70px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pad-key.pressed {
+  transform: translateY(2px);
+  background: var(--surface-hover);
+}
+
+@media (max-width: 760px) {
+  #keyboard-pads-hint { display: none; }
+}

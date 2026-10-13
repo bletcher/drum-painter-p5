@@ -9,6 +9,21 @@ import { debugLog, debugWarn, debugError, infoLog } from '../utils/debug.js';
 import { showUserFriendlyError } from '../utils/errorMessages.js';
 
 const STORAGE_KEY = 'drumPainterSettings';
+const PROJECT_PREFIX = 'drum-painter-project-';
+
+/**
+ * Save a blob as a download
+ */
+export function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 
 export class StateManager {
   constructor() {
@@ -132,59 +147,116 @@ export class StateManager {
   }
 
   // ===== UNDO/REDO SYSTEM =====
+  // Snapshots are taken *before* destructive actions (clear, background change),
+  // so Ctrl+Z brings back the painting you just wiped. Copies are made on the
+  // GPU with drawImage — no pixel readback.
 
   /**
-   * Save current canvas state for undo/redo
+   * Copy the canvas into a new HTML canvas
+   */
+  snapshot(paintCanvas) {
+    const copy = document.createElement('canvas');
+    copy.width = paintCanvas.elt.width;
+    copy.height = paintCanvas.elt.height;
+    copy.getContext('2d').drawImage(paintCanvas.elt, 0, 0);
+    return { canvas: copy, width: paintCanvas.width, height: paintCanvas.height };
+  }
+
+  /**
+   * Draw a snapshot back onto the paint canvas
+   */
+  restore(paintCanvas, snap) {
+    if (paintCanvas.height !== snap.height) {
+      // e.g. a long staff session was cleared and the canvas shrank back
+      paintCanvas.resizeCanvas(snap.width, snap.height);
+      if (paintCanvas._renderer) {
+        paintCanvas._renderer._cachedFillStyle = undefined;
+        paintCanvas._renderer._cachedStrokeStyle = undefined;
+      }
+      if (window.BLEND_MODES) paintCanvas.blendMode(window.BLEND_MODES[window.currentBlendMode || 0]);
+    }
+    const ctx = paintCanvas.drawingContext;
+    ctx.save();
+    ctx.globalCompositeOperation = 'copy';
+    ctx.globalAlpha = 1;
+    ctx.drawImage(snap.canvas, 0, 0, snap.width, snap.height);
+    ctx.restore();
+  }
+
+  /**
+   * Remember the canvas before a destructive change
    * @param {p5.Graphics} paintCanvas - The canvas to save
    */
   saveCanvasState(paintCanvas) {
-    // Remove any states after current index (for branching)
-    this.canvasHistory = this.canvasHistory.slice(0, this.historyIndex + 1);
-
-    // Save current canvas as image
-    this.canvasHistory.push(paintCanvas.get());
-
-    // Keep only MAX_HISTORY states
+    this.canvasHistory.push(this.snapshot(paintCanvas));
     if (this.canvasHistory.length > MAX_HISTORY) {
       this.canvasHistory.shift();
-    } else {
-      this.historyIndex++;
     }
+    this.redoStack = [];
   }
 
   /**
-   * Undo to previous canvas state
+   * Undo the last destructive change
    * @param {p5.Graphics} paintCanvas - The canvas to restore to
    */
   undo(paintCanvas) {
-    if (this.historyIndex > 0) {
-      this.historyIndex--;
-      paintCanvas.image(this.canvasHistory[this.historyIndex], 0, 0);
-      debugLog(`Undo (${this.historyIndex + 1}/${this.canvasHistory.length})`);
-      return true;
-    } else {
-      debugLog('Nothing to undo');
-      return false;
-    }
+    const snap = this.canvasHistory.pop();
+    if (!snap) return false;
+    this.redoStack = this.redoStack || [];
+    this.redoStack.push(this.snapshot(paintCanvas));
+    this.restore(paintCanvas, snap);
+    return true;
   }
 
   /**
-   * Redo to next canvas state
+   * Redo a change that was undone
    * @param {p5.Graphics} paintCanvas - The canvas to restore to
    */
   redo(paintCanvas) {
-    if (this.historyIndex < this.canvasHistory.length - 1) {
-      this.historyIndex++;
-      paintCanvas.image(this.canvasHistory[this.historyIndex], 0, 0);
-      debugLog(`Redo (${this.historyIndex + 1}/${this.canvasHistory.length})`);
-      return true;
-    } else {
-      debugLog('Nothing to redo');
-      return false;
-    }
+    const snap = this.redoStack?.pop();
+    if (!snap) return false;
+    this.canvasHistory.push(this.snapshot(paintCanvas));
+    this.restore(paintCanvas, snap);
+    return true;
   }
 
   // ===== LOCALSTORAGE PERSISTENCE =====
+
+  /**
+   * Build the saved-settings object from the app state. The one place that
+   * defines the settings file format (browser storage, export files and
+   * projects all use it).
+   * @param {Object} appState - Current application state (see getAppState in main.js)
+   * @returns {Object}
+   */
+  serialize(appState) {
+    return {
+      version: '3.0',
+      timingVersion: 2, // Hit timing uses MIDI timestamps + scheduled metronome
+      drumKitConfig: DRUM_KIT_CONFIG,
+      drumSettings: appState.drumSettings,
+      drumOrder: appState.drumOrder, // Explicit drum ordering
+      globalSettings: {
+        sizeMultiplier: appState.globalSizeMultiplier,
+        blendMode: appState.currentBlendMode,
+        bgColor: appState.currentBgColor
+      },
+      currentModeType: appState.currentModeType,
+      freeformStyle: appState.freeformStyle,
+      chronicleLayout: appState.chronicleLayout,
+      spiralSettings: appState.spiralSettings,
+      timelineSettings: appState.timelineSettings,
+      bankModeSettings: appState.bankModeSettings,
+      recordOutputPortId: appState.recordOutputPortId || null,
+      recordOutputNote: appState.recordOutputNote ?? 36,
+      recordOutputChannel: appState.recordOutputChannel ?? 1,
+      sendClockEnabled: appState.sendClockEnabled ?? false,
+      videoQuality: appState.videoQuality || 'medium',
+      videoFormat: appState.videoFormat || 'auto',
+      lastPaletteDrumIds: appState.lastPaletteDrumIds || null,
+      timestamp: new Date().toISOString()
+    };
+  }
 
   /**
    * Save current settings to localStorage
@@ -192,71 +264,8 @@ export class StateManager {
    */
   saveAsDefault(appState) {
     try {
-      const state = {
-        version: '3.0',
-        drumKitConfig: DRUM_KIT_CONFIG,
-        drumSettings: appState.drumSettings,
-        drumOrder: appState.drumOrder, // Explicit drum ordering
-        globalSettings: {
-          sizeMultiplier: appState.globalSizeMultiplier,
-          blendMode: appState.currentBlendMode,
-          bgColor: appState.currentBgColor
-        },
-        currentMode: appState.currentMode,
-        // Two-tier mode system
-        currentModeType: appState.currentModeType,
-        freeformStyle: appState.freeformStyle,
-        chronicleLayout: appState.chronicleLayout,
-        spiralSettings: appState.spiralSettings || {
-          tightness: 15,
-          startRadius: 50,
-          syncToBPM: false
-        },
-        timelineSettings: appState.timelineSettings || {
-          bpm: 80,
-          subdivision: 16,
-          beatsPerMeasure: 4,
-          metronomeEnabled: false,
-          midiLatencyMs: 0,
-          showGrid: true,
-          showDeviationGraph: false,
-          rowSpacing: 30,
-          layout: 'staff',
-          warmupMeasures: 0,
-          measuresPerStaffPreference: 4,
-          tempoAutomationEnabled: false,
-          tempoAutomationBpmIncrease: 5,
-          tempoAutomationBars: 4,
-          tempoAutomationMaxBpm: 200
-        },
-        bankModeSettings: appState.bankModeSettings || {
-          enabled: false,
-          activeDrum: 'kick',
-          padAssignments: {},
-          globalVariables: {}
-        },
-        recordOutputPortId: appState.recordOutputPortId || null,
-        recordOutputNote: appState.recordOutputNote ?? 36,
-        recordOutputChannel: appState.recordOutputChannel ?? 1,
-        sendClockEnabled: appState.sendClockEnabled ?? false,
-        timestamp: new Date().toISOString()
-      };
-
-      debugLog('💾 Saving to localStorage with key:', STORAGE_KEY);
-      debugLog('💾 Saving drum settings:', Object.keys(state.drumSettings));
-      debugLog('💾 Saving global settings:', state.globalSettings);
-
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-
-      // Verify it was saved
-      const verification = localStorage.getItem(STORAGE_KEY);
-      debugLog('✅ Verified save - data exists:', !!verification);
-
-      // Debug logging
-      infoLog('✓ Settings saved to browser storage');
-      debugLog('  Bank mode enabled:', state.bankModeSettings.enabled);
-      debugLog('  Bank pad assignments:', Object.keys(state.bankModeSettings.padAssignments || {}).length, 'drums');
-
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.serialize(appState)));
+      debugLog('✓ Settings saved to browser storage');
       return true;
     } catch (error) {
       debugError('❌ Error saving settings:', error);
@@ -269,23 +278,14 @@ export class StateManager {
 
   /**
    * Load settings from localStorage
-   * @returns {Object|null} - Loaded state or null if not found
+   * @returns {Object|null} - Loaded (unvalidated) state or null if not found
    */
   loadDefault() {
     try {
-      debugLog('📦 Checking localStorage for key:', STORAGE_KEY);
       const saved = localStorage.getItem(STORAGE_KEY);
-      debugLog('📦 Raw localStorage value:', saved ? 'Found' : 'Not found');
-
-      if (!saved) {
-        debugWarn('⚠️ No saved settings found in localStorage');
-        return null;
-      }
-
+      if (!saved) return null;
       const state = JSON.parse(saved);
       infoLog('✓ Settings loaded from browser storage');
-      debugLog('📦 Loaded state keys:', Object.keys(state));
-      debugLog('📦 Loaded drum settings:', state.drumSettings ? Object.keys(state.drumSettings) : 'none');
       return state;
     } catch (error) {
       debugError('❌ Error loading settings:', error);
@@ -302,74 +302,47 @@ export class StateManager {
    */
   exportToFile(appState) {
     try {
-      const state = {
-        version: '3.0',
-        drumKitConfig: DRUM_KIT_CONFIG,
-        drumSettings: appState.drumSettings,
-        drumOrder: appState.drumOrder, // Explicit drum ordering
-        globalSettings: {
-          sizeMultiplier: appState.globalSizeMultiplier,
-          blendMode: appState.currentBlendMode,
-          bgColor: appState.currentBgColor
-        },
-        currentMode: appState.currentMode,
-        // Two-tier mode system
-        currentModeType: appState.currentModeType,
-        freeformStyle: appState.freeformStyle,
-        chronicleLayout: appState.chronicleLayout,
-        spiralSettings: appState.spiralSettings || {
-          tightness: 15,
-          startRadius: 50,
-          syncToBPM: false
-        },
-        timelineSettings: appState.timelineSettings || {
-          bpm: 80,
-          subdivision: 16,
-          beatsPerMeasure: 4,
-          metronomeEnabled: false,
-          midiLatencyMs: 0,
-          showGrid: true,
-          showDeviationGraph: false,
-          rowSpacing: 30,
-          layout: 'staff',
-          warmupMeasures: 0,
-          measuresPerStaffPreference: 4,
-          tempoAutomationEnabled: false,
-          tempoAutomationBpmIncrease: 5,
-          tempoAutomationBars: 4,
-          tempoAutomationMaxBpm: 200
-        },
-        bankModeSettings: appState.bankModeSettings || {
-          enabled: false,
-          activeDrum: 'kick',
-          padAssignments: {},
-          globalVariables: {}
-        },
-        recordOutputPortId: appState.recordOutputPortId || null,
-        recordOutputNote: appState.recordOutputNote ?? 36,
-        recordOutputChannel: appState.recordOutputChannel ?? 1,
-        sendClockEnabled: appState.sendClockEnabled ?? false,
-        timestamp: new Date().toISOString()
-      };
-
-      const json = JSON.stringify(state, null, 2);
-      const blob = new Blob([json], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `drum-painter-settings-${Date.now()}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
+      const json = JSON.stringify(this.serialize(appState), null, 2);
+      downloadBlob(new Blob([json], { type: 'application/json' }), `drum-painter-settings-${Date.now()}.json`);
       infoLog('✓ Settings exported to file');
       return true;
     } catch (error) {
       debugError('Error exporting settings:', error);
       return false;
     }
+  }
+
+  // ===== NAMED PROJECTS =====
+
+  /**
+   * @returns {Object<string, Object>} - Saved projects by name
+   */
+  listProjects() {
+    const projects = {};
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(PROJECT_PREFIX)) {
+        try {
+          projects[key.slice(PROJECT_PREFIX.length)] = JSON.parse(localStorage.getItem(key));
+        } catch (e) {
+          debugError(`Failed to parse project: ${key}`, e);
+        }
+      }
+    }
+    return projects;
+  }
+
+  saveProject(name, appState) {
+    localStorage.setItem(PROJECT_PREFIX + name, JSON.stringify(this.serialize(appState)));
+  }
+
+  loadProject(name) {
+    const raw = localStorage.getItem(PROJECT_PREFIX + name);
+    return raw ? JSON.parse(raw) : null;
+  }
+
+  deleteProject(name) {
+    localStorage.removeItem(PROJECT_PREFIX + name);
   }
 
   /**
