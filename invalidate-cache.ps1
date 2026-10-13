@@ -1,8 +1,14 @@
 # CloudFront Cache Invalidation Script for Drum Painter
 # Run this after deploying new builds to force CloudFront to serve fresh files
 
+# Usage: .\invalidate-cache.ps1 [-DistributionId <id>]
+# The ID can also come from the CLOUDFRONT_DISTRIBUTION_ID environment variable.
+param(
+    [string]$DistributionId = $(if ($env:CLOUDFRONT_DISTRIBUTION_ID) { $env:CLOUDFRONT_DISTRIBUTION_ID } else { "E3EX9JVKMSIGL9" })
+)
+
 # Configuration
-$CLOUDFRONT_DISTRIBUTION_ID = "E3EX9JVKMSIGL9"
+$CLOUDFRONT_DISTRIBUTION_ID = $DistributionId
 
 Write-Host "================================" -ForegroundColor Cyan
 Write-Host "Drum Painter - Cache Invalidation" -ForegroundColor Cyan

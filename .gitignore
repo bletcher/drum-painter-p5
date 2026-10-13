@@ -1,11 +1,11 @@
-# Dependencies
+# Dependencies (package-lock.json is committed so installs are reproducible)
 node_modules/
-package-lock.json
 yarn.lock
 
 # Build output
 dist/
 build/
+saved_output/
 
 # Development
 .vite/
@@ -30,3 +30,7 @@ Thumbs.db
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Personal / local files
+.claude/settings.local.json
+running questions.docx
