@@ -689,7 +689,7 @@ function showWelcome(isFirstRun, midiAvailable) {
     );
   } else if (isFirstRun) {
     notificationSystem.show(
-      `Connected to ${devices[0].name}. Hit some drums! If a pad doesn't paint, run Kit Setup.`,
+      `Connected to ${(devices.find(d => !/loopmidi|virtual/i.test(d.name)) || devices[0]).name}. Hit some drums! If a pad doesn't paint, run Kit Setup.`,
       'success',
       { actionLabel: 'Kit Setup', onAction: () => kitSetupWizard.open() }
     );

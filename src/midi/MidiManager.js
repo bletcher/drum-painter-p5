@@ -21,6 +21,19 @@ function messageTime(message) {
   return ts;
 }
 
+// Virtual ports (loopMIDI etc.) are rarely what the drummer plays
+const VIRTUAL_PORT = /loopmidi|loopbe|virtual|iac driver|midi through|rtpmidi/i;
+
+/**
+ * Short label for the status box: a hardware device's name, plus how many
+ * other inputs are connected
+ */
+function describeInputs(inputs) {
+  if (inputs.length === 0) return '';
+  const primary = inputs.find(i => !VIRTUAL_PORT.test(i.name)) || inputs[0];
+  return inputs.length > 1 ? `${primary.name} +${inputs.length - 1} more` : primary.name;
+}
+
 /**
  * Map a raw controller value to 0-1 using a calibrated range
  */
@@ -239,7 +252,7 @@ export class MidiManager {
 
       // Update status callback
       if (this.onMidiStatusChange) {
-        const primaryDevice = newInputs.length > 0 ? newInputs[0].name : '';
+        const primaryDevice = describeInputs(newInputs);
         const connected = newInputs.length > 0;
         this.onMidiStatusChange(connected, connected ? 'Connected' : 'No devices', primaryDevice, this.connectedDevices);
       }
@@ -247,7 +260,7 @@ export class MidiManager {
 
     this.midiReady = true;
     if (this.onMidiStatusChange) {
-      const primaryDevice = inputs[0].name;
+      const primaryDevice = describeInputs(inputs);
       this.onMidiStatusChange(true, 'Connected', primaryDevice, this.connectedDevices);
     }
   }
