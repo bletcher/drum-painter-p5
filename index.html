@@ -2,2529 +2,1089 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="Drum Painter turns your MIDI drum kit into a paintbrush.">
   <title>Drum Painter</title>
-  <script src="https://cdn.jsdelivr.net/npm/p5@1.7.0/lib/p5.js"></script>
-  <style>
-    body {
-      margin: 0;
-      padding: 0;
-      overflow: hidden;
-      background: #f0f0f0;
-      font-family: monospace;
-    }
-    canvas {
-      display: block;
-    }
-    @keyframes pulse {
-      0%, 100% { transform: translateX(-50%) scale(1); }
-      50% { transform: translateX(-50%) scale(1.05); }
-    }
-    #active-drum-indicator {
-      animation: pulse 2s ease-in-out infinite;
-    }
-    #controls {
-      position: fixed;
-      top: 10px;
-      left: 10px;
-      background: rgba(255, 255, 255, 0.95);
-      padding: 15px;
-      border-radius: 8px;
-      font-size: 12px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-      max-width: 300px;
-      max-height: 90vh;
-      overflow-y: auto;
-      z-index: 1000;
-    }
-    #controls h3 {
-      margin: 0 0 10px 0;
-      font-size: 14px;
-    }
-    #controls .status {
-      color: #666;
-      margin: 5px 0;
-    }
-    #controls .connected {
-      color: #00aa00;
-      font-weight: bold;
-    }
-    #controls .key {
-      display: inline-block;
-      background: #333;
-      color: white;
-      padding: 2px 6px;
-      border-radius: 3px;
-      margin: 2px;
-    }
-    #info {
-      position: fixed;
-      bottom: 10px;
-      left: 10px;
-      background: rgba(255, 255, 255, 0.95);
-      padding: 10px;
-      border-radius: 8px;
-      font-size: 11px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-      z-index: 1000;
-    }
-    #info h4 {
-      margin: 0 0 5px 0;
-      font-size: 12px;
-      color: #0066cc;
-    }
-
-    /* Tooltip System - appears BELOW element */
-    [data-tooltip] {
-      position: relative;
-      cursor: help;
-    }
-    [data-tooltip]::after {
-      content: attr(data-tooltip);
-      position: absolute;
-      top: 100%;
-      left: 50%;
-      transform: translateX(-50%) translateY(-4px);
-      padding: 8px 12px;
-      background: rgba(0, 0, 0, 0.95);
-      color: white;
-      font-size: 12px;
-      line-height: 1.4;
-      border-radius: 6px;
-      white-space: normal;
-      max-width: 250px;
-      text-align: center;
-      pointer-events: none;
-      opacity: 0;
-      visibility: hidden;
-      transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s;
-      z-index: 99999;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-      margin-top: 8px;
-    }
-    [data-tooltip]::before {
-      content: '';
-      position: absolute;
-      top: 100%;
-      left: 50%;
-      transform: translateX(-50%);
-      border: 6px solid transparent;
-      border-bottom-color: rgba(0, 0, 0, 0.95);
-      pointer-events: none;
-      opacity: 0;
-      visibility: hidden;
-      transition: opacity 0.2s ease, visibility 0.2s;
-      z-index: 99999;
-      margin-top: 2px;
-    }
-    [data-tooltip]:hover::after {
-      opacity: 1;
-      visibility: visible;
-      transform: translateX(-50%) translateY(0);
-    }
-    [data-tooltip]:hover::before {
-      opacity: 1;
-      visibility: visible;
-    }
-  </style>
+  <meta name="description" content="Turn what you play on an electronic drum kit into paintings and timing visualizations, in the browser.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A5%81%3C/text%3E%3C/svg%3E">
+  <!-- Minified build: the dev build's Friendly Error System checks every drawing call -->
+  <script src="https://cdn.jsdelivr.net/npm/p5@1.7.0/lib/p5.min.js"></script>
 </head>
 <body>
-  <div id="controls">
-    <h3 id="controls-header" style="cursor: move; user-select: none; display: flex; align-items: center; gap: 8px;">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- ===================== Left panel: main controls ===================== -->
+  <div id="controls" class="panel panel-left" role="region" aria-labelledby="controls-title">
+    <div id="controls-header" class="panel-header drag-handle">
+      <svg class="icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
         <circle cx="12" cy="12" r="10"/>
         <circle cx="12" cy="12" r="3"/>
         <path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>
       </svg>
-      DRUM PAINTER
-    </h3>
-    <div id="main-panel-sections">
-    <div id="midi-status" style="
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 10px;
-      background: #f8f9fa;
-      border-radius: 6px;
-      font-size: 11px;
-      margin-bottom: 5px;
-      cursor: pointer;
-      transition: background 0.2s;
-    " data-tooltip="Click to view connected devices">
-      <div style="position: relative;">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M6 9H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2h-2"/>
-          <path d="M6 9V21"/>
-          <path d="M18 9V21"/>
-        </svg>
-        <span id="midi-activity-light" style="
-          position: absolute;
-          top: -2px;
-          right: -2px;
-          width: 6px;
-          height: 6px;
-          background: #10b981;
-          border-radius: 50%;
-          opacity: 0;
-          transition: opacity 0.1s;
-        "></span>
-      </div>
-      <div style="flex: 1; min-width: 0;">
-        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px;">
-          <div id="midi-status-indicator" style="
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: #fbbf24;
-            flex-shrink: 0;
-          "></div>
-          <div id="midi-device-name" style="font-weight: 500; color: #666; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Checking MIDI...</div>
-          <span id="save-indicator" title="Saved" style="color: #9ca3af; font-size: 10px; margin-left: auto;">●</span>
-        </div>
-        <div style="display: flex; gap: 10px; font-size: 10px; color: #999;">
-          <div>Ch: <span id="midi-channel">-</span></div>
-          <div>Note: <span id="midi-note">-</span></div>
-          <div>Vel: <span id="midi-velocity">-</span></div>
-        </div>
-      </div>
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink: 0; opacity: 0.4;">
-        <polyline points="9 18 15 12 9 6"></polyline>
-      </svg>
-    </div>
-    <hr style="margin: 10px 0; border: none; border-top: 1px solid #ddd;">
-
-    <!-- Mode Selector -->
-    <div style="margin: 10px 0;">
-      <label style="display: block; margin-bottom: 8px; font-weight: bold; font-size: 11px;">Paint Mode:</label>
-
-      <!-- Mode Type Selection (Freeform / Timeline) -->
-      <div style="display: flex; gap: 12px; margin-bottom: 8px;">
-        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; font-size: 11px;">
-          <input type="radio" name="mode-type" id="mode-type-freeform" value="freeform" checked>
-          <span>Freeform</span>
-        </label>
-        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; font-size: 11px;">
-          <input type="radio" name="mode-type" id="mode-type-timeline" value="timeline">
-          <span>Timeline</span>
-        </label>
-      </div>
-
-      <!-- Freeform Style Selector (shown when Freeform is selected) -->
-      <div id="freeform-style-selector" data-tooltip="Random/unpredictable paint styles" style="display: block;">
-        <select id="freeform-style-select" style="
-          width: 100%;
-          padding: 6px;
-          border: 1px solid #ddd;
-          border-radius: 4px;
-          font-size: 11px;
-          background: white;
-        ">
-          <option value="classic">Classic — Random pointillism</option>
-          <option value="gravity">Gravity — Falling physics simulation</option>
-          <option value="organic">Organic — Clumped growth patterns</option>
-          <option value="dendritic">Dendritic — River-like spreading</option>
-          <option value="lightning">Lightning — Electric branching</option>
-        </select>
-      </div>
-
-      <!-- Timeline Layout Selector (shown when Timeline is selected) -->
-      <div id="timeline-layout-selector" data-tooltip="Sequential and time-based structured patterns" style="display: none;">
-        <select id="timeline-layout-select" style="
-          width: 100%;
-          padding: 6px;
-          border: 1px solid #ddd;
-          border-radius: 4px;
-          font-size: 11px;
-          background: white;
-        ">
-          <optgroup label="Time-Based (sync with metronome)">
-            <option value="staff">Staff — Musical notation timeline</option>
-            <option value="spiral">Spiral — Rotating outward</option>
-            <option value="rings">Rings — Concentric circles</option>
-            <option value="petals">Petals — Flower arrangement</option>
-            <option value="polygon">Polygon — Rotating shapes</option>
-          </optgroup>
-          <optgroup label="Point-Based (advance by hits)">
-            <option value="fibonacci" selected>Fibonacci — Golden ratio spiral</option>
-            <option value="radial">Radial — Radiating from center</option>
-          </optgroup>
-        </select>
-      </div>
-    </div>
-
-    <!-- Blend Mode Selector -->
-    <div style="margin: 10px 0;">
-      <label style="display: block; margin-bottom: 5px; font-weight: bold; font-size: 11px;">Blend Mode:</label>
-      <div data-tooltip="How new paint combines with existing layers" style="display: block;">
-        <select id="blend-select" style="
-          width: 100%;
-          padding: 6px;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        font-size: 11px;
-        background: white;
-      ">
-        <option value="0">Normal — Standard opaque painting</option>
-        <option value="1">Multiply — Darkens, like ink layers</option>
-        <option value="2">Screen — Lightens, adds brightness</option>
-        <option value="3">Overlay — Contrast boost, vivid colors</option>
-        <option value="4">Dodge — Brighten highlights, glowing effect</option>
-        <option value="5">Burn — Deepen shadows, darkens</option>
-        <option value="6">Add — Additive light, bright glowing overlaps</option>
-        <option value="7">Difference — Inverts colors, psychedelic effect</option>
-      </select>
-      </div>
-    </div>
-
-    <!-- Post-Processing Effects -->
-    <div style="margin: 10px 0;">
-      <label style="display: block; margin-bottom: 5px; font-weight: bold; font-size: 11px;">Post-Processing:</label>
-      <div data-tooltip="Visual effects applied to final output" style="display: block;">
-        <select id="postfx-select" style="
-          width: 100%;
-          padding: 6px;
-          border: 1px solid #ddd;
-          border-radius: 4px;
-          font-size: 11px;
-          background: white;
-        ">
-          <option value="none">None — No effects</option>
-          <option value="bloom">Bloom — Glowing bright areas</option>
-        </select>
-      </div>
-    </div>
-
-    <!-- Background Color Picker & Dark Mode -->
-    <div style="margin: 10px 0;">
-      <label style="display: block; margin-bottom: 5px; font-weight: bold; font-size: 11px;">Canvas Background:</label>
-      <div style="display: flex; gap: 8px; align-items: center; justify-content: space-between;">
-        <div data-tooltip="Pick any background color for the canvas" style="display: flex; gap: 8px; align-items: center;">
-          <input type="color" id="bg-color-picker" value="#ffffff" style="
-            width: 60px;
-            height: 32px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            cursor: pointer;
-          ">
-          <button id="bg-color-reset" style="
-            padding: 6px 12px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            background: white;
-            cursor: pointer;
-            font-size: 11px;
-          ">Reset</button>
-          <button id="clear-canvas-btn" data-tooltip="Clear the entire canvas (same as BACKSPACE)" style="
-            padding: 6px 12px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            background: #dc3545;
-            color: white;
-            cursor: pointer;
-            font-size: 11px;
-            font-weight: bold;
-          ">Clear</button>
-        </div>
-        <label data-tooltip="Toggle dark mode theme" style="display: flex; align-items: center; gap: 6px; cursor: pointer; white-space: nowrap;">
-          <input type="checkbox" id="dark-mode-toggle" style="cursor: pointer;">
-          <span style="font-weight: bold; font-size: 11px;">🌙 Dark</span>
-        </label>
-      </div>
-    </div>
-
-    <hr style="margin: 10px 0; border: none; border-top: 1px solid #ddd;">
-
-    <div style="margin-top: 10px;">
-      <strong>Keyboard Shortcuts:</strong><br>
-      <div id="shortcut-toggle-ui" data-tooltip="Click to toggle UI" style="cursor: pointer; display: inline-block; padding: 2px 0;"><span class="key">H</span> Hide/show UI</div><br>
-      <div id="shortcut-fullscreen" data-tooltip="Click for fullscreen" style="cursor: pointer; display: inline-block; padding: 2px 0;"><span class="key">F</span> Fullscreen</div><br>
-      <div id="shortcut-clear" data-tooltip="Click to clear canvas" style="cursor: pointer; display: inline-block; padding: 2px 0;"><span class="key">BKSP</span> Clear canvas</div><br>
-      <div id="shortcut-record" data-tooltip="Click to start/stop recording" style="cursor: pointer; display: inline-block; padding: 2px 0;"><span class="key">SPACE</span> Record video</div><br>
-      <div id="shortcut-save-image" data-tooltip="Click to save image" style="cursor: pointer; display: inline-block; padding: 2px 0;"><span class="key">S</span> Save image</div><br>
-      <div id="shortcut-save-settings" data-tooltip="Click to save settings immediately (auto-saves after 2s)" style="cursor: pointer; display: inline-block; padding: 2px 0;"><span class="key">D</span> Save settings (auto-saves)</div><br>
-      <div id="shortcut-undo" data-tooltip="Click to undo" style="cursor: pointer; display: inline-block; padding: 2px 0;"><span class="key">Z</span> Undo</div><br>
-      <div id="shortcut-redo" data-tooltip="Click to redo" style="cursor: pointer; display: inline-block; padding: 2px 0;"><span class="key">Y</span> Redo</div><br>
-      <div id="shortcut-blend-mode" data-tooltip="Click to cycle blend modes" style="cursor: pointer; display: inline-block; padding: 2px 0;"><span class="key">B</span> Cycle blend</div><br>
-      <div id="shortcut-arrows" data-tooltip="Click to see all shortcuts" style="cursor: pointer; display: inline-block; padding: 2px 0;"><span class="key">← → ↑ ↓</span> Navigate</div><br>
-      <div id="shortcut-drums" data-tooltip="Click to see all shortcuts" style="cursor: pointer; display: inline-block; padding: 2px 0;"><span class="key">1-9</span> Select drum</div><br>
-      <div id="shortcut-help" data-tooltip="Click to show keyboard shortcuts" style="cursor: pointer; display: inline-block; padding: 2px 0;"><span class="key">?</span> All shortcuts</div><br>
-      <span class="key">Click</span> Test paint
-    </div>
-    </div><!-- end #main-panel-sections -->
-
-    <!-- Timeline Settings (shown only in timeline mode) -->
-    <div id="timeline-controls" style="display: none; margin-top: 10px; border-top: 1px solid #ddd; padding-top: 10px;">
-      <div id="timeline-settings-section">
-      <strong>Timeline Settings:</strong><br>
-      <div style="margin-top: 8px; font-size: 11px;">
-        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
-          <label style="min-width: 45px;">Layout:</label>
-          <select id="timeline-layout"
-            style="flex: 1; padding: 4px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px; cursor: pointer;">
-            <option value="staff" selected>Staff</option>
-            <option value="rings">Rings</option>
-            <option value="spiral">Spiral</option>
-            <option value="radial">Radial</option>
-            <option value="flower">Flower</option>
-            <option value="polygon">Polygon</option>
-          </select>
-        </div>
-        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
-          <label style="min-width: 45px;">Time:</label>
-          <select id="timeline-time-signature"
-            style="flex: 1; padding: 4px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px; cursor: pointer;">
-            <option value="2">2/4</option>
-            <option value="3">3/4</option>
-            <option value="4" selected>4/4</option>
-            <option value="5">5/4</option>
-            <option value="6">6/4</option>
-            <option value="7">7/4</option>
-            <option value="8">8/4</option>
-            <option value="9">9/4</option>
-            <option value="10">10/4</option>
-            <option value="11">11/4</option>
-            <option value="12">12/4</option>
-          </select>
-        </div>
-        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
-          <label style="min-width: 45px;">BPM:</label>
-          <input type="number" id="timeline-bpm" value="80" min="30" max="240" step="1"
-            style="flex: 1; padding: 4px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px;">
-          <span id="bpm-display" style="min-width: 40px; text-align: right; font-weight: bold;">80</span>
-        </div>
-        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
-          <label style="min-width: 45px;">Grid:</label>
-          <select id="timeline-subdivision"
-            style="flex: 1; padding: 4px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px; cursor: pointer;">
-            <option value="4">Quarter Notes</option>
-            <option value="8">Eighth Notes</option>
-            <option value="12" selected>Eighth Triplets</option>
-            <option value="16">Sixteenth Notes</option>
-          </select>
-        </div>
-        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
-          <label style="min-width: 45px;">Per Row:</label>
-          <select id="timeline-measures-per-staff"
-            style="flex: 1; padding: 4px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px; cursor: pointer;">
-            <option value="0">Auto</option>
-            <option value="1">1 measure</option>
-            <option value="2">2 measures</option>
-            <option value="3">3 measures</option>
-            <option value="4" selected>4 measures</option>
-            <option value="6">6 measures</option>
-            <option value="8">8 measures</option>
-          </select>
-        </div>
-        <div style="display: flex; align-items: center; gap: 12px; margin-top: 5px;">
-          <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
-            <input type="checkbox" id="metronome-enabled" style="cursor: pointer;">
-            <span style="font-size: 11px;">Metronome</span>
-          </label>
-          <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
-            <input type="checkbox" id="timeline-show-deviation" style="cursor: pointer;">
-            <span style="font-size: 11px;">Timing Graph</span>
-          </label>
-          <select id="deviation-graph-mode" style="font-size: 10px; padding: 2px 4px; border: 1px solid #ccc; border-radius: 3px; cursor: pointer;">
-            <option value="cumulative">Cumulative</option>
-            <option value="actual">Actual (+/-)</option>
-          </select>
-        </div>
-        <!-- Tempo Automation Controls (shown when metronome is enabled) -->
-        <div id="tempo-automation-section" style="display: none; margin-top: 8px; padding: 8px; background: #f5f5f5; border-radius: 4px; border: 1px solid #e0e0e0;">
-          <div style="display: flex; align-items: center; gap: 5px; margin-bottom: 6px;">
-            <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
-              <input type="checkbox" id="tempo-automation-enabled" style="cursor: pointer;">
-              <span style="font-size: 11px; font-weight: bold;">Auto Tempo</span>
-            </label>
-          </div>
-          <div id="tempo-automation-controls" style="display: none;">
-            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 5px;">
-              <select id="tempo-automation-direction" style="padding: 3px; border: 1px solid #ddd; border-radius: 3px; font-size: 10px;">
-                <option value="increase">Increase</option>
-                <option value="decrease">Decrease</option>
-              </select>
-              <input type="number" id="tempo-automation-bpm" value="5" min="1" max="20" step="1"
-                style="width: 45px; padding: 3px; border: 1px solid #ddd; border-radius: 3px; font-size: 10px; text-align: center;">
-              <span style="font-size: 10px; color: #666;">BPM every</span>
-              <input type="number" id="tempo-automation-bars" value="4" min="1" max="16" step="1"
-                style="width: 45px; padding: 3px; border: 1px solid #ddd; border-radius: 3px; font-size: 10px; text-align: center;">
-              <span style="font-size: 10px; color: #666;">bars</span>
-            </div>
-            <div style="display: flex; align-items: center; gap: 6px;">
-              <span id="tempo-limit-label" style="font-size: 10px; color: #666;">Max BPM:</span>
-              <input type="number" id="tempo-automation-max" value="200" min="60" max="300" step="5"
-                style="width: 50px; padding: 3px; border: 1px solid #ddd; border-radius: 3px; font-size: 10px; text-align: center;">
-              <input type="number" id="tempo-automation-min" value="40" min="20" max="120" step="5"
-                style="width: 50px; padding: 3px; border: 1px solid #ddd; border-radius: 3px; font-size: 10px; text-align: center; display: none;">
-            </div>
-          </div>
-        </div>
-        <div style="display: flex; align-items: center; gap: 8px; margin-top: 5px;">
-          <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
-            <input type="checkbox" id="timeline-show-grid" checked style="cursor: pointer;">
-            <span style="font-size: 11px;">Show Grid</span>
-          </label>
-        </div>
-        <div style="display: flex; align-items: center; gap: 8px; margin-top: 5px;">
-          <label style="min-width: 70px; font-size: 11px;">Row Space:</label>
-          <input type="range" id="timeline-row-spacing" value="10" min="0" max="50" step="1"
-            style="flex: 1; cursor: pointer;">
-          <span id="row-spacing-display" style="font-size: 11px; min-width: 30px;">10px</span>
-        </div>
-        <div style="display: flex; align-items: center; gap: 8px; margin-top: 5px;">
-          <label style="min-width: 65px; font-size: 11px;">Latency:</label>
-          <input type="number" id="midi-latency" value="70" min="0" max="200" step="5"
-            style="flex: 1; padding: 4px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px;">
-          <span style="font-size: 11px; min-width: 30px;">ms</span>
-        </div>
-      </div>
-      </div>
-      <div id="timeline-playing-section">
-      <div style="margin-top: 10px; padding-top: 8px;">
-        <strong style="font-size: 12px;">Playing:</strong><br>
-      </div>
-      <!-- Timeline control buttons - Row 1: Main controls -->
-      <div style="display: flex; gap: 5px; margin-top: 5px;">
-        <button id="timeline-start-btn" style="
-          flex: 1;
-          padding: 8px;
-          background: #28a745;
-          color: white;
-          border: none;
-          border-radius: 5px;
-          font-weight: bold;
-          cursor: pointer;
-          font-size: 11px;
-        ">▶ Start</button>
-        <button id="timeline-pause-btn" style="
-          flex: 1;
-          padding: 8px;
-          background: #ffc107;
-          color: #333;
-          border: none;
-          border-radius: 5px;
-          font-weight: bold;
-          cursor: pointer;
-          font-size: 11px;
-          display: none;
-        ">⏸ Pause</button>
-        <button id="timeline-end-btn" style="
-          flex: 1;
-          padding: 8px;
-          background: #dc3545;
-          color: white;
-          border: none;
-          border-radius: 5px;
-          font-weight: bold;
-          cursor: pointer;
-          font-size: 11px;
-          display: none;
-        ">■ End</button>
-      </div>
-      <!-- Timeline control buttons - Row 2: Start Over / Continue -->
-      <div style="display: flex; gap: 5px; margin-top: 5px;">
-        <button id="timeline-start-over-btn" style="
-          flex: 1;
-          padding: 8px;
-          background: #ff6b35;
-          color: white;
-          border: none;
-          border-radius: 5px;
-          font-weight: bold;
-          cursor: pointer;
-          font-size: 11px;
-          display: none;
-        ">↻ Start Over</button>
-        <button id="timeline-continue-btn" style="
-          flex: 1;
-          padding: 8px;
-          background: #28a745;
-          color: white;
-          border: none;
-          border-radius: 5px;
-          font-weight: bold;
-          cursor: pointer;
-          font-size: 11px;
-          display: none;
-        ">▶ Continue</button>
-      </div>
-      </div>
-        <div id="timeline-recording-options" style="margin-top: 8px;">
-          <div id="recording-options-header" style="
-            display: flex; align-items: center; justify-content: space-between;
-            padding: 4px 6px; background: #f0f0f0; border-radius: 3px;
-            cursor: pointer; user-select: none; font-size: 10px; color: #666; font-weight: bold;
-          ">
-            <span>Recording Options</span>
-            <span id="recording-options-arrow" style="font-size: 9px; transition: transform 0.2s; transform: rotate(0deg);">&#9654;</span>
-          </div>
-          <div id="recording-options-content" style="display: none;">
-        <div style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
-          <label style="display: flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer;">
-            <input type="checkbox" id="timeline-auto-record" unchecked
-              style="cursor: pointer;">
-            <span>Record video with timeline</span>
-          </label>
-        </div>
-        <div style="display: flex; align-items: center; gap: 8px; margin-top: 5px;">
-          <label style="min-width: 70px; font-size: 11px;">Warm-up:</label>
-          <select id="timeline-warmup-measures"
-            style="flex: 1; padding: 4px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px; cursor: pointer;">
-            <option value="0">0 measures</option>
-            <option value="1" selected>1 measure</option>
-            <option value="2">2 measures</option>
-            <option value="3">3 measures</option>
-            <option value="4">4 measures</option>
-          </select>
-        </div>
-        <div style="display: flex; align-items: center; gap: 8px; margin-top: 5px;">
-          <label style="min-width: 70px; font-size: 11px;">Quality:</label>
-          <select id="timeline-video-quality"
-            style="flex: 1; padding: 4px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px; cursor: pointer;">
-            <option value="low">Low (1 Mbps)</option>
-            <option value="medium" selected>Medium (2.5 Mbps)</option>
-            <option value="high">High (5 Mbps)</option>
-            <option value="ultra">Ultra (10 Mbps)</option>
-          </select>
-        </div>
-        <div style="display: flex; align-items: center; gap: 8px; margin-top: 5px;">
-          <label style="min-width: 70px; font-size: 11px;">Format:</label>
-          <select id="timeline-video-format"
-            style="flex: 1; padding: 4px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px; cursor: pointer;">
-            <option value="webm-vp9" selected>WebM VP9</option>
-            <option value="webm-vp8">WebM VP8</option>
-            <option value="webm">WebM</option>
-          </select>
-        </div>
-        <div style="margin-top: 8px; padding: 6px; background: #f5f5f5; border-radius: 4px; border: 1px solid #ddd;">
-          <div style="font-size: 10px; font-weight: bold; color: #555; margin-bottom: 5px;">MIDI Out → DAW (loopMIDI)</div>
-          <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
-            <label style="min-width: 38px; font-size: 10px; color: #666;">Port:</label>
-            <select id="record-output-port"
-              data-tooltip="Select a virtual MIDI output port (e.g. loopMIDI). Drum Painter sends a note here when recording starts/stops so your DAW can react."
-              style="flex: 1; padding: 3px; border: 1px solid #ddd; border-radius: 3px; font-size: 10px; cursor: pointer;">
-              <option value="">None</option>
-            </select>
-          </div>
-          <div style="display: flex; align-items: center; gap: 6px;">
-            <label style="min-width: 38px; font-size: 10px; color: #666;">Note:</label>
-            <input type="number" id="record-output-note"
-              min="0" max="127" value="36"
-              data-tooltip="MIDI note sent on record start (vel 127) and stop (vel 64). MIDI-map this note in your DAW."
-              style="width: 48px; padding: 3px; border: 1px solid #ddd; border-radius: 3px; font-size: 10px; text-align: center;">
-            <span style="font-size: 10px; color: #999;">Ch:</span>
-            <input type="number" id="record-output-channel"
-              min="1" max="16" value="1"
-              style="width: 36px; padding: 3px; border: 1px solid #ddd; border-radius: 3px; font-size: 10px; text-align: center;">
-            <button id="record-output-test-btn"
-              data-tooltip="Send a test note now to verify your DAW receives it."
-              style="padding: 3px 7px; font-size: 10px; background: #059669; color: white; border: none; border-radius: 3px; cursor: pointer; margin-left: 2px;">
-              Test
-            </button>
-          </div>
-          <div style="display: flex; align-items: center; gap: 6px; margin-top: 5px;">
-            <label style="min-width: 38px; font-size: 10px; color: #666;"></label>
-            <label style="display: flex; align-items: center; gap: 4px; font-size: 10px; cursor: pointer;"
-              data-tooltip="Send MIDI Clock when recording starts so your DAW locks to Drum Painter's BPM. Enable 'Sync' on the loopMIDI port in Ableton's MIDI preferences.">
-              <input type="checkbox" id="record-output-clock" style="cursor: pointer;">
-              Send MIDI Clock (tempo sync)
-            </label>
-          </div>
-          <div id="record-output-clock-info" style="display: none; margin-top: 4px; padding: 4px 6px; background: #ede9fe; border-left: 2px solid #7c3aed; border-radius: 2px; font-size: 10px; color: #4c1d95;">
-            → <span id="record-output-bpm-display">120</span> BPM &nbsp;·&nbsp; <span id="record-output-timesig-display">4/4</span>
-            &nbsp;·&nbsp; Enable <strong>Sync</strong> on loopMIDI in Ableton MIDI prefs
-          </div>
-        </div>
-          </div>
-        </div>
-    </div>
-
-    <!-- Spiral Settings (shown only in spiral mode) -->
-    <div id="spiral-controls" style="display: none; margin-top: 10px; border-top: 1px solid #ddd; padding-top: 10px;">
-      <strong>Spiral Settings:</strong><br>
-      <div style="margin-top: 8px; font-size: 11px;">
-        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
-          <label style="min-width: 70px;">Tightness:</label>
-          <input type="range" id="spiral-tightness" value="15" min="5" max="40" step="1"
-            style="flex: 1; cursor: pointer;">
-          <span id="spiral-tightness-display" style="min-width: 30px; text-align: right;">15</span>
-        </div>
-        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
-          <label style="min-width: 70px;">Tracks:</label>
-          <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
-            <input type="checkbox" id="spiral-separate-tracks" checked style="cursor: pointer;">
-            <span>Separate</span>
-          </label>
-        </div>
-        <div id="spiral-track-spacing-row" style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
-          <label style="min-width: 70px;">Spacing:</label>
-          <input type="range" id="spiral-track-spacing" value="8" min="1" max="30" step="1"
-            style="flex: 1; cursor: pointer;">
-          <span id="spiral-track-spacing-display" style="min-width: 30px; text-align: right;">8</span>
-        </div>
-        <div style="margin-top: 8px;">
-          <button id="spiral-reset-btn" style="
-            width: 100%;
-            padding: 6px;
-            background: #667eea;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            font-size: 11px;
-            font-weight: bold;
-            cursor: pointer;
-          ">↻ Reset Spiral</button>
-        </div>
-      </div>
-    </div>
-
-  </div><!-- end #controls -->
-
-  <!-- Active Drum Indicator (Bank Mode) -->
-  <div id="active-drum-indicator" style="
-    display: none;
-    position: fixed;
-    top: 10px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: rgba(102, 126, 234, 0.95);
-    color: white;
-    padding: 12px 20px;
-    border-radius: 8px;
-    font-family: monospace;
-    font-size: 13px;
-    font-weight: bold;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-    z-index: 998;
-    pointer-events: none;
-  "></div>
-
-  <!-- Quick Settings Panel (right side) -->
-  <div id="drum-settings" style="
-    position: fixed;
-    top: 10px;
-    right: 10px;
-    background: rgba(255, 255, 255, 0.95) !important;
-    padding: 15px;
-    border-radius: 8px;
-    font-size: 11px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-    max-width: 280px;
-    max-height: 90vh;
-    overflow-y: auto;
-    z-index: 1000;
-  ">
-    <h3 id="quick-settings-header" style="margin: 0 0 10px 0; font-size: 14px; display: flex; align-items: center; gap: 6px; cursor: move; user-select: none;">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>
-      </svg>
-      <span style="flex: 1;">Quick Settings</span>
-      <button id="quick-settings-collapse-btn" title="Collapse/Expand" style="
-        background: none;
-        border: none;
-        cursor: pointer;
-        padding: 2px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        opacity: 0.6;
-        transition: opacity 0.2s;
-      " onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.6'">
-        <svg id="quick-settings-collapse-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <h1 id="controls-title" class="panel-title">Drum Painter</h1>
+      <button type="button" id="controls-collapse-btn" class="icon-btn panel-collapse-btn" aria-label="Collapse controls panel" aria-expanded="true" aria-controls="controls-body">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
           <polyline points="18 15 12 9 6 15"/>
         </svg>
       </button>
-    </h3>
-
-    <div id="quick-settings-content">
-    <!-- Global Controls -->
-    <div style="margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid #ddd;">
-      <strong>Global Size:</strong>
-      <input type="range" id="global-size" min="0.5" max="2.0" step="0.1" value="1.0"
-        data-tooltip="Adjust overall size of all drum marks"
-        style="width: 100%; margin-top: 5px;">
-      <span id="global-size-val">1.0x</span>
     </div>
 
-    <!-- Customize Button -->
-    <button id="customize-btn" data-tooltip="Configure individual drum colors, sizes, and shapes" style="
-      width: 100%;
-      padding: 10px;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-      border: none;
-      border-radius: 5px;
-      font-weight: bold;
-      cursor: pointer;
-      font-size: 13px;
-      margin-bottom: 10px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-    ">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M12 2a10 10 0 1 0 10 10 4 4 0 0 1-5-5 4 4 0 0 1-5-5"/>
-        <path d="M8.5 8.5a2.5 2.5 0 1 1 3.536 3.536L10.5 13.5l-3 1 1-3 1.536-1.536z"/>
-      </svg>
-      Customize Drums
-    </button>
-
-    <!-- MIDI Mapping Button -->
-    <button id="midi-mapping-btn" data-tooltip="Map MIDI notes to specific drums in your kit" style="
-      width: 100%;
-      padding: 10px;
-      background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-      color: white;
-      border: none;
-      border-radius: 5px;
-      font-weight: bold;
-      cursor: pointer;
-      font-size: 13px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-    ">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <rect x="2" y="4" width="20" height="16" rx="2"/>
-        <path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01"/>
-        <path d="M8 12v4M12 12v4M16 12v4"/>
-      </svg>
-      MIDI Mapping
-    </button>
-
-    <!-- User Guide Button -->
-    <button id="user-guide-btn" data-tooltip="Open comprehensive 3-level user guide (Press U)" style="
-      width: 100%;
-      padding: 10px;
-      background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-      color: white;
-      border: none;
-      border-radius: 5px;
-      font-weight: bold;
-      cursor: pointer;
-      font-size: 13px;
-      margin-top: 10px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-    ">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="12" r="10"/>
-        <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
-        <line x1="12" y1="17" x2="12.01" y2="17"/>
-      </svg>
-      User Guide
-    </button>
-
-    <button id="debug-btn" data-tooltip="Show debug panel with settings vs paint values" style="
-      width: 100%;
-      padding: 10px;
-      background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
-      color: white;
-      border: none;
-      border-radius: 5px;
-      font-weight: bold;
-      cursor: pointer;
-      font-size: 13px;
-      margin-top: 10px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-    ">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-        <path d="M12 8v4"/>
-        <path d="M12 16h.01"/>
-      </svg>
-      Debug Panel
-    </button>
-
-    <!-- Projects Section -->
-    <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #ddd;">
-      <strong style="display: flex; align-items: center; gap: 6px; margin-bottom: 10px; font-size: 12px;">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+    <div id="controls-body" class="panel-body">
+    <div id="main-panel-sections">
+      <button type="button" id="midi-status" class="midi-status" data-tooltip="Click to view connected devices">
+        <span class="visually-hidden">MIDI status (view connected devices):</span>
+        <span class="midi-status-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+            <path d="M6 9H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2h-2"/>
+            <path d="M6 9V21"/>
+            <path d="M18 9V21"/>
+          </svg>
+          <span id="midi-activity-light" class="midi-activity-light"></span>
+        </span>
+        <span class="midi-status-main">
+          <span class="midi-status-line">
+            <span id="midi-status-indicator" class="midi-status-indicator"></span>
+            <span id="midi-device-name" class="midi-device-name">Checking MIDI...</span>
+            <span id="save-indicator" class="save-indicator" title="Saved" aria-hidden="true">●</span>
+          </span>
+          <span class="midi-status-meta">
+            <span>Ch: <span id="midi-channel">-</span></span>
+            <span>Note: <span id="midi-note">-</span></span>
+            <span>Vel: <span id="midi-velocity">-</span></span>
+          </span>
+        </span>
+        <svg class="midi-status-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false">
+          <polyline points="9 18 15 12 9 6"></polyline>
         </svg>
-        Projects
-      </strong>
-
-      <div style="display: flex; gap: 5px; margin-bottom: 8px;">
-        <input
-          type="text"
-          id="project-name-input"
-          placeholder="Project name..."
-          style="
-            flex: 1;
-            padding: 6px 8px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 11px;
-          "
-        />
-        <button
-          id="save-project-btn"
-          style="
-            padding: 6px 12px;
-            background: #10b981;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            font-size: 11px;
-            font-weight: bold;
-            cursor: pointer;
-          "
-        >Save</button>
-      </div>
-
-      <div style="margin-bottom: 8px;">
-        <select
-          id="projects-list"
-          style="
-            width: 100%;
-            padding: 6px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 11px;
-            background: white;
-          "
-        >
-          <option value="">Select a project...</option>
-        </select>
-      </div>
-
-      <div style="display: flex; gap: 5px;">
-        <button
-          id="load-project-btn"
-          style="
-            flex: 1;
-            padding: 6px;
-            background: #3d73ca;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            font-size: 11px;
-            font-weight: bold;
-            cursor: pointer;
-          "
-        >Load</button>
-        <button
-          id="delete-project-btn"
-          style="
-            flex: 1;
-            padding: 6px;
-            background: #c43f3f;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            font-size: 11px;
-            font-weight: bold;
-            cursor: pointer;
-          "
-        >Delete</button>
-      </div>
-    </div>
-
-    <!-- Video Recording Section -->
-    <div id="quick-settings-video-section" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #ddd;">
-      <strong style="display: flex; align-items: center; gap: 6px; margin-bottom: 10px; font-size: 12px;">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="10"/>
-          <circle cx="12" cy="12" r="3" fill="currentColor"/>
-        </svg>
-        Video Recording
-      </strong>
-
-      <div style="margin-bottom: 8px;">
-        <label style="display: block; font-size: 11px; margin-bottom: 4px;">Quality:</label>
-        <div data-tooltip="Select video recording quality">
-          <select
-            id="video-quality"
-            style="
-              width: 100%;
-              padding: 6px;
-              border: 1px solid #ddd;
-              border-radius: 4px;
-              font-size: 11px;
-              background: white;
-              cursor: pointer;
-            "
-          >
-            <option value="low">Low (1 Mbps)</option>
-            <option value="medium" selected>Medium (2.5 Mbps)</option>
-            <option value="high">High (5 Mbps)</option>
-            <option value="ultra">Ultra (10 Mbps)</option>
-          </select>
-        </div>
-      </div>
-
-      <button
-        id="video-record-btn"
-        data-tooltip="Start/stop recording video"
-        style="
-          width: 100%;
-          padding: 8px;
-          background: #dc2626;
-          color: white;
-          border: none;
-          border-radius: 4px;
-          font-size: 12px;
-          font-weight: bold;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 6px;
-        "
-      >
-        <span id="video-record-icon">●</span>
-        <span id="video-record-text">Start Recording</span>
       </button>
 
-      <div id="chronicle-recording-info" style="
-        display: none;
-        margin-top: 8px;
-        padding: 8px;
-        background: #dbeafe;
-        border-left: 3px solid #3b82f6;
-        border-radius: 4px;
-        font-size: 11px;
-        color: #1e40af;
-      ">
-        ℹ️ Recording via Chronicle mode
-      </div>
+      <section class="panel-section" data-collapsible="paint-mode" data-default-open="true">
+        <h2 class="section-heading">
+          <button type="button" class="section-toggle" aria-expanded="true">🎨 Paint Mode</button>
+        </h2>
+        <div class="section-body">
+          <!-- Mode Selector -->
+          <fieldset class="field">
+            <legend class="field-label">Paint mode</legend>
+            <div class="radio-row">
+              <label class="check">
+                <input type="radio" name="mode-type" id="mode-type-freeform" value="freeform" checked>
+                <span>Freeform</span>
+              </label>
+              <label class="check">
+                <input type="radio" name="mode-type" id="mode-type-timeline" value="timeline">
+                <span>Timeline</span>
+              </label>
+            </div>
 
-      <div id="video-recording-status" style="
-        display: none;
-        margin-top: 8px;
-        padding: 8px;
-        background: #fee2e2;
-        border-left: 3px solid #dc2626;
-        border-radius: 4px;
-        font-size: 11px;
-      ">
-        <div style="display: flex; align-items: center; gap: 6px; font-weight: bold; color: #991b1b; margin-bottom: 4px;">
-          <span style="animation: pulse 1.5s ease-in-out infinite;">●</span>
-          Recording...
-        </div>
-        <div id="video-recording-time" style="color: #7f1d1d;">00:00</div>
-      </div>
+            <!-- Freeform Style Selector (shown when Freeform is selected) -->
+            <div id="freeform-style-selector" data-tooltip="Random/unpredictable paint styles" style="display: block;">
+              <select id="freeform-style-select" class="input" aria-label="Freeform style">
+                <option value="classic">Classic — Random pointillism</option>
+                <option value="gravity">Gravity — Falling physics simulation</option>
+                <option value="organic">Organic — Clumped growth patterns</option>
+                <option value="dendritic">Dendritic — River-like spreading</option>
+                <option value="lightning">Lightning — Electric branching</option>
+              </select>
+            </div>
 
-      <!-- Recent Recordings List -->
-      <div id="recordings-section" style="margin-top: 12px; border-top: 1px solid #ddd; padding-top: 12px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-          <label style="font-size: 11px; font-weight: bold;">Recent Recordings</label>
-          <button id="clear-recordings-btn"
-            style="padding: 2px 6px; font-size: 10px; background: #dc2626; color: white; border: none; border-radius: 3px; cursor: pointer; opacity: 0.8;"
-            title="Clear all recordings">
-            Clear All
-          </button>
+            <!-- Timeline Layout Selector (shown when Timeline is selected) -->
+            <div id="timeline-layout-selector" data-tooltip="Sequential and time-based structured patterns" style="display: none;">
+              <select id="timeline-layout-select" class="input" aria-label="Timeline layout">
+                <optgroup label="Time-Based (sync with metronome)">
+                  <option value="staff">Staff — Musical notation timeline</option>
+                  <option value="spiral">Spiral — Rotating outward</option>
+                  <option value="rings">Rings — Concentric circles</option>
+                  <option value="petals">Petals — Flower arrangement</option>
+                  <option value="polygon">Polygon — Rotating shapes</option>
+                </optgroup>
+                <optgroup label="Point-Based (advance by hits)">
+                  <option value="fibonacci" selected>Fibonacci — Golden ratio spiral</option>
+                  <option value="radial">Radial — Radiating from center</option>
+                </optgroup>
+              </select>
+            </div>
+          </fieldset>
+
+          <!-- Blend Mode Selector -->
+          <div class="field">
+            <label class="field-label" for="blend-select">Blend mode</label>
+            <div data-tooltip="How new paint combines with existing layers">
+              <select id="blend-select" class="input">
+                <option value="0">Normal — Standard opaque painting</option>
+                <option value="1">Multiply — Darkens, like ink layers</option>
+                <option value="2">Screen — Lightens, adds brightness</option>
+                <option value="3">Overlay — Contrast boost, vivid colors</option>
+                <option value="4">Dodge — Brighten highlights, glowing effect</option>
+                <option value="5">Burn — Deepen shadows, darkens</option>
+                <option value="6">Add — Additive light, bright glowing overlaps</option>
+                <option value="7">Difference — Inverts colors, psychedelic effect</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Post-Processing Effects -->
+          <div class="field">
+            <label class="field-label" for="postfx-select">Post-processing</label>
+            <div data-tooltip="Visual effects applied to final output">
+              <select id="postfx-select" class="input">
+                <option value="none">None — No effects</option>
+                <option value="bloom">Bloom — Glowing bright areas</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Background Color Picker & Dark Mode -->
+          <div class="field">
+            <label class="field-label" for="bg-color-picker">Canvas background</label>
+            <div class="bg-row">
+              <div class="bg-row-group" data-tooltip="Pick any background color for the canvas">
+                <input type="color" id="bg-color-picker" class="color-input" value="#ffffff">
+                <button type="button" id="bg-color-reset" class="btn btn-secondary btn-small">Reset</button>
+                <button type="button" id="clear-canvas-btn" class="btn btn-danger btn-small" data-tooltip="Clear the entire canvas (same as Backspace)">Clear</button>
+              </div>
+              <label class="check" data-tooltip="Toggle dark mode theme">
+                <input type="checkbox" id="dark-mode-toggle">
+                <span>🌙 Dark</span>
+              </label>
+            </div>
+          </div>
         </div>
-        <div id="recordings-list" style="max-height: 300px; overflow-y: auto;">
-          <div style="font-size: 10px; color: #999; text-align: center; padding: 20px;">
-            No recordings yet
+      </section>
+
+      <button type="button" id="show-shortcuts-btn" class="btn btn-secondary btn-block">⌨️ Keyboard shortcuts (?)</button>
+      <p class="panel-hint">Tip: click or drag on the canvas to test paint.</p>
+    </div><!-- end #main-panel-sections -->
+
+    <!-- Timeline Settings (shown only in timeline mode) -->
+    <div id="timeline-controls" class="panel-subsection" style="display: none;">
+      <div id="timeline-settings-section">
+        <h2 class="subsection-title">Timeline Settings</h2>
+        <div class="form-stack">
+          <div class="form-row">
+            <label class="row-label" for="timeline-time-signature">Time:</label>
+            <select id="timeline-time-signature" class="input input-compact">
+              <option value="2">2/4</option>
+              <option value="3">3/4</option>
+              <option value="4" selected>4/4</option>
+              <option value="5">5/4</option>
+              <option value="6">6/4</option>
+              <option value="7">7/4</option>
+              <option value="8">8/4</option>
+              <option value="9">9/4</option>
+              <option value="10">10/4</option>
+              <option value="11">11/4</option>
+              <option value="12">12/4</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label class="row-label" for="timeline-bpm">BPM:</label>
+            <input type="number" id="timeline-bpm" class="input input-compact" value="80" min="30" max="240" step="1">
+            <span id="bpm-display" class="value-readout" aria-hidden="true">80</span>
+          </div>
+          <div class="form-row">
+            <label class="row-label" for="timeline-subdivision">Grid:</label>
+            <select id="timeline-subdivision" class="input input-compact">
+              <option value="4">Quarter Notes</option>
+              <option value="8">Eighth Notes</option>
+              <option value="12" selected>Eighth Triplets</option>
+              <option value="16">Sixteenth Notes</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label class="row-label" for="timeline-measures-per-staff">Per Row:</label>
+            <select id="timeline-measures-per-staff" class="input input-compact">
+              <option value="0">Auto</option>
+              <option value="1">1 measure</option>
+              <option value="2">2 measures</option>
+              <option value="3">3 measures</option>
+              <option value="4" selected>4 measures</option>
+              <option value="6">6 measures</option>
+              <option value="8">8 measures</option>
+            </select>
+          </div>
+          <div class="form-row form-row-wrap">
+            <label class="check">
+              <input type="checkbox" id="metronome-enabled">
+              <span>Metronome</span>
+            </label>
+            <label class="check">
+              <input type="checkbox" id="timeline-show-deviation">
+              <span>Timing Graph</span>
+            </label>
+            <select id="deviation-graph-mode" class="input input-mini" aria-label="Timing graph mode">
+              <option value="cumulative">Cumulative</option>
+              <option value="actual">Actual (+/-)</option>
+            </select>
+          </div>
+          <!-- Tempo Automation Controls (shown when metronome is enabled) -->
+          <div id="tempo-automation-section" class="inset-box" style="display: none;">
+            <label class="check check-strong">
+              <input type="checkbox" id="tempo-automation-enabled">
+              <span>Auto Tempo</span>
+            </label>
+            <div id="tempo-automation-controls" style="display: none;">
+              <div class="form-row form-row-wrap">
+                <select id="tempo-automation-direction" class="input input-mini" aria-label="Tempo change direction">
+                  <option value="increase">Increase</option>
+                  <option value="decrease">Decrease</option>
+                </select>
+                <input type="number" id="tempo-automation-bpm" class="input input-mini input-num" value="5" min="1" max="20" step="1" aria-label="BPM change">
+                <span class="muted-text">BPM every</span>
+                <input type="number" id="tempo-automation-bars" class="input input-mini input-num" value="4" min="1" max="16" step="1" aria-label="Bars between changes">
+                <span class="muted-text">bars</span>
+              </div>
+              <div class="form-row">
+                <span id="tempo-limit-label" class="muted-text">Max BPM:</span>
+                <input type="number" id="tempo-automation-max" class="input input-mini input-num" value="200" min="60" max="300" step="5" aria-label="Maximum BPM">
+                <input type="number" id="tempo-automation-min" class="input input-mini input-num" value="40" min="20" max="120" step="5" aria-label="Minimum BPM" style="display: none;">
+              </div>
+            </div>
+          </div>
+          <div class="form-row">
+            <label class="check">
+              <input type="checkbox" id="timeline-show-grid" checked>
+              <span>Show Grid</span>
+            </label>
+            <input type="color" id="timeline-grid-color" class="color-input color-input-mini" value="#b0b0b0" title="Grid line color" aria-label="Grid line color">
+          </div>
+          <div class="form-row">
+            <label class="row-label row-label-wide" for="timeline-row-spacing">Row Space:</label>
+            <input type="range" id="timeline-row-spacing" class="range" value="10" min="0" max="50" step="1">
+            <span id="row-spacing-display" class="value-readout">10px</span>
+          </div>
+          <div class="form-row">
+            <label for="midi-latency" class="row-label row-label-wide" data-tooltip="Subtracted from every hit's time to account for your kit's MIDI delay. Use Calibrate to measure it.">Offset:</label>
+            <input type="number" id="midi-latency" class="input input-compact" value="0" min="-50" max="200" step="1">
+            <span class="muted-text">ms</span>
+            <button id="calibrate-latency-btn" class="btn btn-small btn-secondary" type="button">Calibrate…</button>
           </div>
         </div>
       </div>
 
-      <!-- Session Recording Section -->
-      <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #ddd;">
-        <strong style="display: flex; align-items: center; gap: 6px; margin-bottom: 10px; font-size: 12px;">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10"/>
-            <polyline points="12 6 12 12 16 14"/>
-          </svg>
-          Session Recording
-        </strong>
+      <div id="timeline-playing-section">
+        <h2 class="subsection-title">Playing</h2>
+        <!-- Timeline control buttons - Row 1: Main controls -->
+        <div class="btn-row">
+          <button type="button" id="timeline-start-btn" class="btn btn-success">▶ Start</button>
+          <button type="button" id="timeline-pause-btn" class="btn btn-warning" style="display: none;">⏸ Pause</button>
+          <button type="button" id="timeline-end-btn" class="btn btn-danger" style="display: none;">■ End</button>
+        </div>
+        <!-- Timeline control buttons - Row 2: Start Over / Continue -->
+        <div class="btn-row">
+          <button type="button" id="timeline-start-over-btn" class="btn btn-caution" style="display: none;">↻ Start Over</button>
+          <button type="button" id="timeline-continue-btn" class="btn btn-success" style="display: none;">▶ Continue</button>
+        </div>
+      </div>
 
-        <div style="display: flex; flex-direction: column; gap: 6px;">
-          <div style="display: flex; gap: 6px;">
-            <button id="session-record-btn" data-tooltip="Start recording MIDI session" style="
-              flex: 1;
-              padding: 6px 12px;
-              border: 1px solid #ddd;
-              border-radius: 4px;
-              background: white;
-              cursor: pointer;
-              font-size: 11px;
-              font-weight: bold;
-            ">🔴 Record</button>
-            <button id="session-stop-btn" data-tooltip="Stop recording" disabled style="
-              flex: 1;
-              padding: 6px 12px;
-              border: 1px solid #ddd;
-              border-radius: 4px;
-              background: #f0f0f0;
-              cursor: not-allowed;
-              font-size: 11px;
-            ">⏹️ Stop</button>
+      <div id="timeline-recording-options">
+        <button type="button" id="recording-options-header" class="disclosure" aria-controls="recording-options-content">
+          <span>Recording Options</span>
+          <span id="recording-options-arrow" class="disclosure-arrow" aria-hidden="true">&#9654;</span>
+        </button>
+        <div id="recording-options-content" class="form-stack" style="display: none;">
+          <label class="check">
+            <input type="checkbox" id="timeline-auto-record">
+            <span>Record video with timeline</span>
+          </label>
+          <div class="form-row">
+            <label class="row-label row-label-wide" for="timeline-warmup-measures">Warm-up:</label>
+            <select id="timeline-warmup-measures" class="input input-compact">
+              <option value="0">0 measures</option>
+              <option value="1" selected>1 measure</option>
+              <option value="2">2 measures</option>
+              <option value="3">3 measures</option>
+              <option value="4">4 measures</option>
+            </select>
           </div>
-          <div style="display: flex; gap: 6px;">
-            <button id="session-export-btn" data-tooltip="Export session to JSON file" disabled style="
-              flex: 1;
-              padding: 6px 12px;
-              border: 1px solid #ddd;
-              border-radius: 4px;
-              background: #f0f0f0;
-              cursor: not-allowed;
-              font-size: 11px;
-            ">💾 Export</button>
-            <button id="session-clear-btn" data-tooltip="Clear session data" disabled style="
-              flex: 1;
-              padding: 6px 12px;
-              border: 1px solid #ddd;
-              border-radius: 4px;
-              background: #f0f0f0;
-              cursor: not-allowed;
-              font-size: 11px;
-            ">🗑️ Clear</button>
+          <div class="form-row">
+            <label class="row-label row-label-wide" for="timeline-video-quality">Quality:</label>
+            <select id="timeline-video-quality" class="input input-compact">
+              <option value="low">Low (3 Mbps)</option>
+              <option value="medium" selected>Medium (6 Mbps)</option>
+              <option value="high">High (10 Mbps)</option>
+              <option value="ultra">Ultra (16 Mbps)</option>
+            </select>
           </div>
-          <div id="session-status" style="
-            font-size: 10px;
-            color: #666;
-            text-align: center;
-            padding: 4px;
-            min-height: 18px;
-          ">Ready to record</div>
+          <div class="form-row">
+            <label class="row-label row-label-wide" for="timeline-video-format">Format:</label>
+            <select id="timeline-video-format" class="input input-compact">
+              <option value="auto" selected>Auto (MP4 when supported)</option>
+              <option value="mp4">MP4 (H.264)</option>
+              <option value="webm-vp9">WebM VP9</option>
+              <option value="webm-vp8">WebM VP8</option>
+              <option value="webm">WebM</option>
+            </select>
+          </div>
+          <div class="inset-box">
+            <div class="inset-title">MIDI Out → DAW (loopMIDI)</div>
+            <div class="form-row">
+              <label class="row-label row-label-narrow" for="record-output-port">Port:</label>
+              <select id="record-output-port" class="input input-compact"
+                data-tooltip="Select a virtual MIDI output port (e.g. loopMIDI). Drum Painter sends a note here when recording starts/stops so your DAW can react.">
+                <option value="">None</option>
+              </select>
+            </div>
+            <div class="form-row form-row-wrap">
+              <label class="row-label row-label-narrow" for="record-output-note">Note:</label>
+              <input type="number" id="record-output-note" class="input input-mini input-num"
+                min="0" max="127" value="36"
+                data-tooltip="MIDI note sent on record start (vel 127) and stop (vel 64). MIDI-map this note in your DAW.">
+              <label class="muted-text" for="record-output-channel">Ch:</label>
+              <input type="number" id="record-output-channel" class="input input-mini input-num" min="1" max="16" value="1">
+              <button type="button" id="record-output-test-btn" class="btn btn-success btn-small"
+                data-tooltip="Send a test note now to verify your DAW receives it.">Test</button>
+            </div>
+            <label class="check"
+              data-tooltip="Send MIDI Clock when recording starts so your DAW locks to Drum Painter's BPM. Enable 'Sync' on the loopMIDI port in Ableton's MIDI preferences.">
+              <input type="checkbox" id="record-output-clock">
+              <span>Send MIDI Clock (tempo sync)</span>
+            </label>
+            <div id="record-output-clock-info" class="note-box note-box-primary" style="display: none;">
+              → <span id="record-output-bpm-display">120</span> BPM &nbsp;·&nbsp; <span id="record-output-timesig-display">4/4</span>
+              &nbsp;·&nbsp; Enable <strong>Sync</strong> on loopMIDI in Ableton MIDI prefs
+            </div>
+          </div>
         </div>
       </div>
     </div>
+
+    <!-- Spiral Settings (shown only in spiral mode) -->
+    <div id="spiral-controls" class="panel-subsection" style="display: none;">
+      <h2 class="subsection-title">Spiral Settings</h2>
+      <div class="form-stack">
+        <div class="form-row">
+          <label class="row-label row-label-wide" for="spiral-tightness">Tightness:</label>
+          <input type="range" id="spiral-tightness" class="range" value="15" min="5" max="40" step="1">
+          <span id="spiral-tightness-display" class="value-readout">15</span>
+        </div>
+        <div class="form-row">
+          <span class="row-label row-label-wide">Tracks:</span>
+          <label class="check">
+            <input type="checkbox" id="spiral-separate-tracks" checked>
+            <span>Separate</span>
+          </label>
+        </div>
+        <div id="spiral-track-spacing-row" class="form-row" style="display: flex;">
+          <label class="row-label row-label-wide" for="spiral-track-spacing">Spacing:</label>
+          <input type="range" id="spiral-track-spacing" class="range" value="8" min="1" max="30" step="1">
+          <span id="spiral-track-spacing-display" class="value-readout">8</span>
+        </div>
+        <button type="button" id="spiral-reset-btn" class="btn btn-primary btn-block btn-small">↻ Reset Spiral</button>
+      </div>
+    </div>
+    </div><!-- end #controls-body -->
+  </div><!-- end #controls -->
+
+  <!-- Active Drum Indicator (Bank Mode) -->
+  <div id="active-drum-indicator" class="active-drum-indicator" role="status" style="display: none;"></div>
+
+  <!-- ===================== Right panel: Quick Settings ===================== -->
+  <div id="drum-settings" class="panel panel-right" role="region" aria-labelledby="quick-settings-title">
+    <div id="quick-settings-header" class="panel-header drag-handle">
+      <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+        <line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>
+      </svg>
+      <h2 id="quick-settings-title" class="panel-title">Quick Settings</h2>
+      <button type="button" id="quick-settings-collapse-btn" class="icon-btn panel-collapse-btn" aria-label="Collapse quick settings" aria-expanded="true" aria-controls="quick-settings-content">
+        <svg id="quick-settings-collapse-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+          <polyline points="18 15 12 9 6 15"/>
+        </svg>
+      </button>
+    </div>
+
+    <div id="quick-settings-content" class="panel-body">
+      <!-- Global Controls -->
+      <div class="panel-block">
+        <div class="form-row">
+          <label class="field-label field-label-inline" for="global-size">Global size</label>
+          <span id="global-size-val" class="value-readout">1.0x</span>
+        </div>
+        <input type="range" id="global-size" class="range range-block" min="0.5" max="2.0" step="0.1" value="1.0"
+          data-tooltip="Adjust overall size of all drum marks">
+      </div>
+
+      <!-- Kit setup: hit each pad to map it -->
+      <button type="button" id="kit-setup-btn" class="btn btn-accent btn-block" data-tooltip="Map your pads by hitting each drum in turn">
+        🥁 Kit Setup
+      </button>
+      <div class="btn-row">
+        <button type="button" id="keyboard-pads-btn" class="btn btn-secondary" aria-pressed="false" data-tooltip="Play with the computer keyboard (A S D F G H J K L ;). Toggle with the ` key.">
+          ⌨️ Keys
+        </button>
+        <button type="button" id="demo-btn" class="btn btn-secondary" aria-pressed="false" data-tooltip="Play a demo groove so you can try the app without a kit">
+          ▶ Demo beat
+        </button>
+      </div>
+
+      <!-- Customize Button -->
+      <button type="button" id="customize-btn" class="btn btn-primary btn-block" data-tooltip="Configure individual drum colors, sizes, and shapes">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+          <path d="M12 2a10 10 0 1 0 10 10 4 4 0 0 1-5-5 4 4 0 0 1-5-5"/>
+          <path d="M8.5 8.5a2.5 2.5 0 1 1 3.536 3.536L10.5 13.5l-3 1 1-3 1.536-1.536z"/>
+        </svg>
+        Customize Drums
+      </button>
+
+      <div class="btn-row">
+        <!-- MIDI Mapping Button -->
+        <button type="button" id="midi-mapping-btn" class="btn btn-secondary" data-tooltip="Bank mode: use pads to pick a drum and faders to control it">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+            <rect x="2" y="4" width="20" height="16" rx="2"/>
+            <path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01"/>
+            <path d="M8 12v4M12 12v4M16 12v4"/>
+          </svg>
+          MIDI Mapping
+        </button>
+
+        <!-- User Guide Button -->
+        <button type="button" id="user-guide-btn" class="btn btn-secondary" data-tooltip="Open the user guide (press U)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+            <line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+          User Guide
+        </button>
+      </div>
+
+      <button type="button" id="debug-btn" class="btn btn-secondary btn-block" data-tooltip="Show debug panel with settings vs paint values" hidden>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          <path d="M12 8v4"/>
+          <path d="M12 16h.01"/>
+        </svg>
+        Debug Panel
+      </button>
+
+      <!-- Projects Section -->
+      <section class="panel-block panel-block-divided" aria-labelledby="projects-title">
+        <h3 id="projects-title" class="block-title">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+          </svg>
+          Projects
+        </h3>
+        <div class="form-row">
+          <input type="text" id="project-name-input" class="input" placeholder="Project name..." aria-label="Project name">
+          <button type="button" id="save-project-btn" class="btn btn-success btn-small">Save</button>
+        </div>
+        <select id="projects-list" class="input" aria-label="Saved projects">
+          <option value="">Select a project...</option>
+        </select>
+        <div class="btn-row">
+          <button type="button" id="load-project-btn" class="btn btn-info btn-small">Load</button>
+          <button type="button" id="delete-project-btn" class="btn btn-danger btn-small">Delete</button>
+        </div>
+      </section>
+
+      <!-- Video Recording Section -->
+      <section id="quick-settings-video-section" class="panel-block panel-block-divided" aria-labelledby="video-title">
+        <h3 id="video-title" class="block-title">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+            <circle cx="12" cy="12" r="10"/>
+            <circle cx="12" cy="12" r="3" fill="currentColor"/>
+          </svg>
+          Video Recording
+        </h3>
+
+        <div class="field">
+          <label class="field-label" for="video-quality">Quality</label>
+          <div data-tooltip="Select video recording quality">
+            <select id="video-quality" class="input">
+              <option value="low">Low (3 Mbps)</option>
+              <option value="medium" selected>Medium (6 Mbps)</option>
+              <option value="high">High (10 Mbps)</option>
+              <option value="ultra">Ultra (16 Mbps)</option>
+            </select>
+          </div>
+        </div>
+
+        <button type="button" id="video-record-btn" class="btn btn-danger btn-block" data-tooltip="Start/stop recording video (Space)">
+          <span id="video-record-icon" aria-hidden="true">●</span>
+          <span id="video-record-text">Start Recording</span>
+        </button>
+
+        <div id="chronicle-recording-info" class="note-box note-box-info" style="display: none;">
+          ℹ️ Recording is controlled by the Timeline (Start / End)
+        </div>
+
+        <div id="video-recording-status" class="note-box note-box-danger" role="status" style="display: none;">
+          <div class="recording-live">
+            <span class="recording-dot" aria-hidden="true">●</span>
+            Recording...
+          </div>
+          <div id="video-recording-time">00:00</div>
+        </div>
+
+        <!-- Recent Recordings List -->
+        <div id="recordings-section" class="panel-block-divided">
+          <div class="form-row form-row-between">
+            <h4 class="field-label field-label-inline">Recent Recordings</h4>
+            <button type="button" id="clear-recordings-btn" class="btn btn-danger btn-xs" title="Clear all recordings">
+              Clear All
+            </button>
+          </div>
+          <div id="recordings-list" class="recordings-list">
+            <div class="empty-state">No recordings yet</div>
+          </div>
+        </div>
+
+        <!-- Session Recording Section -->
+        <div class="panel-block-divided">
+          <h3 class="block-title">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+              <circle cx="12" cy="12" r="10"/>
+              <polyline points="12 6 12 12 16 14"/>
+            </svg>
+            Session Recording
+          </h3>
+          <div class="btn-row">
+            <button type="button" id="session-record-btn" class="btn btn-secondary btn-small session-btn" data-tooltip="Start recording MIDI session">🔴 Record</button>
+            <button type="button" id="session-stop-btn" class="btn btn-secondary btn-small session-btn" data-tooltip="Stop recording" disabled>⏹️ Stop</button>
+          </div>
+          <div class="btn-row">
+            <button type="button" id="session-export-btn" class="btn btn-secondary btn-small session-btn" data-tooltip="Export session to JSON file" disabled>💾 Export</button>
+            <button type="button" id="session-clear-btn" class="btn btn-secondary btn-small session-btn" data-tooltip="Clear session data" disabled>🗑️ Clear</button>
+          </div>
+          <div id="session-status" class="session-status" role="status">Ready to record</div>
+        </div>
+      </section>
     </div><!-- End quick-settings-content -->
   </div>
 
-  <!-- Customization Panel Modal -->
-  <div id="customization-backdrop" style="
-    display: none;
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.5);
-    z-index: 999;
-  "></div>
+  <!-- ===================== Customization Panel Modal ===================== -->
+  <div id="customization-backdrop" class="scrim" style="display: none;"></div>
 
-  <div id="customization-panel" style="
-    display: none;
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    background: white;
-    border-radius: 12px;
-    box-shadow: 0 10px 40px rgba(0,0,0,0.3);
-    max-width: 800px;
-    width: 95vw;
-    max-height: 90vh;
-    overflow: hidden;
-    z-index: 1000;
-  ">
-    <!-- Header (drag handle) -->
-    <div id="customization-panel-header" style="
-      position: sticky;
-      top: 0;
-      background: white;
-      z-index: 10;
-      padding: 20px;
-      border-bottom: 2px solid #e9ecef;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      cursor: grab;
-      user-select: none;
-    ">
-      <h2 style="margin: 0; font-size: 20px; color: #333; display: flex; align-items: center; gap: 8px;">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="10"/>
-          <circle cx="12" cy="12" r="3"/>
-          <path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>
-        </svg>
-        Drum Customization
-      </h2>
-      <button id="close-customize-btn" style="
-        background: #f0f0f0;
-        border: none;
-        border-radius: 50%;
-        width: 35px;
-        height: 35px;
-        cursor: pointer;
-        font-size: 20px;
-        font-weight: bold;
-        color: #666;
-      ">×</button>
-    </div>
-
-    <!-- Scrollable Content -->
-    <div style="
-      max-height: calc(90vh - 200px);
-      overflow-y: auto;
-      padding: 20px;
-    ">
-      <div id="drum-settings-container"></div>
-    </div>
-
-    <!-- Footer with Save/Load -->
-    <div style="
-      position: sticky;
-      bottom: 0;
-      background: #f8f9fa;
-      border-top: 2px solid #e9ecef;
-      padding: 15px 20px;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    ">
-      <div style="display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;">
-        <button id="export-file-btn" style="
-          padding: 8px 16px;
-          background: #6c757d;
-          color: white;
-          border: none;
-          border-radius: 5px;
-          cursor: pointer;
-          font-weight: bold;
-          font-size: 12px;
-        ">📥 Export to File</button>
-        <button id="import-file-btn" style="
-          padding: 8px 16px;
-          background: #6c757d;
-          color: white;
-          border: none;
-          border-radius: 5px;
-          cursor: pointer;
-          font-weight: bold;
-          font-size: 12px;
-        ">📤 Import from File</button>
-        <button id="reset-factory-btn" style="
-          padding: 8px 16px;
-          background: #ffc107;
-          color: #333;
-          border: none;
-          border-radius: 5px;
-          cursor: pointer;
-          font-weight: bold;
-          font-size: 12px;
-        ">🔄 Reset to Factory</button>
+  <div id="customization-panel" class="dialog dialog-floating dialog-lg" role="dialog" aria-modal="true" aria-labelledby="customization-title" style="display: none;">
+    <div class="dialog-frame">
+      <!-- Header (drag handle) -->
+      <div id="customization-panel-header" class="dialog-header dialog-header-draggable">
+        <h2 id="customization-title" class="dialog-title">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+            <circle cx="12" cy="12" r="10"/>
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>
+          </svg>
+          Drum Customization
+        </h2>
+        <button type="button" id="close-customize-btn" class="dialog-close" aria-label="Close drum customization">×</button>
       </div>
-      <div style="text-align: center; font-size: 10px; color: #666;">
-        Settings auto-save to browser storage. Export to share between devices.
+
+      <!-- Scrollable Content -->
+      <div class="dialog-body">
+        <div id="drum-settings-container"></div>
+        <div id="palette-subview-container" style="display: none;"></div>
+      </div>
+
+      <!-- Footer with Save/Load -->
+      <div id="customization-panel-footer" class="dialog-footer dialog-footer-stack">
+        <!-- Default footer (drum editing mode) -->
+        <div id="default-footer-content" class="footer-stack" style="display: flex;">
+          <div class="footer-row">
+            <button type="button" id="apply-palette-btn" class="btn btn-palette">🎨 Apply Palette</button>
+          </div>
+          <div class="footer-row">
+            <button type="button" id="export-file-btn" class="btn btn-secondary">📥 Export to File</button>
+            <button type="button" id="import-file-btn" class="btn btn-secondary">📤 Import from File</button>
+            <button type="button" id="reset-factory-btn" class="btn btn-warning">🔄 Reset to Factory</button>
+          </div>
+          <div class="footer-note">
+            Settings auto-save to browser storage. Export to share between devices.
+          </div>
+        </div>
+
+        <!-- Palette-mode footer (hidden until Apply Palette is clicked) -->
+        <div id="palette-footer-content" class="footer-row footer-row-end" style="display: none;">
+          <button type="button" id="palette-cancel-btn" class="btn btn-secondary">Cancel</button>
+          <button type="button" id="palette-apply-btn" class="btn btn-palette">Apply</button>
+        </div>
       </div>
     </div>
   </div>
 
   <!-- Hidden file input for importing -->
-  <input type="file" id="import-file-input" accept=".json" style="display: none;">
+  <input type="file" id="import-file-input" accept=".json" style="display: none;" aria-hidden="true" tabindex="-1">
 
-  <script>
-    // Global flag to prevent painting while dragging controls
-    window.isDraggingControls = false;
+  <!-- ===================== MIDI Mapping Panel Modal ===================== -->
+  <div id="midi-mapping-backdrop" class="scrim" style="display: none;"></div>
 
-    // Make controls panel draggable
-    (function() {
-      const controls = document.getElementById('controls');
-      const header = document.getElementById('controls-header');
-      let isDragging = false;
-      let currentX;
-      let currentY;
-      let initialX;
-      let initialY;
-      let xOffset = 0;
-      let yOffset = 0;
-
-      header.addEventListener('mousedown', dragStart);
-      document.addEventListener('mousemove', drag);
-      document.addEventListener('mouseup', dragEnd);
-
-      function dragStart(e) {
-        initialX = e.clientX - xOffset;
-        initialY = e.clientY - yOffset;
-
-        if (e.target === header) {
-          isDragging = true;
-          window.isDraggingControls = true;
-        }
-      }
-
-      function drag(e) {
-        if (isDragging) {
-          e.preventDefault();
-
-          currentX = e.clientX - initialX;
-          currentY = e.clientY - initialY;
-
-          xOffset = currentX;
-          yOffset = currentY;
-
-          setTranslate(currentX, currentY, controls);
-        }
-      }
-
-      function dragEnd(e) {
-        initialX = currentX;
-        initialY = currentY;
-        isDragging = false;
-        window.isDraggingControls = false;
-      }
-
-      function setTranslate(xPos, yPos, el) {
-        el.style.transform = `translate(${xPos}px, ${yPos}px)`;
-      }
-    })();
-
-    // Make quick settings panel draggable
-    (function() {
-      const quickSettings = document.getElementById('drum-settings');
-      const header = document.getElementById('quick-settings-header');
-      let isDragging = false;
-      let currentX;
-      let currentY;
-      let initialX;
-      let initialY;
-      let xOffset = 0;
-      let yOffset = 0;
-
-      if (!quickSettings || !header) return;
-
-      header.addEventListener('mousedown', dragStart);
-      document.addEventListener('mousemove', drag);
-      document.addEventListener('mouseup', dragEnd);
-
-      function dragStart(e) {
-        initialX = e.clientX - xOffset;
-        initialY = e.clientY - yOffset;
-
-        // Don't start drag if clicking on collapse button
-        const collapseBtn = document.getElementById('quick-settings-collapse-btn');
-        if (collapseBtn && (e.target === collapseBtn || collapseBtn.contains(e.target))) {
-          return;
-        }
-
-        if (e.target === header || header.contains(e.target)) {
-          isDragging = true;
-          window.isDraggingControls = true;
-        }
-      }
-
-      function drag(e) {
-        if (isDragging) {
-          e.preventDefault();
-
-          currentX = e.clientX - initialX;
-          currentY = e.clientY - initialY;
-
-          xOffset = currentX;
-          yOffset = currentY;
-
-          setTranslate(currentX, currentY, quickSettings);
-        }
-      }
-
-      function dragEnd(e) {
-        initialX = currentX;
-        initialY = currentY;
-        isDragging = false;
-        window.isDraggingControls = false;
-      }
-
-      function setTranslate(xPos, yPos, el) {
-        el.style.transform = `translate(${xPos}px, ${yPos}px)`;
-      }
-    })();
-
-    // Quick settings collapse/expand functionality
-    (function() {
-      const collapseBtn = document.getElementById('quick-settings-collapse-btn');
-      const content = document.getElementById('quick-settings-content');
-      const icon = document.getElementById('quick-settings-collapse-icon');
-      const panel = document.getElementById('drum-settings');
-
-      if (!collapseBtn || !content || !icon) return;
-
-      // Check localStorage for saved state
-      const isCollapsed = localStorage.getItem('quickSettingsCollapsed') === 'true';
-
-      function updateCollapseState(collapsed) {
-        if (collapsed) {
-          content.style.display = 'none';
-          icon.innerHTML = '<polyline points="6 9 12 15 18 9"/>';
-          panel.style.maxHeight = 'none';
-          panel.style.overflowY = 'visible';
-        } else {
-          content.style.display = 'block';
-          icon.innerHTML = '<polyline points="18 15 12 9 6 15"/>';
-          panel.style.maxHeight = '90vh';
-          panel.style.overflowY = 'auto';
-        }
-        localStorage.setItem('quickSettingsCollapsed', collapsed);
-      }
-
-      // Apply initial state
-      updateCollapseState(isCollapsed);
-
-      // Toggle on button click
-      collapseBtn.addEventListener('click', (e) => {
-        e.stopPropagation(); // Prevent drag from starting
-        const currentlyCollapsed = content.style.display === 'none';
-        updateCollapseState(!currentlyCollapsed);
-      });
-    })();
-
-    // Prevent clicks on panels from going through to canvas
-    (function() {
-      const panelIds = [
-        'controls',
-        'drum-settings',
-        'customization-panel',
-        'customization-backdrop',
-        'midi-mapping-panel',
-        'midi-mapping-backdrop',
-        'shortcuts-panel',
-        'shortcuts-backdrop',
-        'midi-devices-panel',
-        'midi-devices-backdrop'
-      ];
-
-      panelIds.forEach(id => {
-        const panel = document.getElementById(id);
-        if (panel) {
-          // Stop propagation for mouse events on panels
-          // Note: Don't stop mouseup propagation - it's needed for drag end handlers
-          panel.addEventListener('mousedown', (e) => e.stopPropagation());
-          panel.addEventListener('click', (e) => e.stopPropagation());
-          panel.addEventListener('dblclick', (e) => e.stopPropagation());
-        }
-      });
-    })();
-  </script>
-
-  <!-- MIDI Mapping Panel Modal -->
-  <div id="midi-mapping-backdrop" style="
-    display: none;
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.5);
-    z-index: 999;
-  "></div>
-
-  <div id="midi-mapping-panel" style="
-    display: none;
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    background: white;
-    border-radius: 12px;
-    box-shadow: 0 10px 40px rgba(0,0,0,0.3);
-    max-width: 700px;
-    width: 95vw;
-    max-height: 90vh;
-    overflow: hidden;
-    z-index: 1000;
-  ">
-    <!-- Header -->
-    <div style="
-      position: sticky;
-      top: 0;
-      background: white;
-      z-index: 10;
-      padding: 20px;
-      border-bottom: 2px solid #e9ecef;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    ">
-      <h2 style="margin: 0; font-size: 20px; color: #333; display: flex; align-items: center; gap: 8px;">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="2" y="4" width="20" height="16" rx="2"/>
-          <path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01"/>
-          <path d="M8 12v4M12 12v4M16 12v4"/>
-        </svg>
-        MIDI Mapping
-      </h2>
-      <button id="close-midi-mapping-btn" style="
-        background: #f0f0f0;
-        border: none;
-        border-radius: 50%;
-        width: 35px;
-        height: 35px;
-        cursor: pointer;
-        font-size: 20px;
-        font-weight: bold;
-        color: #666;
-      ">×</button>
-    </div>
-
-    <!-- Scrollable Content -->
-    <div style="
-      max-height: calc(90vh - 100px);
-      overflow-y: auto;
-      padding: 20px;
-    ">
-      <div id="midi-mapping-container"></div>
-    </div>
-  </div>
-
-  <!-- Keyboard Shortcuts Panel -->
-  <div id="shortcuts-backdrop" style="
-    display: none;
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.5);
-    z-index: 9999;
-  "></div>
-
-  <div id="shortcuts-panel" style="
-    display: none;
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    background: white;
-    border-radius: 12px;
-    box-shadow: 0 10px 40px rgba(0,0,0,0.3);
-    max-width: 600px;
-    width: 90vw;
-    max-height: 80vh;
-    overflow: hidden;
-    z-index: 10000;
-  ">
-    <!-- Header -->
-    <div style="
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-      padding: 20px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    ">
-      <h2 style="margin: 0; font-size: 20px; display: flex; align-items: center; gap: 8px;">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="2" y="4" width="20" height="16" rx="2"/>
-          <path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01"/>
-        </svg>
-        Keyboard Shortcuts
-      </h2>
-      <button id="close-shortcuts-btn" style="
-        background: rgba(255, 255, 255, 0.2);
-        border: none;
-        border-radius: 50%;
-        width: 32px;
-        height: 32px;
-        cursor: pointer;
-        font-size: 20px;
-        font-weight: bold;
-        color: white;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      ">×</button>
-    </div>
-
-    <!-- Content -->
-    <div style="
-      padding: 24px;
-      overflow-y: auto;
-      max-height: calc(80vh - 80px);
-    ">
-      <!-- General Actions -->
-      <div style="margin-bottom: 20px;">
-        <h3 style="margin: 0 0 12px 0; font-size: 14px; color: #667eea; text-transform: uppercase; letter-spacing: 0.5px;">General</h3>
-        <div style="display: grid; gap: 8px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
-            <span style="font-size: 13px;">Start/Stop recording video</span>
-            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">SPACE</kbd>
-          </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
-            <span style="font-size: 13px;">Clear canvas</span>
-            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">BACKSPACE</kbd>
-          </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
-            <span style="font-size: 13px;">Save image</span>
-            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">S</kbd>
-          </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
-            <span style="font-size: 13px;">Save settings now (auto-saves after 2s)</span>
-            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">D</kbd>
-          </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
-            <span style="font-size: 13px;">Undo</span>
-            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">Z</kbd>
-          </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
-            <span style="font-size: 13px;">Redo</span>
-            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">Y</kbd>
-          </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
-            <span style="font-size: 13px;">Hide/Show UI</span>
-            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">H</kbd>
-          </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
-            <span style="font-size: 13px;">Toggle fullscreen</span>
-            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">F</kbd>
-          </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
-            <span style="font-size: 13px;">Show this help</span>
-            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">?</kbd>
-          </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
-            <span style="font-size: 13px;">Show user guide</span>
-            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">U</kbd>
-          </div>
-        </div>
+  <div id="midi-mapping-panel" class="dialog dialog-floating dialog-md" role="dialog" aria-modal="true" aria-labelledby="midi-mapping-title" style="display: none;">
+    <div class="dialog-frame">
+      <div class="dialog-header">
+        <h2 id="midi-mapping-title" class="dialog-title">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+            <rect x="2" y="4" width="20" height="16" rx="2"/>
+            <path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01"/>
+            <path d="M8 12v4M12 12v4M16 12v4"/>
+          </svg>
+          MIDI Mapping
+        </h2>
+        <button type="button" id="close-midi-mapping-btn" class="dialog-close" aria-label="Close MIDI mapping">×</button>
       </div>
-
-      <!-- Mode Navigation -->
-      <div style="margin-bottom: 20px;">
-        <h3 style="margin: 0 0 12px 0; font-size: 14px; color: #667eea; text-transform: uppercase; letter-spacing: 0.5px;">Navigation</h3>
-        <div style="display: grid; gap: 8px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
-            <span style="font-size: 13px;">Switch Freeform ↔ Timeline</span>
-            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">← →</kbd>
-          </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
-            <span style="font-size: 13px;">Cycle styles/layouts</span>
-            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">↑ ↓</kbd>
-          </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
-            <span style="font-size: 13px;">Cycle blend modes</span>
-            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">B</kbd>
-          </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
-            <span style="font-size: 13px;">Select drum (1-9)</span>
-            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">1-9</kbd>
-          </div>
-        </div>
-      </div>
-
-      <!-- Timeline Mode -->
-      <div style="margin-bottom: 20px;">
-        <h3 style="margin: 0 0 12px 0; font-size: 14px; color: #667eea; text-transform: uppercase; letter-spacing: 0.5px;">Timeline Mode</h3>
-        <div style="display: grid; gap: 8px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
-            <span style="font-size: 13px;">Start/Pause (Staff/Spiral only)</span>
-            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">P</kbd>
-          </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
-            <span style="font-size: 13px;">Clear timeline</span>
-            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">C</kbd>
-          </div>
-        </div>
-      </div>
-
-      <!-- Mouse -->
-      <div style="margin-bottom: 20px;">
-        <h3 style="margin: 0 0 12px 0; font-size: 14px; color: #667eea; text-transform: uppercase; letter-spacing: 0.5px;">Mouse</h3>
-        <div style="display: grid; gap: 8px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
-            <span style="font-size: 13px;">Test paint</span>
-            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">Click / Drag</kbd>
-          </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px;">
-            <span style="font-size: 13px;">Scroll timeline (time-based layouts)</span>
-            <kbd style="background: white; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">Mouse Wheel</kbd>
-          </div>
-        </div>
-      </div>
-
-      <div style="text-align: center; padding-top: 16px; border-top: 1px solid #e9ecef; color: #666; font-size: 12px;">
-        Press <kbd style="background: white; padding: 2px 6px; border-radius: 3px; font-family: monospace; font-size: 11px; border: 1px solid #ddd;">?</kbd> or <kbd style="background: white; padding: 2px 6px; border-radius: 3px; font-family: monospace; font-size: 11px; border: 1px solid #ddd;">ESC</kbd> to close
+      <div class="dialog-body">
+        <div id="midi-mapping-container"></div>
       </div>
     </div>
   </div>
 
-  <!-- User Guide Panel -->
-  <div id="user-guide-backdrop" style="
-    display: none;
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.7);
-    backdrop-filter: blur(4px);
-    z-index: 10000;
-    align-items: center;
-    justify-content: center;
-  ">
-    <div id="user-guide-panel" style="
-      background: white;
-      border-radius: 12px;
-      max-width: 800px;
-      max-height: 85vh;
-      overflow-y: auto;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-      margin: 20px;
-    ">
+  <!-- ===================== Keyboard Shortcuts Panel ===================== -->
+  <div id="shortcuts-backdrop" class="scrim scrim-top" style="display: none;"></div>
+
+  <div id="shortcuts-panel" class="dialog dialog-floating dialog-sm-md dialog-top" role="dialog" aria-modal="true" aria-labelledby="shortcuts-title" style="display: none;">
+    <div class="dialog-frame">
+      <div class="dialog-header dialog-header-brand">
+        <h2 id="shortcuts-title" class="dialog-title">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+            <rect x="2" y="4" width="20" height="16" rx="2"/>
+            <path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01"/>
+          </svg>
+          Keyboard Shortcuts
+        </h2>
+        <button type="button" id="close-shortcuts-btn" class="dialog-close dialog-close-on-brand" aria-label="Close keyboard shortcuts">×</button>
+      </div>
+
+      <div class="dialog-body">
+        <h3 class="shortcut-group-title">General</h3>
+        <ul class="shortcut-list">
+          <li><span>Start/stop video recording</span><kbd>Space</kbd></li>
+          <li><span>Clear canvas (undo with <kbd>Ctrl/⌘</kbd>+<kbd>Z</kbd>)</span><span class="kbd-group"><kbd>Backspace</kbd> / <kbd>Delete</kbd></span></li>
+          <li><span>Undo</span><span class="kbd-group"><kbd>Ctrl/⌘</kbd>+<kbd>Z</kbd></span></li>
+          <li><span>Redo</span><span class="kbd-group"><kbd>Ctrl/⌘</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> or <kbd>Ctrl</kbd>+<kbd>Y</kbd></span></li>
+          <li><span>Save image</span><kbd>S</kbd></li>
+          <li><span>Save settings now (they also auto-save)</span><kbd>D</kbd></li>
+          <li><span>Hide/show UI</span><kbd>H</kbd></li>
+          <li><span>Toggle fullscreen</span><kbd>F</kbd></li>
+          <li><span>Keyboard shortcuts (this list)</span><kbd>?</kbd></li>
+          <li><span>User guide</span><kbd>U</kbd></li>
+          <li><span>Close dialogs / leave keyboard-pads mode</span><kbd>Esc</kbd></li>
+        </ul>
+
+        <h3 class="shortcut-group-title">Navigation</h3>
+        <ul class="shortcut-list">
+          <li><span>Switch Freeform ↔ Timeline</span><span class="kbd-group"><kbd>←</kbd> <kbd>→</kbd></span></li>
+          <li><span>Cycle styles/layouts</span><span class="kbd-group"><kbd>↑</kbd> <kbd>↓</kbd></span></li>
+          <li><span>Cycle blend mode</span><kbd>B</kbd></li>
+          <li><span>Select drum in the Customize panel</span><kbd>1–9</kbd></li>
+        </ul>
+
+        <h3 class="shortcut-group-title">Timeline Mode</h3>
+        <ul class="shortcut-list">
+          <li><span>Start/pause timeline</span><kbd>P</kbd></li>
+          <li><span>Clear timeline</span><kbd>C</kbd></li>
+        </ul>
+
+        <h3 class="shortcut-group-title">Playing Without a Kit</h3>
+        <ul class="shortcut-list">
+          <li><span>Toggle keyboard pads</span><kbd>`</kbd></li>
+          <li><span>Hit a pad (keyboard pads on)</span><span class="kbd-group"><kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> <kbd>F</kbd> <kbd>G</kbd> <kbd>H</kbd> <kbd>J</kbd> <kbd>K</kbd> <kbd>L</kbd> <kbd>;</kbd></span></li>
+          <li><span>Accent (harder hit)</span><span class="kbd-group">hold <kbd>Shift</kbd></span></li>
+        </ul>
+
+        <h3 class="shortcut-group-title">Mouse / Touch</h3>
+        <ul class="shortcut-list">
+          <li><span>Test paint</span><kbd>Click / Drag</kbd></li>
+          <li><span>Scroll timeline (time-based layouts)</span><kbd>Mouse wheel</kbd></li>
+        </ul>
+
+        <p class="dialog-hint">Press <kbd>?</kbd> or <kbd>Esc</kbd> to close</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== User Guide Panel ===================== -->
+  <div id="user-guide-backdrop" class="overlay-center overlay-blur" style="display: none;">
+    <div id="user-guide-panel" class="dialog dialog-lg guide" role="dialog" aria-modal="true" aria-labelledby="user-guide-title">
       <!-- Header -->
-      <div style="
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        padding: 20px;
-        border-radius: 12px 12px 0 0;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-      ">
-        <h2 style="margin: 0; display: flex; align-items: center; gap: 12px; font-size: 22px;">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <div class="dialog-header dialog-header-brand">
+        <h2 id="user-guide-title" class="dialog-title">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false">
             <circle cx="12" cy="12" r="10"/>
             <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
             <line x1="12" y1="17" x2="12.01" y2="17"/>
           </svg>
           User Guide
         </h2>
-        <button id="close-user-guide-btn" style="
-          background: rgba(255, 255, 255, 0.2);
-          border: none;
-          border-radius: 50%;
-          color: white;
-          width: 36px;
-          height: 36px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          cursor: pointer;
-          transition: background 0.2s;
-        ">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <button type="button" id="close-user-guide-btn" class="dialog-close dialog-close-on-brand" aria-label="Close user guide">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" focusable="false">
             <line x1="18" y1="6" x2="6" y2="18"/>
             <line x1="6" y1="6" x2="18" y2="18"/>
           </svg>
         </button>
       </div>
 
+      <!-- Level Selector Tabs -->
+      <div class="guide-tabs" role="tablist" aria-label="Guide level">
+        <button type="button" class="guide-level-tab" data-level="overview" role="tab" id="guide-tab-overview" aria-selected="true" aria-controls="guide-overview">Quick Start</button>
+        <button type="button" class="guide-level-tab" data-level="detailed" role="tab" id="guide-tab-detailed" aria-selected="false" aria-controls="guide-detailed" tabindex="-1">Full Guide</button>
+        <button type="button" class="guide-level-tab" data-level="power" role="tab" id="guide-tab-power" aria-selected="false" aria-controls="guide-power" tabindex="-1">Power User</button>
+      </div>
+
       <!-- Content -->
-      <div style="padding: 24px;">
-        <!-- Level Selector Tabs -->
-        <div style="display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 2px solid #e0e0e0;">
-          <button class="guide-level-tab" data-level="overview" style="
-            flex: 1;
-            padding: 12px;
-            background: #667eea;
-            color: white;
-            border: none;
-            border-bottom: 3px solid #667eea;
-            cursor: pointer;
-            font-weight: bold;
-            font-size: 14px;
-            transition: all 0.2s;
-          ">Quick Start</button>
-          <button class="guide-level-tab" data-level="detailed" style="
-            flex: 1;
-            padding: 12px;
-            background: transparent;
-            color: #666;
-            border: none;
-            border-bottom: 3px solid transparent;
-            cursor: pointer;
-            font-weight: bold;
-            font-size: 14px;
-            transition: all 0.2s;
-          ">Full Guide</button>
-          <button class="guide-level-tab" data-level="power" style="
-            flex: 1;
-            padding: 12px;
-            background: transparent;
-            color: #666;
-            border: none;
-            border-bottom: 3px solid transparent;
-            cursor: pointer;
-            font-weight: bold;
-            font-size: 14px;
-            transition: all 0.2s;
-          ">Power User</button>
-        </div>
-
+      <div class="dialog-body guide-body">
         <!-- Overview Level -->
-        <div id="guide-overview" class="guide-content" style="display: block;">
-          <h3 style="color: #667eea; margin-top: 0;">🚀 Quick Start Guide</h3>
+        <div id="guide-overview" class="guide-content" role="tabpanel" aria-labelledby="guide-tab-overview" style="display: block;">
+          <h3>🚀 Quick Start</h3>
 
-          <div style="background: #f0f7ff; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #667eea;">
-            <strong style="color: #667eea;">Drum Painter</strong> turns your MIDI drums into a generative art tool. Paint visual patterns by playing your drums!
+          <div class="callout callout-primary">
+            <strong>Drum Painter</strong> turns your MIDI drum kit into a paintbrush. Every hit paints on the canvas — the drum picks the color and shape, how hard you hit sets the size.
           </div>
 
-          <div style="background: #fff3cd; padding: 12px; border-radius: 6px; margin-bottom: 20px; font-size: 13px; border-left: 4px solid #f59e0b;">
-            <strong>⚠️ Desktop Only:</strong> This app requires a desktop computer with Chrome, Edge, or Opera browser. Mobile devices and Firefox/Safari are not supported (Web MIDI API required).
+          <h4>1️⃣ Plug in your kit and allow MIDI</h4>
+          <ul>
+            <li>Connect your e-drum module (or any MIDI controller) by USB.</li>
+            <li>Click <strong>Allow</strong> when the browser asks for MIDI access. The status box at the top of the left panel shows your device when it's connected.</li>
+            <li>MIDI works in Chrome, Edge, Opera and Firefox on a computer. Firefox asks you to approve a small site-permission add-on the first time.</li>
+          </ul>
+
+          <h4>2️⃣ Click “🥁 Kit Setup” and hit each drum when asked</h4>
+          <ul>
+            <li>The wizard names a drum, you hit that pad, and it moves on to the next one.</li>
+            <li>Pads use General MIDI note numbers by default, so many kits work without any setup — try playing first.</li>
+          </ul>
+
+          <h4>3️⃣ Play!</h4>
+          <ul>
+            <li>Each hit paints. Try different <strong>Freeform</strong> styles or switch to <strong>Timeline</strong> for patterns laid out in time.</li>
+            <li><kbd>Space</kbd> records a video, <kbd>S</kbd> saves an image, <kbd>Backspace</kbd> clears (undo with <kbd>Ctrl/⌘</kbd>+<kbd>Z</kbd>).</li>
+          </ul>
+
+          <div class="callout callout-tip">
+            <strong>No kit handy?</strong> Click <strong>⌨️ Keyboard pads</strong> (or press <kbd>`</kbd>) and play with the keys <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> <kbd>F</kbd> <kbd>G</kbd> <kbd>H</kbd> <kbd>J</kbd> <kbd>K</kbd> <kbd>L</kbd> <kbd>;</kbd> — hold <kbd>Shift</kbd> for an accent. Or click <strong>▶ Demo beat</strong> to hear and see a groove.
           </div>
 
-          <h4 style="color: #333; margin-top: 20px;">1️⃣ Connect Your MIDI Device</h4>
-          <ul style="line-height: 1.8; color: #444;">
-            <li>Plug in your MIDI drums/controller via USB</li>
-            <li>Click <strong>"Allow"</strong> when browser asks for MIDI permission</li>
-            <li>Check MIDI status indicator in Quick Settings panel shows connected</li>
-          </ul>
-
-          <h4 style="color: #333; margin-top: 20px;">2️⃣ Map Your Drums</h4>
-          <ul style="line-height: 1.8; color: #444;">
-            <li>Click <strong style="color: #667eea;">Customize Drums</strong> button</li>
-            <li>Click the <strong>🎛 Learn</strong> button next to a drum</li>
-            <li>Hit that drum pad on your controller</li>
-            <li>Repeat for all drums you want to use</li>
-          </ul>
-
-          <h4 style="color: #333; margin-top: 20px;">3️⃣ Start Playing!</h4>
-          <ul style="line-height: 1.8; color: #444;">
-            <li><strong>Play your drums</strong> - each hit paints on the canvas</li>
-            <li><strong>Try different paint modes</strong> - Choose Staff (time-based), Freeform (random), or Chronicle (point-based), then select a style/layout</li>
-            <li><strong>Press SPACE</strong> to start/stop video recording</li>
-            <li><strong>Press S</strong> to save an image</li>
-            <li><strong>Press BACKSPACE</strong> to clear and start fresh</li>
-          </ul>
-
-          <div style="background: #fff3cd; padding: 12px; border-radius: 6px; margin-top: 20px; font-size: 13px;">
-            <strong>💡 Tip:</strong> Start with <em>Freeform → Classic Pointillism</em> mode and experiment with blend modes to see beautiful color interactions! Try <em>Dendritic Spreading</em> for river-like patterns, <em>Lightning</em> for electric discharge effects, or <em>Chronicle → Fibonacci Spiral</em> for geometric growth patterns.
+          <div class="callout callout-tip">
+            <strong>💡 Tip:</strong> Start with <em>Freeform → Classic</em> and experiment with blend modes. Try <em>Dendritic</em> for river-like patterns, <em>Lightning</em> for electric branches, or <em>Timeline → Fibonacci</em> for geometric growth.
           </div>
         </div>
 
         <!-- Detailed Level -->
-        <div id="guide-detailed" class="guide-content" style="display: none;">
-          <h3 style="color: #667eea; margin-top: 0;">📖 Complete User Guide</h3>
+        <div id="guide-detailed" class="guide-content" role="tabpanel" aria-labelledby="guide-tab-detailed" style="display: none;">
+          <h3>📖 Complete User Guide</h3>
 
-          <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px;">MIDI Setup</h4>
-          <p style="color: #444; line-height: 1.7;">
-            <strong>Direct Mode:</strong> Each drum is mapped to a specific MIDI note and device. Hit a pad → paint appears.<br>
-            <strong>Bank Mode:</strong> Hit pads to select which drum, use faders to control that drum's parameters (Alesis workflow).
+          <h4 class="guide-section">MIDI Setup</h4>
+          <p>
+            <strong>Kit Setup:</strong> Click <strong>🥁 Kit Setup</strong> and hit each drum when asked. You can also set a drum's note by hand, or click its <strong>🎛 Learn</strong> button, in <strong>Customize Drums</strong>.
           </p>
-          <p style="color: #444; line-height: 1.7;">
-            To switch modes, click <strong>MIDI Mapping</strong> and choose your control mode at the top.
-          </p>
-
-          <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Paint Modes</h4>
-          <p style="color: #444; line-height: 1.7;">
-            <strong>Two-Mode System:</strong> Choose mode type (Freeform or Timeline) with radio buttons, then select style/layout from dropdown.
+          <p>
+            <strong>Direct mode (default):</strong> each drum is mapped to a MIDI note (and optionally a specific device). Hit a pad → paint appears.<br>
+            <strong>Bank mode:</strong> pads select which drum you're editing and faders/knobs control that drum's parameters. Turn it on with the switch at the top of <strong>MIDI Mapping</strong>.
           </p>
 
-          <p style="color: #667eea; margin-top: 16px; margin-bottom: 8px;"><strong>Timeline Mode - Time-Based Layouts (Sync with Metronome):</strong></p>
-          <ul style="line-height: 1.8; color: #444;">
-            <li><strong>Staff:</strong> Traditional horizontal DAW-style sequencer with musical grid. Eighth triplet subdivisions by default.</li>
-            <li><strong>Spiral:</strong> Notes appear exactly where/when played along an expanding spiral. One rotation per measure.</li>
-            <li><strong>Rings:</strong> Concentric circles with angular positioning. Angle corresponds to time like a clock face.</li>
-            <li><strong>Petals:</strong> Organic flower curves where position corresponds to elapsed time. Creates visual rhythm record.</li>
-            <li><strong>Polygon:</strong> Rotating geometric pattern where position along perimeter corresponds to time.</li>
+          <h4 class="guide-section">Paint Modes</h4>
+          <p>Pick <strong>Freeform</strong> or <strong>Timeline</strong> with the radio buttons, then choose a style or layout from the dropdown.</p>
+
+          <p class="guide-subhead">Freeform (random placement)</p>
+          <ul>
+            <li><strong>Classic:</strong> random placement, pointillist style. Supports all shapes.</li>
+            <li><strong>Gravity:</strong> falling dots with velocity-dependent drift and fading strokes. Complex shapes become circles.</li>
+            <li><strong>Organic:</strong> natural clustering around migrating seed points. Supports all shapes.</li>
+            <li><strong>Dendritic:</strong> river-like networks with hierarchical branching. Complex shapes become circles.</li>
+            <li><strong>Lightning:</strong> cloud-to-ground discharge with fractal branching. Complex shapes become circles.</li>
           </ul>
 
-          <p style="color: #667eea; margin-top: 16px; margin-bottom: 8px;"><strong>Timeline Mode - Point-Based Layouts (Paint Immediately):</strong></p>
-          <ul style="line-height: 1.8; color: #444;">
-            <li><strong>Fibonacci:</strong> Golden ratio spiral emanating from center, expanding with each hit</li>
-            <li><strong>Radial:</strong> 8-fold mirrored radial patterns, perfect for mandalas</li>
+          <p class="guide-subhead">Timeline — time-based layouts (sync with the metronome)</p>
+          <ul>
+            <li><strong>Staff:</strong> horizontal, DAW-style lanes on a musical grid (eighth-note triplets by default).</li>
+            <li><strong>Spiral:</strong> notes land where/when they're played along an expanding spiral — one rotation per measure.</li>
+            <li><strong>Rings:</strong> concentric circles; the angle is the position in the bar, like a clock face.</li>
+            <li><strong>Petals:</strong> flower curves where position follows elapsed time.</li>
+            <li><strong>Polygon:</strong> rotating shape where the position along the edge is time.</li>
           </ul>
 
-          <p style="color: #667eea; margin-top: 16px; margin-bottom: 8px;"><strong>Freeform Mode (Random Placement):</strong></p>
-          <ul style="line-height: 1.8; color: #444;">
-            <li><strong>Classic Pointillism:</strong> Random placement, pointillist style. Supports all shapes.</li>
-            <li><strong>Gravity Field:</strong> Falling dots with velocity-dependent drift and fading strokes. Complex shapes auto-convert to circles.</li>
-            <li><strong>Organic Growth:</strong> Natural clustering around migrating seed points. Supports all shapes.</li>
-            <li><strong>Dendritic Spreading:</strong> Realistic river drainage networks with hierarchical branching. Complex shapes auto-convert to circles.</li>
-            <li><strong>Lightning:</strong> Cloud-to-ground electrical discharge with fractal branching. Complex shapes auto-convert to circles.</li>
+          <p class="guide-subhead">Timeline — point-based layouts (advance with each hit)</p>
+          <ul>
+            <li><strong>Fibonacci:</strong> golden-ratio spiral growing from the center.</li>
+            <li><strong>Radial:</strong> 8-fold mirrored patterns, great for mandalas.</li>
           </ul>
 
-          <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Blend Modes</h4>
-          <p style="color: #444; line-height: 1.7;">
-            Control how new paint combines with existing layers:
-          </p>
-          <ul style="line-height: 1.8; color: #444;">
-            <li><strong>Normal:</strong> Standard opaque painting</li>
-            <li><strong>Multiply:</strong> Darkens, like overlapping ink</li>
-            <li><strong>Screen:</strong> Lightens, additive brightness</li>
-            <li><strong>Overlay:</strong> Boosts contrast, vivid results</li>
-            <li><strong>Dodge:</strong> Brightens highlights, glowing effect</li>
-            <li><strong>Burn:</strong> Deepens shadows, dramatic darkening</li>
-            <li><strong>Add:</strong> Additive light for bright glowing overlaps</li>
-            <li><strong>Difference:</strong> Inverts colors for psychedelic effects</li>
+          <h4 class="guide-section">Timeline &amp; Timing</h4>
+          <ul>
+            <li>Press <strong>▶ Start</strong> (or <kbd>P</kbd>) to run the timeline. Turn on <strong>Metronome</strong> for a click.</li>
+            <li>The metronome is <strong>sample-accurate</strong> — it's scheduled on the audio clock, so it doesn't drift even when the screen is busy.</li>
+            <li>Hits are placed using the <strong>MIDI timestamp</strong> of each note, not the moment the screen redraws.</li>
+            <li>Every kit has a little delay between hitting a pad and the note arriving. Use the <strong>Offset</strong> setting's <strong>Calibrate…</strong> button and play along with 16 clicks; Drum Painter measures your average delay and fills in the offset.</li>
+            <li>Turn on <strong>Timing Graph</strong> to see how far each hit was from the grid, in milliseconds: <strong>+</strong> means late, <strong>−</strong> means early.</li>
           </ul>
 
-          <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Drum Customization</h4>
-          <p style="color: #444; line-height: 1.7;">
-            Click <strong>Customize Drums</strong> to access per-drum settings:
-          </p>
-          <ul style="line-height: 1.8; color: #444;">
-            <li><strong>Color:</strong> Base color for this drum (HSL or hex)</li>
-            <li><strong>Size:</strong> Size multiplier (30% to 300%)</li>
-            <li><strong>Opacity:</strong> Transparency (10% to 100%)</li>
+          <h4 class="guide-section">Blend Modes</h4>
+          <p>Control how new paint combines with what's already on the canvas:</p>
+          <ul>
+            <li><strong>Normal:</strong> standard opaque painting</li>
+            <li><strong>Multiply:</strong> darkens, like overlapping ink</li>
+            <li><strong>Screen:</strong> lightens, additive brightness</li>
+            <li><strong>Overlay:</strong> boosts contrast, vivid results</li>
+            <li><strong>Dodge:</strong> brightens highlights, glowing effect</li>
+            <li><strong>Burn:</strong> deepens shadows</li>
+            <li><strong>Add:</strong> additive light for bright glowing overlaps</li>
+            <li><strong>Difference:</strong> inverts colors for psychedelic effects</li>
+          </ul>
+
+          <h4 class="guide-section">Drum Customization</h4>
+          <p>Click <strong>Customize Drums</strong> for per-drum settings:</p>
+          <ul>
+            <li><strong>Color:</strong> base color for this drum — or use <strong>🎨 Apply Palette</strong> to recolor several drums at once</li>
+            <li><strong>Size:</strong> size multiplier (30% to 300%)</li>
+            <li><strong>Opacity:</strong> transparency (10% to 100%)</li>
             <li><strong>Shape:</strong> Brushstroke, Splatter, Ink Blot, Circle, Square, Triangle, Hexagon, Star, Diamond</li>
-            <li><strong>Hue Variation:</strong> Directional color shift (0° to 60°) - harder hits shift more toward max with velocity scaling</li>
-            <li><strong>Rotation:</strong> Angle of shapes (0-360°)</li>
-            <li><strong>Stroke:</strong> Enable/disable outline with custom weight (1-10px) and color</li>
+            <li><strong>Hue Variation:</strong> color shift (0° to 60°) — harder hits shift further</li>
+            <li><strong>Rotation:</strong> angle of shapes (0–360°)</li>
+            <li><strong>Stroke:</strong> optional outline with its own weight (1–10px) and color</li>
           </ul>
 
-          <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Recording & Export</h4>
-          <ul style="line-height: 1.8; color: #444;">
-            <li><strong>Video Recording:</strong> Press SPACE or click recording button. Choose quality first. Recordings appear in "Recent Recordings" list where you can download, merge with audio, or delete them. The metronome, timing graph, and bottom panel are automatically excluded from the video.</li>
-            <li><strong>Sync &amp; Merge:</strong> Click "Sync &amp; Merge" on any recording to load an audio file, preview video+audio together with an adjustable offset slider, then merge when sync sounds right. FFmpeg.wasm processes the merge entirely in your browser.</li>
-            <li><strong>Image Save:</strong> Press S to save current canvas as PNG</li>
-            <li><strong>Time-Based Recording:</strong> Press Start button to begin timeline. Check "Record video with timeline" to capture session. Staff and Spiral layouts require active recording.</li>
-            <li><strong>Point-Based Layouts:</strong> Fibonacci, Radial, Rings, Petals, Polygon paint immediately without needing to start timeline - perfect for live performance and testing in debug panel.</li>
+          <h4 class="guide-section">Recording &amp; Export</h4>
+          <ul>
+            <li><strong>Video:</strong> press <kbd>Space</kbd> or the record button. Choose quality first. Recordings appear under “Recent Recordings”, where you can download, merge with audio, or delete them. The metronome, timing graph and bottom panel are left out of the video.</li>
+            <li><strong>Sync &amp; Merge:</strong> click “Sync &amp; Merge” on a recording to load an audio file, preview video and audio together with an adjustable offset, then merge. The merge runs entirely in your browser.</li>
+            <li><strong>Image:</strong> press <kbd>S</kbd> to save the canvas as a PNG.</li>
+            <li><strong>Timeline recording:</strong> check “Record video with timeline” under Recording Options to capture a take automatically when the timeline starts.</li>
           </ul>
 
-          <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Settings & Projects</h4>
-          <p style="color: #444; line-height: 1.7;">
-            <strong>Auto-Save:</strong> All settings automatically save to your browser 2 seconds after any change. The save indicator dot (next to MIDI status) shows the current state: yellow = pending, green = saved.
-          </p>
-          <p style="color: #444; line-height: 1.7;">
-            <strong>Export / Import:</strong> Use the buttons at the bottom of the Customize Drums panel to export settings to a JSON file or import from one. Great for sharing setups or backing up.
-          </p>
-          <p style="color: #444; line-height: 1.7;">
-            <strong>Reset to Factory:</strong> Restores all settings to defaults (with confirmation prompt).
-          </p>
-          <p style="color: #444; line-height: 1.7;">
-            <strong>Projects:</strong> Save complete named configurations including drum settings, mappings, and visual preferences. Load them anytime from the dropdown.
-          </p>
+          <h4 class="guide-section">Settings &amp; Projects</h4>
+          <p><strong>Auto-save:</strong> settings save to your browser about 2 seconds after any change. The dot next to the MIDI status shows the state: yellow = pending, green = saved.</p>
+          <p><strong>Export / Import:</strong> use the buttons at the bottom of Customize Drums to save your setup to a JSON file or load one — handy for backups and sharing setups with other drummers.</p>
+          <p><strong>Reset to Factory:</strong> restores all settings to defaults (asks first).</p>
+          <p><strong>Projects:</strong> save complete named setups (drum settings, mappings and visual preferences) and load them from the dropdown.</p>
         </div>
 
         <!-- Power User Level -->
-        <div id="guide-power" class="guide-content" style="display: none;">
-          <h3 style="color: #667eea; margin-top: 0;">⚡ Power User Guide</h3>
+        <div id="guide-power" class="guide-content" role="tabpanel" aria-labelledby="guide-tab-power" style="display: none;">
+          <h3>⚡ Power User Guide</h3>
 
-          <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px;">Device-Specific MIDI Mapping</h4>
-          <p style="color: #444; line-height: 1.7; font-size: 14px;">
-            Each drum can be mapped to a specific <strong>MIDI note + device combination</strong>. This prevents conflicts when multiple MIDI controllers send the same note numbers.
-          </p>
-          <ul style="line-height: 1.8; color: #444; font-size: 14px;">
-            <li><strong>Exact Match:</strong> Drum only triggers from specific device + note</li>
-            <li><strong>"Any Device" Mode:</strong> Clear device mapping to allow any source</li>
-            <li><strong>Bank Mode Device Isolation:</strong> Pad and fader assignments are device-specific</li>
+          <h4 class="guide-section">Device-Specific MIDI Mapping</h4>
+          <p>Each drum can be mapped to a <strong>MIDI note + device</strong> combination, which prevents conflicts when several controllers send the same note numbers.</p>
+          <ul>
+            <li><strong>Exact match:</strong> the drum only triggers from that device + note</li>
+            <li><strong>Any device:</strong> clear the device mapping to accept the note from any source</li>
+            <li><strong>Bank mode:</strong> pad and fader assignments are device-specific too</li>
           </ul>
 
-          <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Velocity Scaling Curves</h4>
-          <p style="color: #444; line-height: 1.7; font-size: 14px;">
-            Apply non-linear curves to how velocity affects size, opacity, and hue variation:
-          </p>
-          <ul style="line-height: 1.8; color: #444; font-size: 14px;">
-            <li><strong>Fixed:</strong> Ignores velocity completely, always uses the slider value (constant size/opacity/hue)</li>
-            <li><strong>1:1:</strong> Direct linear response between velocity and value</li>
-            <li><strong>Boost Soft:</strong> Amplifies soft hits using logarithmic scaling - more sensitivity at lower velocities</li>
-            <li><strong>Gate Soft:</strong> Suppresses soft hits using exponential scaling - emphasizes harder hits</li>
-            <li><strong>Gate Loud:</strong> Smooth quadratic suppression curve</li>
+          <h4 class="guide-section">Velocity Scaling Curves</h4>
+          <p>Apply curves to how velocity affects size, opacity and hue variation:</p>
+          <ul>
+            <li><strong>Fixed:</strong> ignores velocity; always uses the slider value</li>
+            <li><strong>1:1:</strong> linear response</li>
+            <li><strong>Boost Soft:</strong> amplifies soft hits (logarithmic) — more sensitivity at low velocities</li>
+            <li><strong>Gate Soft:</strong> suppresses soft hits (exponential) — emphasizes harder hits</li>
+            <li><strong>Gate Loud:</strong> smooth quadratic curve</li>
           </ul>
-          <p style="color: #444; line-height: 1.7; font-size: 14px; margin-top: 12px;">
-            Each drum can have independent curves for size, opacity, and hue variation. Use <strong>Fixed</strong> when you want consistent visuals regardless of how hard you hit the drum.
-          </p>
+          <p>Each drum has independent curves for size, opacity and hue variation.</p>
 
-          <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">MIDI CC Live Control</h4>
-          <p style="color: #444; line-height: 1.7; font-size: 14px;">
-            Map MIDI faders/knobs to control parameters in real-time:
-          </p>
-          <ul style="line-height: 1.8; color: #444; font-size: 14px;">
-            <li><strong>Per-Drum Mapping (Direct Mode):</strong> Each drum can have independent CC controls for size, opacity, hue, rotation, stroke</li>
-            <li><strong>Global Mapping (Bank Mode):</strong> Faders control the currently selected drum's parameters</li>
-            <li><strong>Auto-Calibration:</strong> Move controller through full range during 3-second learn period for accurate min/max detection</li>
-            <li><strong>Pitch Bend Support:</strong> Pitch wheel mapped as pseudo-CC (1001-1016 for channels 1-16)</li>
+          <h4 class="guide-section">MIDI CC Live Control</h4>
+          <p>Map faders and knobs to parameters in real time:</p>
+          <ul>
+            <li><strong>Per-drum (direct mode):</strong> each drum can have its own CC controls for size, opacity, hue, rotation and stroke</li>
+            <li><strong>Global (bank mode):</strong> faders control the currently selected drum</li>
+            <li><strong>Auto-calibration:</strong> move the controller through its full range during the 3-second learn window</li>
+            <li><strong>Pitch bend:</strong> mapped as a pseudo-CC (1001–1016 for channels 1–16)</li>
           </ul>
 
-          <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Time-Based Layouts (Rhythmic/Temporal Recording)</h4>
-          <p style="color: #444; line-height: 1.7; font-size: 14px;">
-            Staff mode has 5 time-based layouts (Staff Notation, Spiral Timeline, Rings, Petals, Polygon). All require pressing Start button, sync with metronome, and share these features:
-          </p>
-          <ul style="line-height: 1.8; color: #444; font-size: 14px;">
-            <li><strong>BPM Sync:</strong> Grid aligns to beats per minute (40-240 BPM)</li>
-            <li><strong>Time Signatures:</strong> Support for 2/4 through 12/4</li>
-            <li><strong>Subdivisions:</strong> Quarter notes, eighth notes, triplets, sixteenths</li>
-            <li><strong>MIDI Latency Compensation:</strong> Adjust 0-200ms to align visual to audio</li>
-            <li><strong>Metronome:</strong> Audio click track with measure emphasis and visual spinning indicator</li>
-            <li><strong>Video Recording Toggle:</strong> Check "Record video with timeline" to capture sessions to file, or uncheck for practice mode</li>
-            <li><strong>Warmup Measures:</strong> 0-4 silent measures before painting begins</li>
-            <li><strong>MIDI Clock Output:</strong> Check "Send MIDI Clock (tempo sync)" to send 24 ppq clock pulses to your DAW via loopMIDI. Enable <strong>Sync</strong> on the loopMIDI port in Ableton's MIDI preferences. The clock follows Auto Tempo changes automatically.</li>
+          <h4 class="guide-section">Time-Based Layouts</h4>
+          <p>Staff, Spiral, Rings, Petals and Polygon follow the timeline clock and share these settings:</p>
+          <ul>
+            <li><strong>BPM:</strong> 30–240, with optional <strong>Auto Tempo</strong> to speed up or slow down every few bars</li>
+            <li><strong>Time signatures:</strong> 2/4 through 12/4</li>
+            <li><strong>Grid:</strong> quarter notes, eighth notes, triplets, sixteenths</li>
+            <li><strong>Offset:</strong> −50 to 200 ms latency compensation; use <strong>Calibrate…</strong> to measure it</li>
+            <li><strong>Warm-up:</strong> 0–4 measures of count-in before painting begins</li>
+            <li><strong>MIDI Clock out:</strong> check “Send MIDI Clock (tempo sync)” to send 24 ppq clock to your DAW via a virtual port such as loopMIDI. The clock follows Auto Tempo changes.</li>
           </ul>
 
-          <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Staff Layout-Specific Settings</h4>
-          <p style="color: #444; line-height: 1.7; font-size: 14px;"><strong>Staff Notation Layout:</strong></p>
-          <ul style="line-height: 1.8; color: #444; font-size: 14px;">
-            <li><strong>Grid Toggle:</strong> Hide/show staff lines</li>
-            <li><strong>Row Spacing:</strong> Adjust vertical spacing between drum lanes (0-50px)</li>
-            <li><strong>Measures Per Staff:</strong> Auto or fixed number (1-8)</li>
+          <p class="guide-subhead">Staff layout</p>
+          <ul>
+            <li><strong>Show Grid:</strong> hide/show staff lines and pick their color</li>
+            <li><strong>Row Space:</strong> vertical spacing between drum lanes (0–50px)</li>
+            <li><strong>Per Row:</strong> auto or a fixed number of measures (1–8)</li>
           </ul>
 
-          <p style="color: #444; line-height: 1.7; font-size: 14px; margin-top: 16px;"><strong>Spiral Timeline Layout:</strong></p>
-          <ul style="line-height: 1.8; color: #444; font-size: 14px;">
-            <li><strong>Beat Synchronization:</strong> Rotation quantized to beat positions - completes one full rotation per measure</li>
-            <li><strong>Tightness (5-40):</strong> Space between spiral rotations in pixels</li>
-            <li><strong>Start Radius:</strong> Initial radius at center (adjustable)</li>
-            <li><strong>Time Signature Matching:</strong> Automatically adjusts to match beatsPerMeasure (e.g., 4 positions in 4/4 time)</li>
+          <p class="guide-subhead">Spiral layout</p>
+          <ul>
+            <li>One full rotation per measure, quantized to the beat positions of the time signature</li>
+            <li><strong>Tightness (5–40):</strong> space between rotations</li>
+            <li><strong>Separate tracks:</strong> give each drum its own lane, with adjustable spacing</li>
           </ul>
 
-          <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Chronicle Mode Advanced (Point-Based Sequential)</h4>
-          <p style="color: #444; line-height: 1.7; font-size: 14px;">
-            Timeline mode has 5 time-based layouts (Staff, Spiral, Rings, Petals, Polygon) that sync with the metronome, plus 2 point-based layouts (Fibonacci, Radial) where position depends on hit count.
-          </p>
+          <h4 class="guide-section">Point-Based Layouts</h4>
+          <p>Fibonacci and Radial don't need the timeline running — each hit advances the pattern, which makes them good for live performance.</p>
 
-          <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Keyboard Shortcuts Reference</h4>
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 13px;">
-            <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">SPACE</kbd> Record video</div>
-            <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">H</kbd> Hide/show UI</div>
-            <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">BKSP</kbd> Clear canvas</div>
-            <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">F</kbd> Toggle fullscreen</div>
-            <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">S</kbd> Save image</div>
-            <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">D</kbd> Save settings (immediate)</div>
-            <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">Z</kbd> Undo</div>
-            <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">Y</kbd> Redo</div>
-            <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">← →</kbd> Switch Freeform ↔ Timeline</div>
-            <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">↑ ↓</kbd> Cycle styles/layouts</div>
-            <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">B</kbd> Cycle blend modes</div>
-            <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">1-9</kbd> Select drum</div>
-            <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">P</kbd> Start/pause (Timeline)</div>
-            <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">C</kbd> Clear (Timeline)</div>
-            <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">?</kbd> Keyboard shortcuts</div>
-            <div><kbd style="background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-family: monospace;">U</kbd> User guide</div>
-          </div>
-          <p style="color: #666; font-size: 12px; margin-top: 12px; font-style: italic;">
-            Press <strong>?</strong> for complete keyboard shortcuts reference.
-          </p>
-
-          <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Data Persistence & Auto-Save</h4>
-          <p style="color: #444; line-height: 1.7; font-size: 14px;">
-            All settings stored in browser localStorage with automatic saving:
-          </p>
-          <ul style="line-height: 1.8; color: #444; font-size: 14px;">
-            <li><strong>Auto-Save:</strong> Settings automatically save 2 seconds after any change (drum settings, mode selections, timeline controls, blend modes, etc.)</li>
-            <li><strong>Save Indicator:</strong> Dot next to MIDI status shows save state (yellow=pending, blue=saving, green=saved, grey=idle)</li>
-            <li><strong>Force Save:</strong> Press <kbd style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">D</kbd> for immediate save</li>
-            <li><strong>Export/Import:</strong> Use buttons at bottom of Customize Drums panel to export settings to a JSON file or import from one</li>
-            <li><strong>Reset to Factory:</strong> Restores all defaults and persists the reset immediately</li>
-            <li><strong>Named Projects:</strong> Save multiple configurations</li>
-            <li><strong>Full State Captured:</strong> Drum settings, drum ordering, bank mode state, custom drums, timeline/spiral settings, global preferences</li>
+          <h4 class="guide-section">Keyboard Shortcuts Reference</h4>
+          <ul class="shortcut-grid">
+            <li><kbd>Space</kbd> Record video</li>
+            <li><kbd>Backspace</kbd>/<kbd>Delete</kbd> Clear canvas</li>
+            <li><kbd>Ctrl/⌘</kbd>+<kbd>Z</kbd> Undo</li>
+            <li><kbd>Ctrl/⌘</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> or <kbd>Ctrl</kbd>+<kbd>Y</kbd> Redo</li>
+            <li><kbd>S</kbd> Save image</li>
+            <li><kbd>D</kbd> Save settings now</li>
+            <li><kbd>H</kbd> Hide/show UI</li>
+            <li><kbd>F</kbd> Fullscreen</li>
+            <li><kbd>B</kbd> Cycle blend mode</li>
+            <li><kbd>←</kbd> <kbd>→</kbd> Freeform / Timeline</li>
+            <li><kbd>↑</kbd> <kbd>↓</kbd> Cycle styles/layouts</li>
+            <li><kbd>1–9</kbd> Select drum (Customize)</li>
+            <li><kbd>P</kbd> Start/pause timeline</li>
+            <li><kbd>C</kbd> Clear timeline</li>
+            <li><kbd>`</kbd> Toggle keyboard pads</li>
+            <li><kbd>?</kbd> Keyboard shortcuts</li>
+            <li><kbd>U</kbd> User guide</li>
+            <li><kbd>Esc</kbd> Close dialogs / leave keyboard pads</li>
           </ul>
 
-          <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Bundling Default Settings for Deployment</h4>
-          <p style="color: #444; line-height: 1.7; font-size: 14px;">
-            Include your customized settings in production builds so they load automatically for all users:
-          </p>
-          <ol style="line-height: 1.8; color: #444; font-size: 14px;">
-            <li>Configure all your settings (drum mappings, colors, sizes, etc.) &mdash; they auto-save</li>
-            <li>Click <strong>"Export to File"</strong> in the Customize Drums panel &mdash; a JSON file downloads</li>
-            <li>Rename the file to <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">default-settings.json</code></li>
-            <li>Place it in the <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">/public</code> directory</li>
-            <li>Run <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">npm run build</code> to include it in the build</li>
-          </ol>
-          <p style="color: #444; line-height: 1.7; font-size: 14px;">
-            <strong>How it works:</strong> App checks localStorage first, then falls back to <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">default-settings.json</code> if no saved settings exist. Perfect for deploying with pre-configured setups!
-          </p>
-
-          <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Debug Mode</h4>
-          <p style="color: #444; line-height: 1.7; font-size: 14px;">
-            Enable verbose console logging for development and troubleshooting:
-          </p>
-          <ol style="line-height: 1.8; color: #444; font-size: 14px;">
-            <li>Open <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">src/config/constants.js</code></li>
-            <li>Change <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">DEBUG_MODE</code> from <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">false</code> to <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">true</code></li>
-            <li>Rebuild/refresh the app</li>
-          </ol>
-          <p style="color: #444; line-height: 1.7; font-size: 14px;">
-            <strong>Enables:</strong> Detailed console logging (211+ debug statements) showing MIDI events, mode switches, state changes, file operations. Errors and important status messages always shown regardless of DEBUG_MODE.
-          </p>
-          <p style="color: #444; line-height: 1.7; font-size: 14px;">
-            <strong>Production:</strong> Keep DEBUG_MODE = false (default) for cleaner console and better performance.
-          </p>
-
-          <h4 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 24px;">Browser & Device Requirements</h4>
-          <p style="color: #444; line-height: 1.7; font-size: 14px;">
-            <strong>Desktop Only:</strong> This app is designed for desktop computers with MIDI hardware. The app automatically detects and warns users on incompatible platforms:
-          </p>
-          <ul style="line-height: 1.8; color: #444; font-size: 14px;">
-            <li><strong>Mobile Devices:</strong> Shows warning that desktop is required (phones/tablets cannot connect to MIDI hardware)</li>
-            <li><strong>Unsupported Browsers:</strong> Firefox and Safari show MIDI compatibility warning with recommended browsers (Chrome, Edge, Opera)</li>
-            <li><strong>Web MIDI API Required:</strong> Only Chromium-based browsers support the Web MIDI API needed for drum communication</li>
+          <h4 class="guide-section">Data Persistence &amp; Auto-Save</h4>
+          <ul>
+            <li><strong>Auto-save:</strong> settings save about 2 seconds after any change</li>
+            <li><strong>Save indicator:</strong> the dot next to the MIDI status (yellow = pending, blue = saving, green = saved, grey = idle)</li>
+            <li><strong>Force save:</strong> press <kbd>D</kbd></li>
+            <li><strong>Export/Import:</strong> buttons at the bottom of Customize Drums</li>
+            <li><strong>Named projects:</strong> keep several complete setups</li>
+            <li><strong>What's saved:</strong> drum settings and order, bank mode state, custom drums, timeline/spiral settings and global preferences</li>
           </ul>
-          <p style="color: #444; line-height: 1.7; font-size: 14px;">
-            You can still explore the UI with mouse/keyboard on incompatible setups, but MIDI functionality won't work.
-          </p>
 
-          <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin-top: 24px; font-size: 13px;">
-            <strong>🔧 Pro Tip:</strong> Export your setup to a JSON file and store it as a backup. For deployment, follow the steps above to bundle your customized defaults with the production build.
+          <h4 class="guide-section">Browser &amp; Device Support</h4>
+          <ul>
+            <li><strong>MIDI works in</strong> Chrome, Edge and Opera, and in Firefox 108 or later (Firefox asks you to approve a site-permission add-on the first time).</li>
+            <li><strong>No MIDI in</strong> Safari on the Mac or in any browser on iPhone/iPad — Apple doesn't support Web MIDI. You can still try the app there with <strong>Keyboard pads</strong> or <strong>Demo beat</strong>.</li>
+            <li>Phones and tablets work for exploring and watching; for playing a kit, use a desktop browser.</li>
+          </ul>
+
+          <div class="callout callout-primary">
+            <strong>🔧 Pro tip:</strong> export your setup to a JSON file and keep it as a backup — or share it with another drummer who has the same kit.
           </div>
         </div>
       </div>
 
-      <div style="text-align: center; padding: 16px; border-top: 1px solid #e0e0e0; color: #666; font-size: 12px;">
-        Press <kbd style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-family: monospace; font-size: 11px; border: 1px solid #ddd;">U</kbd> or <kbd style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-family: monospace; font-size: 11px; border: 1px solid #ddd;">ESC</kbd> to close
+      <div class="dialog-footer dialog-hint">
+        Press <kbd>U</kbd> or <kbd>Esc</kbd> to close
       </div>
     </div>
   </div>
 
-  <!-- MIDI Devices Panel -->
-  <div id="midi-devices-backdrop" style="
-    display: none;
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.5);
-    backdrop-filter: blur(4px);
-    z-index: 9999;
-    align-items: center;
-    justify-content: center;
-  ">
-    <div id="midi-devices-panel" style="
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      border-radius: 12px;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
-      width: 90%;
-      max-width: 500px;
-      max-height: 70vh;
-      overflow: hidden;
-      animation: slideIn 0.3s ease-out;
-    ">
-      <div style="padding: 20px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.1);">
-        <h2 style="margin: 0; color: white; font-size: 18px; display: flex; align-items: center; gap: 8px;">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- ===================== MIDI Devices Panel ===================== -->
+  <div id="midi-devices-backdrop" class="overlay-center overlay-blur" style="display: none;">
+    <div id="midi-devices-panel" class="dialog dialog-sm-md dialog-brand" role="dialog" aria-modal="true" aria-labelledby="midi-devices-title">
+      <div class="dialog-header">
+        <h2 id="midi-devices-title" class="dialog-title">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
             <path d="M6 9H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2h-2"/>
             <path d="M6 9V21"/>
             <path d="M18 9V21"/>
           </svg>
           MIDI Devices
         </h2>
-        <button id="close-midi-devices-btn" style="
-          background: rgba(255, 255, 255, 0.2);
-          border: none;
-          color: white;
-          width: 32px;
-          height: 32px;
-          border-radius: 50%;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          transition: background 0.2s;
-        ">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <button type="button" id="close-midi-devices-btn" class="dialog-close dialog-close-on-brand" aria-label="Close MIDI devices">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false">
             <line x1="18" y1="6" x2="6" y2="18"></line>
             <line x1="6" y1="6" x2="18" y2="18"></line>
           </svg>
         </button>
       </div>
-      <div id="midi-devices-list" style="
-        padding: 20px;
-        overflow-y: auto;
-        max-height: calc(70vh - 80px);
-        color: white;
-      ">
+      <div id="midi-devices-list" class="dialog-body">
         <!-- Devices will be populated here -->
       </div>
     </div>
   </div>
 
-  <!-- Save Recording Modal -->
-  <div id="save-recording-backdrop" style="
-    display: none;
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.6);
-    backdrop-filter: blur(4px);
-    z-index: 10000;
-    align-items: center;
-    justify-content: center;
-  ">
-    <div id="save-recording-modal" style="
-      background: linear-gradient(135deg, #8b90c0 0%, #8087be 100%);
-      border-radius: 12px;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-      width: 90%;
-      max-width: 400px;
-      overflow: hidden;
-      animation: slideIn 0.3s ease-out;
-    ">
-      <!-- Header -->
-      <div style="padding: 24px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.2);">
-        <h2 style="margin: 0; color: white; font-size: 20px; font-weight: 600;">
-          Save Recording?
-        </h2>
-        <p style="margin: 8px 0 0 0; color: rgba(255,255,255,0.8); font-size: 14px;">
-          Choose whether to save or discard this session
-        </p>
+  <!-- ===================== Save Recording Modal ===================== -->
+  <div id="save-recording-backdrop" class="overlay-center overlay-blur" style="display: none;">
+    <div id="save-recording-modal" class="dialog dialog-sm" role="dialog" aria-modal="true" aria-labelledby="save-recording-title" aria-describedby="save-recording-desc">
+      <div class="dialog-header dialog-header-centered">
+        <h2 id="save-recording-title" class="dialog-title">Save Recording?</h2>
+        <p id="save-recording-desc" class="dialog-subtitle">Choose whether to save or discard this session</p>
       </div>
-
-      <!-- Buttons -->
-      <div style="padding: 24px; display: flex; flex-direction: column; gap: 10px;">
-        <button id="save-recording-save-btn" style="
-          padding: 14px;
-          background: #28a745;
-          color: white;
-          border: none;
-          border-radius: 8px;
-          font-weight: bold;
-          font-size: 15px;
-          cursor: pointer;
-          transition: all 0.2s;
-          box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
-        " onmouseover="this.style.background='#218838'; this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 16px rgba(40, 167, 69, 0.4)'"
-           onmouseout="this.style.background='#28a745'; this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 12px rgba(40, 167, 69, 0.3)'">
-          💾 Save (S)
-        </button>
-
-        <button id="save-recording-discard-btn" style="
-          padding: 14px;
-          background: #c23b49;
-          color: white;
-          border: none;
-          border-radius: 8px;
-          font-weight: bold;
-          font-size: 15px;
-          cursor: pointer;
-          transition: all 0.2s;
-          box-shadow: 0 4px 12px rgba(220, 53, 69, 0.3);
-        " onmouseover="this.style.background='#c82333'; this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 16px rgba(220, 53, 69, 0.4)'"
-           onmouseout="this.style.background='#dc3545'; this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 12px rgba(220, 53, 69, 0.3)'">
-          🗑️ Discard (D)
-        </button>
-
-        <button id="save-recording-cancel-btn" style="
-          padding: 14px;
-          background: rgba(255, 255, 255, 0.2);
-          color: white;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 8px;
-          font-weight: 600;
-          font-size: 15px;
-          cursor: pointer;
-          transition: all 0.2s;
-        " onmouseover="this.style.background='rgba(255, 255, 255, 0.3)'; this.style.transform='translateY(-2px)'"
-           onmouseout="this.style.background='rgba(255, 255, 255, 0.2)'; this.style.transform='translateY(0)'">
-          Cancel (ESC)
-        </button>
+      <div class="dialog-body dialog-actions-stack">
+        <button type="button" id="save-recording-save-btn" class="btn btn-success btn-lg">💾 Save (S)</button>
+        <button type="button" id="save-recording-discard-btn" class="btn btn-danger btn-lg">🗑️ Discard (D)</button>
+        <button type="button" id="save-recording-cancel-btn" class="btn btn-secondary btn-lg">Cancel (Esc)</button>
       </div>
     </div>
   </div>
 
-  <!-- Sync Preview Modal -->
-  <div id="sync-preview-backdrop" style="
-    display: none;
-    position: fixed;
-    top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(0, 0, 0, 0.85);
-    backdrop-filter: blur(4px);
-    z-index: 10000;
-    align-items: center;
-    justify-content: center;
-  ">
-    <div id="sync-preview-modal" style="
-      background: #1e1e2e;
-      color: #cdd6f4;
-      border-radius: 12px;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7);
-      width: 95%;
-      max-width: 700px;
-      max-height: 95vh;
-      overflow-y: auto;
-      display: flex;
-      flex-direction: column;
-    ">
+  <!-- ===================== Sync Preview Modal ===================== -->
+  <div id="sync-preview-backdrop" class="overlay-center overlay-blur overlay-dark" style="display: none;">
+    <div id="sync-preview-modal" class="dialog dialog-md dialog-media" role="dialog" aria-modal="true" aria-labelledby="sync-preview-title">
       <!-- Header -->
-      <div style="padding: 16px 20px; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: space-between;">
-        <h2 style="margin: 0; font-size: 16px; font-weight: 600;">🎵 Sync &amp; Merge Audio</h2>
-        <button id="sync-preview-close-btn" style="background: none; border: none; color: #cdd6f4; font-size: 20px; cursor: pointer; padding: 4px 8px; opacity: 0.7;">×</button>
+      <div class="dialog-header">
+        <h2 id="sync-preview-title" class="dialog-title">🎵 Sync &amp; Merge Audio</h2>
+        <button type="button" id="sync-preview-close-btn" class="dialog-close dialog-close-on-brand" aria-label="Close sync and merge">×</button>
       </div>
 
       <!-- Content -->
-      <div style="padding: 20px; display: flex; flex-direction: column; gap: 16px;">
-
+      <div class="dialog-body media-stack">
         <!-- Video player -->
-        <video id="sync-preview-video" style="
-          width: 100%;
-          max-height: 320px;
-          background: black;
-          border-radius: 6px;
-          outline: none;
-        "></video>
+        <video id="sync-preview-video" class="media-video"></video>
+
+        <!-- Video trim sliders -->
+        <div id="sync-preview-trim-section" style="display: none;">
+          <div class="media-label">Trim Video</div>
+          <div class="form-row">
+            <label class="row-label" for="sync-preview-trim-start">Start:</label>
+            <input type="range" id="sync-preview-trim-start" class="range range-blue"
+              min="0" max="100" step="0.1" value="0">
+            <span id="sync-preview-trim-start-display" class="media-readout media-readout-blue">0:00.0</span>
+          </div>
+          <div class="form-row">
+            <label class="row-label" for="sync-preview-trim-end">End:</label>
+            <input type="range" id="sync-preview-trim-end" class="range range-blue"
+              min="0" max="100" step="0.1" value="100">
+            <span id="sync-preview-trim-end-display" class="media-readout media-readout-blue">0:00.0</span>
+          </div>
+          <div id="sync-preview-trim-duration" class="media-hint"></div>
+        </div>
 
         <!-- Audio file picker -->
-        <div style="display: flex; align-items: center; gap: 10px;">
-          <label style="
-            padding: 8px 14px;
-            background: #313244;
-            border: 1px solid rgba(255,255,255,0.15);
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 12px;
-            white-space: nowrap;
-          ">
+        <div class="form-row">
+          <label class="media-file-btn">
             📁 Load Audio File
-            <input type="file" id="sync-preview-audio-input" accept="audio/*" style="display: none;">
+            <input type="file" id="sync-preview-audio-input" class="visually-hidden" accept="audio/*">
           </label>
-          <span id="sync-preview-audio-name" style="font-size: 11px; opacity: 0.6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">No audio file loaded</span>
+          <span id="sync-preview-audio-name" class="media-file-name">No audio file loaded</span>
         </div>
+        <div id="sync-preview-size-warning" class="media-warning" role="status" style="display: none;"></div>
 
         <!-- Hidden audio element -->
         <audio id="sync-preview-audio" style="display: none;"></audio>
 
         <!-- Offset slider -->
         <div>
-          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px;">
-            <label style="font-size: 12px; min-width: 100px;">Audio Offset:</label>
-            <input type="range" id="sync-preview-offset"
-              min="-10000" max="10000" step="50" value="0"
-              style="flex: 1; cursor: pointer; accent-color: #7c3aed;">
-            <span id="sync-preview-offset-display" style="
-              font-size: 13px;
-              font-weight: bold;
-              min-width: 52px;
-              text-align: right;
-              font-variant-numeric: tabular-nums;
-              color: #cba6f7;
-            ">0.0s</span>
+          <div class="form-row">
+            <label class="row-label row-label-xwide" for="sync-preview-offset">Audio Offset:</label>
+            <input type="range" id="sync-preview-offset" class="range range-purple"
+              min="-10000" max="10000" step="50" value="0">
+            <span id="sync-preview-offset-display" class="media-readout media-readout-purple">0.0s</span>
           </div>
-          <div style="font-size: 10px; opacity: 0.5; text-align: center;">
+          <div class="media-hint">
             Negative = audio starts earlier &nbsp;|&nbsp; Positive = audio starts later (delayed)
           </div>
         </div>
 
         <!-- Transport controls -->
-        <div style="display: flex; gap: 10px; justify-content: center;">
-          <button id="sync-preview-play-btn" style="
-            padding: 10px 28px;
-            background: #7c3aed;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            font-size: 14px;
-            font-weight: bold;
-            cursor: pointer;
-            min-width: 120px;
-          ">▶ Play</button>
-          <button id="sync-preview-reset-btn" style="
-            padding: 10px 20px;
-            background: #313244;
-            color: #cdd6f4;
-            border: 1px solid rgba(255,255,255,0.15);
-            border-radius: 8px;
-            font-size: 14px;
-            cursor: pointer;
-          ">⏹ Reset</button>
+        <div class="footer-row">
+          <button type="button" id="sync-preview-play-btn" class="btn btn-media-primary btn-lg">▶ Play</button>
+          <button type="button" id="sync-preview-reset-btn" class="btn btn-media btn-lg">⏹ Reset</button>
         </div>
 
         <!-- Merge progress (shown during FFmpeg merge) -->
         <div id="sync-preview-merge-progress" style="display: none;">
-          <div style="font-size: 12px; margin-bottom: 6px; color: #89b4fa;">
+          <div class="media-progress-label" role="status">
             <span id="sync-preview-merge-status">Merging...</span>
             <span id="sync-preview-merge-percent"></span>
           </div>
-          <div style="background: rgba(255,255,255,0.1); height: 6px; border-radius: 3px; overflow: hidden;">
-            <div id="sync-preview-merge-bar" style="background: #7c3aed; height: 100%; width: 0%; transition: width 0.3s;"></div>
+          <div class="media-progress-track">
+            <div id="sync-preview-merge-bar" class="media-progress-bar"></div>
           </div>
+          <button type="button" id="sync-preview-download-btn" class="btn btn-success btn-block" style="display: none;">⬇ Download Merged Video</button>
         </div>
-
       </div>
 
       <!-- Footer -->
-      <div style="padding: 16px 20px; border-top: 1px solid rgba(255,255,255,0.1); display: flex; gap: 10px; justify-content: flex-end;">
-        <button id="sync-preview-cancel-btn" style="
-          padding: 10px 20px;
-          background: #313244;
-          color: #cdd6f4;
-          border: 1px solid rgba(255,255,255,0.15);
-          border-radius: 8px;
-          font-size: 13px;
-          cursor: pointer;
-        ">Cancel</button>
-        <button id="sync-preview-merge-btn" disabled style="
-          padding: 10px 20px;
-          background: #059669;
-          color: white;
-          border: none;
-          border-radius: 8px;
-          font-size: 13px;
-          font-weight: bold;
-          cursor: pointer;
-          opacity: 0.5;
-        ">Merge with this offset</button>
+      <div class="dialog-footer footer-row-end">
+        <button type="button" id="sync-preview-cancel-btn" class="btn btn-media">Cancel</button>
+        <button type="button" id="sync-preview-merge-btn" class="btn btn-success" disabled>Merge with this offset</button>
       </div>
     </div>
   </div>
 
-  <!-- Version Info -->
-  <div style="
-    position: fixed;
-    bottom: 5px;
-    right: 5px;
-    font-size: 9px;
-    color: rgba(128, 128, 128, 0.4);
-    font-family: monospace;
-    pointer-events: none;
-    user-select: none;
-  ">v2.1.0</div>
+  <!-- Version Info (filled in by main.js) -->
+  <div id="app-version" class="version-tag" aria-hidden="true"></div>
 
-  <script>
-    // Setup collapsible sections for main control panel
-    (function setupPanelCollapsibleSections() {
-      // Load collapsed state from localStorage
-      let collapsedSections = {};
-      try {
-        const savedState = localStorage.getItem('controlPanelCollapsedSections');
-        if (savedState) collapsedSections = JSON.parse(savedState);
-      } catch (e) { /* ignore corrupt data */ }
-
-      function saveCollapsedState() {
-        localStorage.setItem('controlPanelCollapsedSections', JSON.stringify(collapsedSections));
-      }
-
-      function createCollapsibleSection(sectionId, title, content, defaultExpanded = true) {
-        const isCollapsed = collapsedSections[sectionId] !== undefined
-          ? collapsedSections[sectionId]
-          : !defaultExpanded;
-
-        const section = document.createElement('div');
-        section.style.cssText = 'margin-bottom: 8px;';
-
-        // Header
-        const header = document.createElement('div');
-        header.style.cssText = `
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 6px 8px;
-          background: #f0f0f0;
-          border-radius: 4px;
-          cursor: pointer;
-          user-select: none;
-          font-weight: bold;
-          font-size: 11px;
-          color: #666;
-          transition: background 0.2s;
-          margin-bottom: 6px;
-        `;
-        header.innerHTML = `
-          <span>${title}</span>
-          <span style="font-size: 10px; transition: transform 0.2s; transform: rotate(${isCollapsed ? 0 : 90}deg);">▶</span>
-        `;
-
-        // Content wrapper
-        const contentWrapper = document.createElement('div');
-        contentWrapper.style.display = isCollapsed ? 'none' : 'block';
-        contentWrapper.appendChild(content);
-
-        // Toggle functionality
-        header.onclick = () => {
-          const currentlyCollapsed = contentWrapper.style.display === 'none';
-          contentWrapper.style.display = currentlyCollapsed ? 'block' : 'none';
-          const arrow = header.querySelector('span:last-child');
-          arrow.style.transform = currentlyCollapsed ? 'rotate(90deg)' : 'rotate(0deg)';
-
-          collapsedSections[sectionId] = !currentlyCollapsed;
-          saveCollapsedState();
-        };
-
-        header.onmouseover = () => header.style.background = '#e0e0e0';
-        header.onmouseout = () => header.style.background = '#f0f0f0';
-
-        section.appendChild(header);
-        section.appendChild(contentWrapper);
-
-        return section;
-      }
-
-      // Wait for DOM to be ready
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initCollapsibleSections);
-      } else {
-        initCollapsibleSections();
-      }
-
-      function initCollapsibleSections() {
-        const mainPanel = document.getElementById('main-panel-sections');
-        if (!mainPanel) return;
-
-        // Get all children (we'll wrap specific sections)
-        const children = Array.from(mainPanel.children);
-
-        try {
-        // Safely detach children (preserve references)
-        while (mainPanel.firstChild) {
-          mainPanel.removeChild(mainPanel.firstChild);
-        }
-
-        // Group elements into sections
-        let currentGroup = [];
-        let currentTitle = null;
-        let sections = [];
-
-        for (let i = 0; i < children.length; i++) {
-          const child = children[i];
-
-          // Check if this is a divider (hr) - marks end of a section
-          if (child.tagName === 'HR') {
-            if (currentGroup.length > 0 && currentTitle) {
-              sections.push({ title: currentTitle, elements: currentGroup });
-              currentGroup = [];
-              currentTitle = null;
-            }
-            continue;
-          }
-
-          // Check if this starts a new section (has a label or strong tag with section name)
-          const labelText = child.querySelector?.('label')?.textContent || child.querySelector?.('strong')?.textContent || '';
-
-          if (labelText.includes('Paint Mode')) {
-            if (currentGroup.length > 0 && currentTitle) {
-              sections.push({ title: currentTitle, elements: currentGroup });
-            }
-            currentTitle = '🎨 Paint Mode';
-            currentGroup = [child];
-          } else if (labelText.includes('Spiral') || child.id === 'spiral-controls') {
-            if (currentGroup.length > 0 && currentTitle) {
-              sections.push({ title: currentTitle, elements: currentGroup });
-            }
-            currentTitle = '🌀 Spiral Settings';
-            currentGroup = [child];
-          } else if (labelText.includes('Keyboard')) {
-            if (currentGroup.length > 0 && currentTitle) {
-              sections.push({ title: currentTitle, elements: currentGroup });
-            }
-            currentTitle = '⌨️ Keyboard Shortcuts';
-            currentGroup = [child];
-          } else if (child.id === 'projects-section') {
-            if (currentGroup.length > 0 && currentTitle) {
-              sections.push({ title: currentTitle, elements: currentGroup });
-            }
-            currentTitle = '💾 Projects';
-            currentGroup = [child];
-          } else {
-            // Add to current group
-            if (currentTitle) {
-              currentGroup.push(child);
-            } else {
-              // No section yet, just add to panel
-              mainPanel.appendChild(child);
-            }
-          }
-        }
-
-        // Add last section
-        if (currentGroup.length > 0 && currentTitle) {
-          sections.push({ title: currentTitle, elements: currentGroup });
-        }
-
-        // Create collapsible sections
-        sections.forEach((section, index) => {
-          const container = document.createElement('div');
-          section.elements.forEach(el => container.appendChild(el));
-
-          const sectionId = section.title.toLowerCase().replace(/[^a-z]+/g, '-');
-          // First section and mode-toggled sections (timeline/spiral) expanded by default
-          const defaultExpanded = index === 0; // First section expanded by default
-          const collapsibleSection = createCollapsibleSection(sectionId, section.title, container, defaultExpanded);
-
-          mainPanel.appendChild(collapsibleSection);
-        });
-
-        } catch (e) {
-          // If collapsible setup fails, restore all children so panel isn't empty
-          console.error('Collapsible sections setup failed:', e);
-          children.forEach(child => mainPanel.appendChild(child));
-        }
-      }
-    })();
-  </script>
   <script type="module" src="src/main.js"></script>
 </body>
 </html>

@@ -1,11 +1,12 @@
 /**
  * MIDI Mapping Panel
- * Configures Bank Mode MIDI mappings (Alesis workflow)
+ * Configures Bank Mode MIDI mappings (Alesis workflow).
+ * Opening the panel never changes the mode; the switch at the top does.
  */
 
 import { DRUM_KIT_CONFIG } from '../config/drumKit.js';
-import { MIDI_MAPPING_PANEL, COLORS, SPACING, RADIUS, TYPOGRAPHY } from '../config/theme.js';
-import { debugLog, debugWarn, debugError, infoLog } from '../utils/debug.js';
+import { MIDI_MAPPING_PANEL, COLORS, RADIUS, TYPOGRAPHY } from '../config/theme.js';
+import { debugLog } from '../utils/debug.js';
 
 export class MidiMappingPanel {
   constructor(drumSettings, midiManager, notificationSystem, updateIndicatorCallback) {
@@ -62,8 +63,8 @@ export class MidiMappingPanel {
       }
     }
 
-    // Enable bank mode
-    this.midiManager.bankModeEnabled = true;
+    // Bank mode on/off switch (opening the panel no longer turns bank mode on)
+    container.appendChild(this.createBankModeSwitch());
 
     // Info section
     container.appendChild(this.createInfoSection());
@@ -71,6 +72,51 @@ export class MidiMappingPanel {
     // Bank mode sections
     container.appendChild(this.createPadAssignments());
     container.appendChild(this.createVariableAssignments());
+  }
+
+  /**
+   * On/off switch bound to midiManager.bankModeEnabled
+   */
+  createBankModeSwitch() {
+    const wrap = document.createElement('div');
+    wrap.className = 'mm-switch';
+
+    const text = document.createElement('div');
+    text.className = 'mm-switch-text';
+    const title = document.createElement('span');
+    title.className = 'mm-switch-title';
+    title.id = 'bank-mode-switch-label';
+    title.textContent = 'Bank mode: pads select a drum, faders control it';
+    const desc = document.createElement('span');
+    desc.className = 'mm-switch-desc';
+    text.append(title, desc);
+
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.id = 'bank-mode-switch';
+    toggle.className = 'switch';
+    toggle.setAttribute('role', 'switch');
+    toggle.setAttribute('aria-labelledby', 'bank-mode-switch-label');
+
+    const render = () => {
+      const on = !!this.midiManager.bankModeEnabled;
+      toggle.setAttribute('aria-checked', String(on));
+      desc.textContent = on
+        ? 'On — hitting an assigned pad selects that drum instead of painting.'
+        : 'Off — every pad paints its own drum (direct mode). Assignments below are kept.';
+    };
+
+    toggle.addEventListener('click', () => {
+      this.midiManager.bankModeEnabled = !this.midiManager.bankModeEnabled;
+      render();
+      if (typeof this.updateIndicatorCallback === 'function') this.updateIndicatorCallback();
+      window.stateManager?.scheduleAutoSave();
+      this.notificationSystem?.show(`Bank mode ${this.midiManager.bankModeEnabled ? 'on' : 'off'}`);
+    });
+
+    render();
+    wrap.append(text, toggle);
+    return wrap;
   }
 
   /**
@@ -89,9 +135,10 @@ export class MidiMappingPanel {
     description.style.cssText = `margin: 0; font-size: ${TYPOGRAPHY.fontSize.base}; color: ${COLORS.text.secondary}; line-height: 1.5;`;
     description.innerHTML = `
       <strong>How it works:</strong><br>
-      1. Hit a pad to select which drum you want to control<br>
-      2. Use faders/dials to adjust parameters for the selected drum<br>
-      3. Direct drum-to-MIDI note mappings are configured in the <strong>Customize Drums</strong> panel (🎹 buttons)
+      1. Turn bank mode on with the switch above<br>
+      2. Hit a pad to select which drum you want to control<br>
+      3. Use faders/dials to adjust parameters for the selected drum<br>
+      Direct drum-to-MIDI note mappings are set with <strong>🥁 Kit Setup</strong> or in <strong>Customize Drums</strong> (🎛 buttons).
     `;
     section.appendChild(description);
 
@@ -121,36 +168,26 @@ export class MidiMappingPanel {
    */
   createCollapsibleSection(titleText, defaultOpen = true) {
     // Use saved state if available, otherwise use default
-    const isOpen = this.sectionStates.hasOwnProperty(titleText)
+    const isOpen = Object.hasOwn(this.sectionStates, titleText)
       ? this.sectionStates[titleText]
       : defaultOpen;
 
     const section = document.createElement('div');
     section.style.cssText = 'margin-bottom: 25px;';
 
-    const header = document.createElement('div');
+    const header = document.createElement('button');
+    header.type = 'button';
+    header.className = 'mm-section-toggle';
     header.setAttribute('data-section-title', titleText); // Mark for state tracking
-    header.style.cssText = `
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      cursor: pointer;
-      padding: 12px;
-      background: ${COLORS.background.secondary};
-      border-radius: ${RADIUS.md};
-      margin-bottom: 15px;
-      transition: background 0.2s;
-    `;
-    header.onmouseover = () => header.style.background = COLORS.background.tertiary;
-    header.onmouseout = () => header.style.background = COLORS.background.secondary;
+    header.setAttribute('aria-expanded', String(isOpen));
 
-    const title = document.createElement('h3');
+    const title = document.createElement('span');
     title.textContent = titleText;
-    title.style.cssText = `margin: 0; font-size: ${TYPOGRAPHY.fontSize.lg}; color: ${COLORS.text.primary};`;
 
     const icon = document.createElement('span');
     icon.textContent = isOpen ? '▼' : '▶';
-    icon.style.cssText = `font-size: ${TYPOGRAPHY.fontSize.sm}; color: ${COLORS.text.secondary}; transition: transform 0.2s;`;
+    icon.setAttribute('aria-hidden', 'true');
+    icon.style.cssText = `font-size: ${TYPOGRAPHY.fontSize.sm}; color: ${COLORS.text.secondary};`;
 
     header.appendChild(title);
     header.appendChild(icon);
@@ -163,6 +200,7 @@ export class MidiMappingPanel {
       const isOpen = content.style.display !== 'none';
       content.style.display = isOpen ? 'none' : 'block';
       icon.textContent = isOpen ? '▶' : '▼';
+      header.setAttribute('aria-expanded', String(!isOpen));
       // Save state when manually toggled
       this.sectionStates[titleText] = !isOpen;
     };
@@ -202,6 +240,7 @@ export class MidiMappingPanel {
         justify-content: space-between;
         padding: 10px;
         background: ${MIDI_MAPPING_PANEL.drumRow.background};
+        border: 1px solid ${MIDI_MAPPING_PANEL.drumRow.border};
         border-radius: ${RADIUS.md};
       `;
 
@@ -210,12 +249,12 @@ export class MidiMappingPanel {
       label.style.cssText = `font-weight: bold; font-size: ${TYPOGRAPHY.fontSize.md}; flex: 1;`;
 
       const assignmentDisplay = document.createElement('div');
-      assignmentDisplay.style.cssText = 'display: flex; flex-direction: column; gap: 2px; font-size: 10px; margin-right: 5px;';
+      assignmentDisplay.style.cssText = 'display: flex; flex-direction: column; gap: 2px; font-size: 11px; margin-right: 5px;';
 
       if (assignment.note !== null) {
         const noteSpan = document.createElement('span');
         noteSpan.textContent = `Note ${assignment.note}`;
-        noteSpan.style.cssText = `color: ${COLORS.primary.main}; font-weight: bold; padding: 3px 8px; background: ${COLORS.primary.bg}; border-radius: ${RADIUS.sm};`;
+        noteSpan.style.cssText = `color: ${COLORS.primary.text}; font-weight: bold; padding: 3px 8px; background: ${COLORS.primary.bg}; border-radius: ${RADIUS.sm};`;
         assignmentDisplay.appendChild(noteSpan);
 
         if (assignment.deviceId) {
@@ -224,12 +263,12 @@ export class MidiMappingPanel {
           const deviceName = device ? device.name : assignment.deviceId.substring(0, 20);
           const deviceSpan = document.createElement('span');
           deviceSpan.textContent = `${deviceName}`;
-          deviceSpan.style.cssText = `color: ${COLORS.success.light}; font-size: ${TYPOGRAPHY.fontSize.xs}; padding: 2px 6px;`;
+          deviceSpan.style.cssText = `color: ${COLORS.success.text}; font-size: ${TYPOGRAPHY.fontSize.xs}; padding: 2px 6px;`;
           assignmentDisplay.appendChild(deviceSpan);
         } else {
           const anyDeviceSpan = document.createElement('span');
           anyDeviceSpan.textContent = 'Any Device';
-          anyDeviceSpan.style.cssText = `color: ${COLORS.warning.main}; font-size: ${TYPOGRAPHY.fontSize.xs}; padding: 2px 6px;`;
+          anyDeviceSpan.style.cssText = `color: ${COLORS.warning.text}; font-size: ${TYPOGRAPHY.fontSize.xs}; padding: 2px 6px;`;
           assignmentDisplay.appendChild(anyDeviceSpan);
         }
       } else {
@@ -240,16 +279,20 @@ export class MidiMappingPanel {
       }
 
       const learnBtn = document.createElement('button');
+      learnBtn.type = 'button';
       learnBtn.textContent = '🎛';
       learnBtn.title = 'Learn Pad';
+      learnBtn.setAttribute('aria-label', `Learn pad for ${label.textContent}`);
       learnBtn.style.cssText = `padding: 4px 8px; font-size: ${TYPOGRAPHY.fontSize.base}; background: ${MIDI_MAPPING_PANEL.learnButton.idle}; color: white; border: none; border-radius: ${RADIUS.sm}; cursor: pointer; margin-right: 5px;`;
       learnBtn.onclick = () => {
         this.startBankLearn('pad', drumId, learnBtn);
       };
 
       const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
       removeBtn.textContent = '×';
       removeBtn.title = 'Remove';
+      removeBtn.setAttribute('aria-label', `Remove pad assignment for ${label.textContent}`);
       removeBtn.style.cssText = `padding: 2px 6px; font-size: ${TYPOGRAPHY.fontSize.sm}; background: ${COLORS.error.main}; color: white; border: none; border-radius: ${RADIUS.sm}; cursor: pointer;`;
       removeBtn.style.display = assignment.note !== null ? 'inline-block' : 'none';
       removeBtn.onclick = () => {
@@ -334,6 +377,7 @@ export class MidiMappingPanel {
         justify-content: space-between;
         padding: 10px;
         background: ${MIDI_MAPPING_PANEL.drumRow.background};
+        border: 1px solid ${MIDI_MAPPING_PANEL.drumRow.border};
         border-radius: ${RADIUS.md};
       `;
 
@@ -342,13 +386,13 @@ export class MidiMappingPanel {
       label.style.cssText = `font-weight: bold; font-size: ${TYPOGRAPHY.fontSize.md}; flex: 1;`;
 
       const assignmentDisplay = document.createElement('div');
-      assignmentDisplay.style.cssText = 'display: flex; flex-direction: column; gap: 2px; font-size: 10px; margin-right: 5px;';
+      assignmentDisplay.style.cssText = 'display: flex; flex-direction: column; gap: 2px; font-size: 11px; margin-right: 5px;';
 
       if (assignment && assignment.cc !== null) {
         const rangeInfo = (assignment.ccMin === 0 && assignment.ccMax === 127) ? '' : ` (${assignment.ccMin}-${assignment.ccMax})`;
         const ccSpan = document.createElement('span');
         ccSpan.textContent = `CC${assignment.cc}${rangeInfo}`;
-        ccSpan.style.cssText = `color: ${COLORS.primary.main}; font-weight: bold; padding: 3px 8px; background: ${COLORS.primary.bg}; border-radius: ${RADIUS.sm};`;
+        ccSpan.style.cssText = `color: ${COLORS.primary.text}; font-weight: bold; padding: 3px 8px; background: ${COLORS.primary.bg}; border-radius: ${RADIUS.sm};`;
         assignmentDisplay.appendChild(ccSpan);
 
         if (assignment.deviceId) {
@@ -357,12 +401,12 @@ export class MidiMappingPanel {
           const deviceName = device ? device.name : assignment.deviceId.substring(0, 20);
           const deviceSpan = document.createElement('span');
           deviceSpan.textContent = `${deviceName}`;
-          deviceSpan.style.cssText = `color: ${COLORS.success.light}; font-size: ${TYPOGRAPHY.fontSize.xs}; padding: 2px 6px;`;
+          deviceSpan.style.cssText = `color: ${COLORS.success.text}; font-size: ${TYPOGRAPHY.fontSize.xs}; padding: 2px 6px;`;
           assignmentDisplay.appendChild(deviceSpan);
         } else {
           const anyDeviceSpan = document.createElement('span');
           anyDeviceSpan.textContent = 'Any Device';
-          anyDeviceSpan.style.cssText = `color: ${COLORS.warning.main}; font-size: ${TYPOGRAPHY.fontSize.xs}; padding: 2px 6px;`;
+          anyDeviceSpan.style.cssText = `color: ${COLORS.warning.text}; font-size: ${TYPOGRAPHY.fontSize.xs}; padding: 2px 6px;`;
           assignmentDisplay.appendChild(anyDeviceSpan);
         }
       } else {
@@ -373,16 +417,20 @@ export class MidiMappingPanel {
       }
 
       const learnBtn = document.createElement('button');
+      learnBtn.type = 'button';
       learnBtn.textContent = '🎛';
       learnBtn.title = 'Learn Fader/Dial';
+      learnBtn.setAttribute('aria-label', `Learn fader or dial for ${variable.label}`);
       learnBtn.style.cssText = `padding: 4px 8px; font-size: ${TYPOGRAPHY.fontSize.base}; background: ${MIDI_MAPPING_PANEL.learnButton.idle}; color: white; border: none; border-radius: ${RADIUS.sm}; cursor: pointer; margin-right: 5px;`;
       learnBtn.onclick = () => {
         this.startBankLearn('variable', variable.key, learnBtn);
       };
 
       const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
       removeBtn.textContent = '×';
       removeBtn.title = 'Remove';
+      removeBtn.setAttribute('aria-label', `Remove mapping for ${variable.label}`);
       removeBtn.style.cssText = `padding: 2px 6px; font-size: ${TYPOGRAPHY.fontSize.sm}; background: ${COLORS.error.main}; color: white; border: none; border-radius: ${RADIUS.sm}; cursor: pointer;`;
       removeBtn.style.display = (assignment && assignment.cc !== null) ? 'inline-block' : 'none';
       removeBtn.onclick = () => {

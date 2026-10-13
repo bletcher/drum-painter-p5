@@ -3,7 +3,16 @@
  * Shows original settings vs calculated paint values in real-time
  */
 
-import { DEBUG_PANEL, COLORS, SPACING, RADIUS, SHADOWS } from '../config/theme.js';
+import { DEBUG_PANEL, COLORS, SPACING, RADIUS } from '../config/theme.js';
+import { escapeHtml } from '../utils/escapeHtml.js';
+
+/** Only allow simple color syntaxes into inline CSS (values can come from imported files). */
+function safeColor(value, fallback = 'transparent') {
+  const s = String(value ?? '').trim();
+  return /^(#[0-9a-f]{3,8}|(rgb|rgba|hsl|hsla)\([\d\s.,%+-]+\)|[a-z]{3,20})$/i.test(s) ? s : fallback;
+}
+
+const NOT_CALCULATED = `<span style="color: ${COLORS.text.muted};">not calculated</span>`;
 
 export class DebugPanel {
   constructor(drumSettings, midiManager) {
@@ -50,12 +59,17 @@ export class DebugPanel {
       z-index: 9998;
     `;
     backdrop.onclick = () => this.hide();
+    this._guard(backdrop);
     document.body.appendChild(backdrop);
 
     // Create panel
     const panel = document.createElement('div');
     panel.id = 'debug-panel';
+    panel.setAttribute('role', 'dialog');
+    panel.setAttribute('aria-modal', 'true');
+    panel.setAttribute('aria-labelledby', 'debug-panel-title');
     this.updatePanelPosition(panel);
+    this._guard(panel);
 
     // Header (draggable)
     const header = document.createElement('div');
@@ -69,10 +83,11 @@ export class DebugPanel {
       align-items: center;
       cursor: move;
       user-select: none;
+      touch-action: none;
     `;
     header.innerHTML = `
-      <h3 style="margin: 0; font-size: 16px; pointer-events: none;">🐛 Debug Panel - Settings vs Paint Values</h3>
-      <button id="close-debug-btn" style="
+      <h3 id="debug-panel-title" style="margin: 0; font-size: 16px; pointer-events: none;">🐛 Debug Panel - Settings vs Paint Values</h3>
+      <button type="button" id="close-debug-btn" aria-label="Close debug panel" style="
         background: rgba(255,255,255,0.2);
         border: none;
         color: ${COLORS.text.light};
@@ -83,8 +98,8 @@ export class DebugPanel {
       ">×</button>
     `;
 
-    // Make header draggable
-    header.onmousedown = (e) => this.startDrag(e);
+    // Make header draggable (Pointer Events: mouse, touch, pen)
+    header.addEventListener('pointerdown', (e) => this.startDrag(e));
 
     // Content container
     const content = document.createElement('div');
@@ -105,10 +120,11 @@ export class DebugPanel {
       width: 20px;
       height: 20px;
       cursor: nwse-resize;
+      touch-action: none;
       background: linear-gradient(135deg, transparent 50%, ${COLORS.primary.main} 50%);
       border-bottom-right-radius: ${RADIUS.xl};
     `;
-    resizeHandle.onmousedown = (e) => this.startResize(e);
+    resizeHandle.addEventListener('pointerdown', (e) => this.startResize(e));
 
     panel.appendChild(header);
     panel.appendChild(content);
@@ -121,9 +137,17 @@ export class DebugPanel {
       this.hide();
     };
 
-    // Global mouse handlers
-    document.addEventListener('mousemove', (e) => this.onMouseMove(e));
-    document.addEventListener('mouseup', () => this.onMouseUp());
+    // Global pointer handlers
+    document.addEventListener('pointermove', (e) => this.onMouseMove(e));
+    document.addEventListener('pointerup', () => this.onMouseUp());
+    document.addEventListener('pointercancel', () => this.onMouseUp());
+  }
+
+  /** Keep pointer/wheel events on the panel from reaching the p5 canvas */
+  _guard(el) {
+    for (const type of ['mousedown', 'click', 'dblclick', 'pointerdown', 'touchstart', 'touchmove', 'wheel']) {
+      el.addEventListener(type, (e) => e.stopPropagation(), { passive: true });
+    }
   }
 
   show() {
@@ -190,7 +214,7 @@ export class DebugPanel {
 
     if (activeDrums.length === 0) {
       content.innerHTML = `
-        <div style="text-align: center; padding: 40px; color: #999;">
+        <div style="text-align: center; padding: 40px; color: ${COLORS.text.muted};">
           <p style="font-size: 18px; margin-bottom: 10px;">👆 Play some drums to see debug info</p>
           <p style="font-size: 14px;">This panel shows raw settings vs calculated paint values</p>
         </div>
@@ -221,11 +245,11 @@ export class DebugPanel {
 
     const card = document.createElement('div');
     card.style.cssText = `
-      background: #f8f9fa;
+      background: ${COLORS.background.secondary};
       border-radius: 8px;
       padding: 15px;
       margin-bottom: 15px;
-      border-left: 4px solid ${settings.color};
+      border-left: 4px solid ${safeColor(settings.color, COLORS.gray[400])};
     `;
 
     // Header with drum name and last played time
@@ -234,32 +258,37 @@ export class DebugPanel {
 
     card.innerHTML = `
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-        <h4 style="margin: 0; font-size: 16px; color: #333;">
-          ${settings.name} <span style="font-size: 12px; color: #999; font-weight: normal;">(${drumId})</span>
+        <h4 style="margin: 0; font-size: 16px; color: ${COLORS.text.primary};">
+          ${escapeHtml(settings.name)} <span style="font-size: 12px; color: ${COLORS.text.muted}; font-weight: normal;">(${escapeHtml(drumId)})</span>
         </h4>
-        <span style="font-size: 11px; color: #666;">Last played: ${timeText}</span>
+        <span style="font-size: 12px; color: ${COLORS.text.secondary};">Last played: ${escapeHtml(timeText)}</span>
       </div>
     `;
 
     // Create unified table for perfect row alignment
     const tableContainer = document.createElement('div');
     tableContainer.style.cssText = `
-      background: white;
+      background: ${COLORS.background.primary};
       padding: 12px;
       border-radius: 6px;
     `;
 
     const deviceInfo = this.getDeviceInfo(settings);
     const calc = paintData.calculatedValues || {};
+    const fmt = (value, digits, suffix = '') =>
+      (typeof value === 'number' && Number.isFinite(value)) ? `${value.toFixed(digits)}${suffix}` : NOT_CALCULATED;
+    const pct = (value) => (typeof value === 'number' && Number.isFinite(value)) ? `${(value * 100).toFixed(0)}%` : '—';
+    const velocity = typeof paintData.velocity === 'number' ? paintData.velocity.toFixed(3) : escapeHtml(paintData.velocity);
+    const safeDrumId = escapeHtml(drumId);
 
     tableContainer.innerHTML = `
       <!-- Fixed Settings Section -->
-      <h5 id="fixed-settings-header-${drumId}" style="margin: 0 0 ${SPACING.sm} 0; font-size: 13px; color: ${DEBUG_PANEL.header.collapsed.textColor}; font-weight: 600; border-bottom: 2px solid ${DEBUG_PANEL.header.collapsed.borderColor}; padding-bottom: ${SPACING.xs}; cursor: pointer; user-select: none; display: flex; align-items: center; gap: ${SPACING.sm};">
-        <span id="fixed-settings-chevron-${drumId}" style="transition: transform 0.2s;">▼</span>
+      <h5 id="fixed-settings-header-${safeDrumId}" role="button" tabindex="0" aria-expanded="false" style="margin: 0 0 ${SPACING.sm} 0; font-size: 13px; color: ${DEBUG_PANEL.header.collapsed.textColor}; font-weight: 600; border-bottom: 2px solid ${DEBUG_PANEL.header.collapsed.borderColor}; padding-bottom: ${SPACING.xs}; cursor: pointer; user-select: none; display: flex; align-items: center; gap: ${SPACING.sm};">
+        <span id="fixed-settings-chevron-${safeDrumId}" aria-hidden="true" style="transition: transform 0.2s;">▼</span>
         <span>Fixed Settings</span>
       </h5>
-      <div id="fixed-settings-content-${drumId}" style="overflow: hidden; transition: max-height 0.3s ease-out;">
-        <table style="width: 100%; font-size: 11px; border-collapse: collapse; table-layout: fixed; margin-bottom: ${SPACING.xl};">
+      <div id="fixed-settings-content-${safeDrumId}" style="overflow: hidden; transition: max-height 0.3s ease-out;">
+        <table style="width: 100%; font-size: 12px; border-collapse: collapse; table-layout: fixed; margin-bottom: ${SPACING.xl};">
           <colgroup>
             <col style="width: 35%;">
             <col style="width: 65%;">
@@ -268,9 +297,9 @@ export class DebugPanel {
           ${this.createFixedRow('Note', paintData.note)}
           ${this.createFixedRow('Color', settings.color, true, settings.color)}
           ${this.createFixedRow('Shape', settings.shape)}
-          ${this.createFixedRow('Size', `${(settings.size * 100).toFixed(0)}%`)}
+          ${this.createFixedRow('Size', pct(settings.size))}
           ${this.createFixedRow('Rotation', `${settings.rotation}°`)}
-          ${this.createFixedRow('Opacity', `${(settings.opacity * 100).toFixed(0)}%`)}
+          ${this.createFixedRow('Opacity', pct(settings.opacity))}
           ${this.createFixedRow('Hue Variation', `${settings.hueVariation}°`)}
           ${this.createFixedRow('Stroke Enabled', settings.strokeEnabled ? 'Yes' : 'No')}
           ${this.createFixedRow('Stroke Weight', `${settings.strokeWeight}px`)}
@@ -284,29 +313,29 @@ export class DebugPanel {
       <!-- Velocity Input Display -->
       <div style="background: ${DEBUG_PANEL.velocity.background}; border-radius: ${RADIUS.lg}; padding: ${SPACING.md} 16px; margin-bottom: ${SPACING.md}; border-left: 4px solid ${DEBUG_PANEL.velocity.borderColor}; display: flex; justify-content: space-between; align-items: center;">
         <div style="display: flex; align-items: baseline; gap: ${SPACING.sm};">
-          <span style="font-size: 10px; font-weight: 600; color: ${DEBUG_PANEL.velocity.badgeColor}; text-transform: uppercase; letter-spacing: 0.5px;">Input</span>
+          <span style="font-size: 11px; font-weight: 600; color: ${DEBUG_PANEL.velocity.badgeColor}; text-transform: uppercase; letter-spacing: 0.5px;">Input</span>
           <span style="font-size: 12px; font-weight: 600; color: ${DEBUG_PANEL.velocity.labelColor};">Velocity</span>
         </div>
         <div style="font-size: 18px; font-weight: 700; color: ${DEBUG_PANEL.velocity.valueColor}; font-family: 'Courier New', monospace;">
-          ${paintData.velocity.toFixed(3)}
+          ${velocity}
         </div>
       </div>
 
       <!-- Calculated Values Table -->
       <div style="background: ${DEBUG_PANEL.calculated.background}; border-radius: ${RADIUS.lg}; padding: ${SPACING.md}; border-left: 4px solid ${DEBUG_PANEL.calculated.borderColor};">
-        <div style="font-size: 10px; font-weight: 600; color: ${DEBUG_PANEL.calculated.labelColor}; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: ${SPACING.sm};">Calculated Values</div>
-        <table style="width: 100%; font-size: 11px; border-collapse: collapse; table-layout: fixed;">
+        <div style="font-size: 11px; font-weight: 600; color: ${DEBUG_PANEL.calculated.labelColor}; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: ${SPACING.sm};">Calculated Values</div>
+        <table style="width: 100%; font-size: 12px; border-collapse: collapse; table-layout: fixed;">
           <colgroup>
             <col style="width: 40%;">
             <col style="width: 60%;">
           </colgroup>
           <tbody>
-            ${this.createCalculatedRow('Color', calc.color || '<span style="color: #999;">not calculated</span>', true, calc.color)}
-            ${this.createCalculatedRow('Size', calc.size !== undefined ? `${calc.size.toFixed(1)}px` : '<span style="color: #999;">not calculated</span>', false, null)}
-            ${this.createCalculatedRow('Rotation', calc.rotation !== undefined ? `${calc.rotation.toFixed(1)}°` : '<span style="color: #999;">not calculated</span>', false, null)}
-            ${this.createCalculatedRow('Opacity', calc.opacity !== undefined && calc.opacity !== null ? (calc.opacity * 100).toFixed(0) + '%' : '<span style="color: #999;">not calculated</span>', false, null)}
-            ${this.createCalculatedRow('Stroke Weight', calc.strokeWeight !== undefined ? `${calc.strokeWeight}px` : '<span style="color: #999;">not calculated</span>', false, null)}
-            ${this.createCalculatedRow('Stroke Color', calc.strokeColor || '<span style="color: #999;">not calculated</span>', true, calc.strokeColor)}
+            ${this.createCalculatedRow('Color', calc.color ? escapeHtml(calc.color) : NOT_CALCULATED, true, calc.color)}
+            ${this.createCalculatedRow('Size', fmt(calc.size, 1, 'px'), false, null)}
+            ${this.createCalculatedRow('Rotation', fmt(calc.rotation, 1, '°'), false, null)}
+            ${this.createCalculatedRow('Opacity', (typeof calc.opacity === 'number') ? `${(calc.opacity * 100).toFixed(0)}%` : NOT_CALCULATED, false, null)}
+            ${this.createCalculatedRow('Stroke Weight', calc.strokeWeight !== undefined && calc.strokeWeight !== null ? `${escapeHtml(calc.strokeWeight)}px` : NOT_CALCULATED, false, null)}
+            ${this.createCalculatedRow('Stroke Color', calc.strokeColor ? escapeHtml(calc.strokeColor) : NOT_CALCULATED, true, calc.strokeColor)}
           </tbody>
         </table>
       </div>
@@ -315,17 +344,18 @@ export class DebugPanel {
     card.appendChild(tableContainer);
 
     // Add collapse/expand functionality for fixed settings
-    const header = tableContainer.querySelector(`#fixed-settings-header-${drumId}`);
-    const content = tableContainer.querySelector(`#fixed-settings-content-${drumId}`);
-    const chevron = tableContainer.querySelector(`#fixed-settings-chevron-${drumId}`);
+    const header = tableContainer.querySelector('h5');
+    const content = header.nextElementSibling;
+    const chevron = header.querySelector('span');
 
     // Initialize collapsed state (collapsed by default)
     let isCollapsed = true;
     content.style.maxHeight = '0px';
     chevron.style.transform = 'rotate(-90deg)';
 
-    header.onclick = () => {
+    const toggleFixed = () => {
       isCollapsed = !isCollapsed;
+      header.setAttribute('aria-expanded', String(!isCollapsed));
 
       if (isCollapsed) {
         content.style.maxHeight = '0px';
@@ -333,6 +363,13 @@ export class DebugPanel {
       } else {
         content.style.maxHeight = content.scrollHeight + 'px';
         chevron.style.transform = 'rotate(0deg)';
+      }
+    };
+    header.onclick = toggleFixed;
+    header.onkeydown = (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        toggleFixed();
       }
     };
 
@@ -343,8 +380,10 @@ export class DebugPanel {
    * Create a row for fixed settings (doesn't change per hit)
    */
   createFixedRow(label, value, isColor = false, colorValue = null) {
+    // Fixed settings are plain values (names, ids, device names) — always escape
+    value = escapeHtml(value);
     const colorSwatch = isColor && colorValue
-      ? `<span style="display: inline-block; width: 12px; height: 12px; background: ${colorValue}; border: 1px solid ${COLORS.border.dark}; border-radius: 2px; margin-left: 5px; vertical-align: middle;"></span>`
+      ? `<span style="display: inline-block; width: 12px; height: 12px; background: ${safeColor(colorValue)}; border: 1px solid ${COLORS.border.dark}; border-radius: 2px; margin-left: 5px; vertical-align: middle;"></span>`
       : '';
 
     return `
@@ -359,8 +398,9 @@ export class DebugPanel {
    * Create a row for calculated values only
    */
   createCalculatedRow(label, value, isColor = false, colorValue = null) {
+    // `value` is pre-escaped HTML built in createDrumDebugCard
     const colorSwatch = isColor && colorValue
-      ? `<span style="display: inline-block; width: 12px; height: 12px; background: ${colorValue}; border: 1px solid ${COLORS.border.dark}; border-radius: 2px; margin-left: 5px; vertical-align: middle;"></span>`
+      ? `<span style="display: inline-block; width: 12px; height: 12px; background: ${safeColor(colorValue)}; border: 1px solid ${COLORS.border.dark}; border-radius: 2px; margin-left: 5px; vertical-align: middle;"></span>`
       : '';
 
     return `
@@ -416,7 +456,8 @@ export class DebugPanel {
       top: ${this.y}px;
       width: ${this.width}px;
       height: ${this.height}px;
-      background: white;
+      background: ${COLORS.background.primary};
+      color: ${COLORS.text.primary};
       border-radius: 8px;
       box-shadow: 0 4px 20px rgba(0,0,0,0.3);
       z-index: 9999;
@@ -430,7 +471,8 @@ export class DebugPanel {
    */
   startDrag(e) {
     // Don't drag if clicking on close button
-    if (e.target.id === 'close-debug-btn') return;
+    if (e.target.closest('#close-debug-btn')) return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
 
     this.isDragging = true;
     this.dragStartX = e.clientX;
