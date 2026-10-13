@@ -1,16 +1,28 @@
 /**
  * Post-Processing Effects
- * Canvas 2D-based effects applied after painting (no WebGL)
+ * Display-time effects layered over the paint canvas (the painting itself is
+ * never modified, so effects don't accumulate frame after frame).
  */
 
 import { debugLog } from '../utils/debug.js';
+
+// The glow is computed at reduced resolution — it's blurred anyway
+const GLOW_DOWNSCALE = 4;
+// Rebuild the glow at most this often (ms); compositing it is cheap every frame
+const GLOW_REFRESH_MS = 100;
+
+const supportsCanvasFilter = typeof CanvasRenderingContext2D !== 'undefined' &&
+  'filter' in CanvasRenderingContext2D.prototype;
 
 export class PostProcessing {
   constructor() {
     this.currentEffect = 'none';
     this.bloomIntensity = 0.5;
-    this.bloomThreshold = 180; // Brightness threshold (0-255)
-    this.bloomRadius = 15; // Blur radius in pixels
+    this.bloomRadius = 15; // Blur radius in display pixels
+
+    this.glowCanvas = null;
+    this.glowCtx = null;
+    this.lastGlowBuild = 0;
   }
 
   /**
@@ -19,86 +31,55 @@ export class PostProcessing {
    */
   setEffect(effect) {
     this.currentEffect = effect;
+    this.lastGlowBuild = 0;
     debugLog(`Post-processing effect: ${effect}`);
   }
 
-  /**
-   * Apply post-processing effect to canvas
-   * @param {p5.Graphics} canvas - The paint canvas to process
-   */
-  apply(canvas) {
-    if (this.currentEffect === 'none') return;
-
-    switch (this.currentEffect) {
-      case 'bloom':
-        this.applyBloom(canvas);
-        break;
-      default:
-        break;
-    }
+  get isActive() {
+    return this.currentEffect !== 'none';
   }
 
   /**
-   * Apply bloom/glow effect
-   * Creates a glowing halo around bright areas
+   * Draw the effect over a region of the display.
+   * Arguments match ctx.drawImage's 9-argument form: a source rectangle of the
+   * paint canvas (device pixels) and where it was drawn on screen.
+   * @param {CanvasRenderingContext2D} ctx - Display context
+   * @param {HTMLCanvasElement} source - Paint canvas element
    */
-  applyBloom(canvas) {
-    // Get canvas context
-    const ctx = canvas.drawingContext;
+  drawOver(ctx, source, sx, sy, sw, sh, dx, dy, dw, dh) {
+    if (this.currentEffect !== 'bloom' || sw <= 0 || sh <= 0) return;
 
-    // Save current state
-    ctx.save();
+    const gw = Math.max(1, Math.round(dw / GLOW_DOWNSCALE));
+    const gh = Math.max(1, Math.round(dh / GLOW_DOWNSCALE));
 
-    // Get image data
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const pixels = imageData.data;
-
-    // Create temporary canvas for bloom layer
-    const bloomCanvas = document.createElement('canvas');
-    bloomCanvas.width = canvas.width;
-    bloomCanvas.height = canvas.height;
-    const bloomCtx = bloomCanvas.getContext('2d', { willReadFrequently: true });
-
-    // Extract bright pixels (threshold-based)
-    const bloomData = bloomCtx.createImageData(canvas.width, canvas.height);
-    const bloomPixels = bloomData.data;
-
-    for (let i = 0; i < pixels.length; i += 4) {
-      const r = pixels[i];
-      const g = pixels[i + 1];
-      const b = pixels[i + 2];
-      const a = pixels[i + 3];
-
-      // Calculate brightness (luminance)
-      const brightness = (r * 0.299 + g * 0.587 + b * 0.114);
-
-      // Only keep pixels brighter than threshold
-      if (brightness > this.bloomThreshold) {
-        bloomPixels[i] = r;
-        bloomPixels[i + 1] = g;
-        bloomPixels[i + 2] = b;
-        bloomPixels[i + 3] = a;
-      } else {
-        bloomPixels[i] = 0;
-        bloomPixels[i + 1] = 0;
-        bloomPixels[i + 2] = 0;
-        bloomPixels[i + 3] = 0;
-      }
+    if (!this.glowCanvas) {
+      this.glowCanvas = document.createElement('canvas');
+      this.glowCtx = this.glowCanvas.getContext('2d');
     }
 
-    // Put extracted bright pixels on bloom canvas
-    bloomCtx.putImageData(bloomData, 0, 0);
+    const now = performance.now();
+    const sizeChanged = this.glowCanvas.width !== gw || this.glowCanvas.height !== gh;
+    if (sizeChanged || now - this.lastGlowBuild > GLOW_REFRESH_MS) {
+      if (sizeChanged) {
+        this.glowCanvas.width = gw;
+        this.glowCanvas.height = gh;
+      }
+      const g = this.glowCtx;
+      g.clearRect(0, 0, gw, gh);
+      if (supportsCanvasFilter) {
+        // Push darks toward black so mostly the bright areas glow, then blur
+        g.filter = `brightness(1.1) contrast(1.8) blur(${Math.max(1, this.bloomRadius / GLOW_DOWNSCALE)}px)`;
+      }
+      g.drawImage(source, sx, sy, sw, sh, 0, 0, gw, gh);
+      g.filter = 'none';
+      this.lastGlowBuild = now;
+    }
 
-    // Apply blur to bloom layer using Canvas 2D filter
-    bloomCtx.filter = `blur(${this.bloomRadius}px)`;
-    bloomCtx.drawImage(bloomCanvas, 0, 0);
-
-    // Composite bloom layer back onto original with additive blending
-    ctx.globalCompositeOperation = 'lighter'; // Additive blend
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
     ctx.globalAlpha = this.bloomIntensity;
-    ctx.drawImage(bloomCanvas, 0, 0);
-
-    // Restore state
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(this.glowCanvas, dx, dy, dw, dh);
     ctx.restore();
   }
 
@@ -111,18 +92,10 @@ export class PostProcessing {
   }
 
   /**
-   * Set bloom threshold (brightness cutoff)
-   * @param {number} threshold - 0 to 255
-   */
-  setBloomThreshold(threshold) {
-    this.bloomThreshold = Math.max(0, Math.min(255, threshold));
-  }
-
-  /**
-   * Set bloom radius (blur amount)
-   * @param {number} radius - pixels
+   * Set bloom radius
+   * @param {number} radius - Blur radius in pixels
    */
   setBloomRadius(radius) {
-    this.bloomRadius = Math.max(1, Math.min(50, radius));
+    this.bloomRadius = Math.max(1, radius);
   }
 }

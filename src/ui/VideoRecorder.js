@@ -17,23 +17,33 @@ export class VideoRecorder {
     this.startTime = null;
     this.timerInterval = null;
 
-    // Quality presets (in bits per second)
+    // Quality presets: bits per second for a 1080p recording (scaled for other sizes)
     this.qualityPresets = {
-      low: 1000000,      // 1 Mbps
-      medium: 2500000,   // 2.5 Mbps
-      high: 5000000,     // 5 Mbps
-      ultra: 10000000    // 10 Mbps
+      low: 3000000,      // 3 Mbps
+      medium: 6000000,   // 6 Mbps
+      high: 10000000,    // 10 Mbps
+      ultra: 16000000    // 16 Mbps
     };
 
-    // Format presets
+    // Format presets. 'auto' prefers MP4/H.264: hardware-encoded on most machines
+    // and it plays everywhere (phones, social media), unlike WebM.
     this.formatPresets = {
+      'auto': null,
+      'mp4': 'video/mp4;codecs=avc1.42E01F',
       'webm-vp9': 'video/webm;codecs=vp9',
       'webm-vp8': 'video/webm;codecs=vp8',
       'webm': 'video/webm'
     };
+    this.autoFormatOrder = ['video/mp4;codecs=avc1.42E01F', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
 
     this.currentQuality = 'medium';
-    this.currentFormat = 'webm-vp9'; // Default to VP9
+    this.currentFormat = 'auto';
+
+    // Recordings are scaled down to at most this size and frame rate; full-res
+    // 60fps capture of a high-DPI screen costs a lot of CPU while playing
+    this.maxCaptureWidth = 1920;
+    this.maxCaptureHeight = 1080;
+    this.frameRate = 30;
 
     // Storage for recorded videos
     this.recordings = [];
@@ -43,10 +53,25 @@ export class VideoRecorder {
     this.onRecordingStart = null;
     this.onRecordingStop = null;
 
-    // Optional callback returning the logical pixel height to capture (crops bottom).
-    // When set, a relay canvas is used so the video excludes the bottom panel area.
-    this.getCaptureHeight = null;
+    // Holds the completed recording blob until user chooses Save or Discard
+    this.pendingRecording = null;
+
+    // Set to true when user discards so async ondataavailable/onstop don't reshow modal
+    this.cancelled = false;
+
+    // When true, saveRecording() calls confirmSave() automatically (used by timeline Save flow)
+    this.autoConfirmNext = false;
+
+    // Optional callback returning {sx,sy,sw,sh,includeOverlay} in device pixels — the
+    // region of the source canvas to capture. When set, a relay canvas is used.
+    this.getCaptureRect = null;
+    this.captureRect = null;
     this.relayCanvas = null;
+
+    // Optional overlay canvas composited on top of each relay frame when
+    // captureRect.includeOverlay is true (used for staff mode to include the
+    // metronome + deviation graph that are drawn on the overlay, not the main canvas).
+    this.relayOverlay = null;
   }
 
   /**
@@ -62,9 +87,31 @@ export class VideoRecorder {
    * Set video format
    */
   setFormat(format) {
-    if (this.formatPresets[format]) {
+    if (format in this.formatPresets) {
       this.currentFormat = format;
     }
+  }
+
+  /**
+   * Pick a MIME type the browser can record, honoring the chosen format if possible
+   * @returns {string|null}
+   */
+  chooseMimeType() {
+    const preferred = this.formatPresets[this.currentFormat];
+    if (preferred && MediaRecorder.isTypeSupported(preferred)) {
+      return preferred;
+    }
+    if (preferred) {
+      debugWarn(`Format ${this.currentFormat} not supported, falling back`);
+    }
+    return this.autoFormatOrder.find(type => MediaRecorder.isTypeSupported(type)) || null;
+  }
+
+  /**
+   * File extension for a recording's MIME type
+   */
+  static extensionFor(mimeType) {
+    return (mimeType || '').includes('mp4') ? 'mp4' : 'webm';
   }
 
   /**
@@ -75,6 +122,8 @@ export class VideoRecorder {
       debugWarn('Already recording');
       return false;
     }
+
+    this.cancelled = false;
 
     try {
       // Get the underlying HTML canvas element
@@ -91,58 +140,46 @@ export class VideoRecorder {
 
       // The bottom panel (metronome + deviation graph) is rendered on a separate
       // overlay canvas in main.js, so it never appears in the video.
-      // Additionally, crop the grey panel area from the bottom of the video by
-      // using a relay canvas sized to just the painting content.
-      const captureHeight = this.getCaptureHeight ? this.getCaptureHeight() : null;
-      if (captureHeight && captureHeight < htmlCanvas.height) {
-        this.relayCanvas = document.createElement('canvas');
-        this.relayCanvas.width = htmlCanvas.width;
-        this.relayCanvas.height = captureHeight;
-        this.stream = this.relayCanvas.captureStream(60);
-        debugLog('Cropped recording:', htmlCanvas.width, 'x', captureHeight,
-          '(full:', htmlCanvas.height, ')');
-      } else {
-        this.relayCanvas = null;
-        this.stream = htmlCanvas.captureStream(60);
-      }
+      // getCaptureRect crops and/or centers the recording region. For circular
+      // layouts a square crop is returned; for staff just the bottom is trimmed.
+      // Always record through a relay canvas so the output size is capped
+      // (and optionally cropped) independent of the screen's pixel density
+      const captureRect = (this.getCaptureRect && this.getCaptureRect()) ||
+        { sx: 0, sy: 0, sw: htmlCanvas.width, sh: htmlCanvas.height, includeOverlay: false };
+      const fit = Math.min(1, this.maxCaptureWidth / captureRect.sw, this.maxCaptureHeight / captureRect.sh);
+      const outWidth = Math.max(2, Math.round(captureRect.sw * fit / 2) * 2); // encoders need even sizes
+      const outHeight = Math.max(2, Math.round(captureRect.sh * fit / 2) * 2);
+
+      this.captureRect = captureRect;
+      this.relayCanvas = document.createElement('canvas');
+      this.relayCanvas.width = outWidth;
+      this.relayCanvas.height = outHeight;
+      this.stream = this.relayCanvas.captureStream(this.frameRate);
+      debugLog('Recording', outWidth, 'x', outHeight, 'from source region', captureRect);
 
       if (!this.stream) {
         throw new Error('Failed to capture canvas stream');
       }
 
-      debugLog('Stream created:', this.stream);
-      debugLog('Stream tracks:', this.stream.getTracks().length);
-
-      // Configure MediaRecorder with quality and format settings
-      const options = {
-        mimeType: this.formatPresets[this.currentFormat],
-        videoBitsPerSecond: this.qualityPresets[this.currentQuality]
-      };
-
-      // Fallback if selected format not supported
-      if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-        debugWarn(`Format ${this.currentFormat} not supported, trying fallbacks...`);
-
-        // Try VP8 if VP9 was selected
-        if (this.currentFormat === 'webm-vp9' && MediaRecorder.isTypeSupported(this.formatPresets['webm-vp8'])) {
-          options.mimeType = this.formatPresets['webm-vp8'];
-          debugLog('Falling back to VP8');
-        }
-        // Try plain webm
-        else if (MediaRecorder.isTypeSupported(this.formatPresets['webm'])) {
-          options.mimeType = this.formatPresets['webm'];
-          debugLog('Falling back to plain WebM');
-        }
-        else {
-          throw new Error('No supported video format found');
-        }
+      const mimeType = this.chooseMimeType();
+      if (!mimeType) {
+        throw new Error('No supported video format found');
       }
+
+      // Scale bitrate with resolution relative to 1080p
+      const pixelScale = (outWidth * outHeight) / (1920 * 1080);
+      const options = {
+        mimeType,
+        videoBitsPerSecond: Math.round(this.qualityPresets[this.currentQuality] * Math.max(0.35, Math.min(1.5, pixelScale)))
+      };
+      this.currentMimeType = mimeType;
 
       this.mediaRecorder = new MediaRecorder(this.stream, options);
       this.recordedChunks = [];
 
       // Collect data chunks
       this.mediaRecorder.ondataavailable = (event) => {
+        if (this.cancelled) return;
         if (event.data && event.data.size > 0) {
           debugLog('Data chunk received:', event.data.size, 'bytes');
           this.recordedChunks.push(event.data);
@@ -168,9 +205,10 @@ export class VideoRecorder {
       this.startTime = Date.now();
       this.startTimer();
 
-      this.notificationSystem.show('Recording started', 'success');
+      // Suppress notifications during recording to avoid visual distraction
+      this.notificationSystem.muted = true;
       infoLog('✓ Video recording started');
-      debugLog(`  Quality: ${this.currentQuality} (${this.qualityPresets[this.currentQuality] / 1000000} Mbps)`);
+      debugLog(`  Quality: ${this.currentQuality} (${(options.videoBitsPerSecond / 1000000).toFixed(1)} Mbps)`);
       debugLog(`  MIME type: ${options.mimeType}`);
 
       if (this.onRecordingStart) this.onRecordingStart();
@@ -186,7 +224,7 @@ export class VideoRecorder {
   /**
    * Stop recording
    */
-  stopRecording() {
+  stopRecording(showSaveModal = true) {
     if (!this.isRecording) {
       debugWarn('Not currently recording');
       return false;
@@ -195,6 +233,24 @@ export class VideoRecorder {
     try {
       this.isRecording = false;
       this.stopTimer();
+
+      // Show the modal immediately so the user's next click lands on the
+      // Save/Discard buttons rather than falling through to the canvas.
+      // The Save button is disabled until onstop fires and the blob is ready.
+      // showSaveModal=false when called from the timeline flow (modal already managed there).
+      if (showSaveModal) {
+        const backdrop = document.getElementById('save-recording-backdrop');
+        const saveBtn = document.getElementById('save-recording-save-btn');
+        if (backdrop) {
+          backdrop.dataset.context = 'video';
+          backdrop.style.display = 'flex';
+        }
+        if (saveBtn) {
+          saveBtn.disabled = true;
+          saveBtn.style.opacity = '0.5';
+          saveBtn.style.cursor = 'not-allowed';
+        }
+      }
 
       if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
         // Stop the media recorder - this will trigger onstop event
@@ -219,10 +275,16 @@ export class VideoRecorder {
    * Save recording to file
    */
   saveRecording() {
+    if (this.cancelled) {
+      debugLog('saveRecording: cancelled, skipping');
+      this.cleanup();
+      return;
+    }
     debugLog('saveRecording called, chunks:', this.recordedChunks.length);
 
     if (this.recordedChunks.length === 0) {
       debugWarn('⚠️ No recorded data to save');
+      this.notificationSystem.muted = false;
       this.notificationSystem.show('No video data to save', 'warning');
       this.cleanup();
       return;
@@ -230,11 +292,12 @@ export class VideoRecorder {
 
     try {
       // Create blob from chunks
-      const blob = new Blob(this.recordedChunks, { type: 'video/webm' });
+      const blob = new Blob(this.recordedChunks, { type: this.currentMimeType || 'video/webm' });
       debugLog('Blob created, size:', blob.size, 'bytes');
 
       if (blob.size === 0) {
         debugWarn('⚠️ Blob is empty');
+        this.notificationSystem.muted = false;
         this.notificationSystem.show('Video file is empty', 'warning');
         this.cleanup();
         return;
@@ -243,7 +306,6 @@ export class VideoRecorder {
       const durationSec = Math.floor((Date.now() - this.startTime) / 1000);
       const sizeMB = (blob.size / (1024 * 1024)).toFixed(2);
 
-      // Store recording
       const recording = {
         id: Date.now(),
         blob: blob,
@@ -253,50 +315,93 @@ export class VideoRecorder {
         quality: this.currentQuality
       };
 
-      this.recordings.unshift(recording); // Add to beginning
-
-      // Limit number of stored recordings
-      if (this.recordings.length > this.maxRecordings) {
-        const removed = this.recordings.pop();
-        // Revoke old blob URL if it exists
-        if (removed.url) {
-          URL.revokeObjectURL(removed.url);
-        }
-      }
-
-      // Automatically download the video file
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.style.display = 'none';
-      a.href = url;
-      a.download = `drum-painter-${new Date().toISOString().replace(/[:.]/g, '-')}.webm`;
-      document.body.appendChild(a);
-      a.click();
-
-      // Clean up the temporary elements after a short delay
-      setTimeout(() => {
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      }, 100);
-
-      this.notificationSystem.show(`Video saved! (${durationSec}s, ${sizeMB}MB)`, 'success');
-      infoLog('✓ Video recorded and downloaded');
+      infoLog('✓ Video recorded — awaiting user save/discard decision');
       debugLog(`  Duration: ${durationSec}s`);
       debugLog(`  Size: ${sizeMB}MB`);
       debugLog(`  Chunks: ${this.recordedChunks.length}`);
 
-      // Trigger UI update (will be handled by main.js)
-      window.dispatchEvent(new CustomEvent('recording-saved', {
-        detail: { recording }
-      }));
+      // Store pending recording and re-enable the Save button now that data is ready.
+      // (The modal was already shown by stopRecording().)
+      this.pendingRecording = recording;
 
-      // Clean up
-      this.cleanup();
+      // autoConfirmNext: timeline Save flow — skip modal, download immediately
+      if (this.autoConfirmNext) {
+        this.autoConfirmNext = false;
+        this.confirmSave();
+        return;
+      }
+
+      const saveBtn = document.getElementById('save-recording-save-btn');
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.style.opacity = '';
+        saveBtn.style.cursor = '';
+      }
+      // Fallback: if modal wasn't shown yet (e.g. inactive branch), show it now
+      const backdrop = document.getElementById('save-recording-backdrop');
+      if (backdrop && backdrop.style.display !== 'flex') {
+        backdrop.dataset.context = 'video';
+        backdrop.style.display = 'flex';
+      }
     } catch (error) {
       debugError('Failed to save recording:', error);
+      this.notificationSystem.muted = false;
       showUserFriendlyError(this.notificationSystem, 'VIDEO_SAVE_ERROR', error);
       this.cleanup();
     }
+  }
+
+  /**
+   * Confirm save of the pending recording: add to list and download
+   */
+  confirmSave() {
+    const recording = this.pendingRecording;
+    if (!recording) {
+      debugWarn('No pending recording to save');
+      return;
+    }
+
+    this.recordings.unshift(recording);
+
+    if (this.recordings.length > this.maxRecordings) {
+      const removed = this.recordings.pop();
+      if (removed.url) URL.revokeObjectURL(removed.url);
+    }
+
+    const url = URL.createObjectURL(recording.blob);
+    const a = document.createElement('a');
+    a.style.display = 'none';
+    a.href = url;
+    a.download = `drum-painter-${new Date().toISOString().replace(/[:.]/g, '-')}.${VideoRecorder.extensionFor(recording.blob.type)}`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 100);
+
+    this.notificationSystem.muted = false;
+    this.notificationSystem.show(`Video saved! (${recording.duration}s, ${recording.size}MB)`, 'success');
+    infoLog('✓ Video downloaded');
+
+    window.dispatchEvent(new CustomEvent('recording-saved', { detail: { recording } }));
+    this.cleanup();
+  }
+
+  /**
+   * Discard the pending recording without saving or adding to the list
+   */
+  discardRecording() {
+    this.cancelled = true; // Prevent async ondataavailable/onstop from reshowing modal
+    // Always hide the modal and clean up, even if called redundantly
+    const backdrop = document.getElementById('save-recording-backdrop');
+    if (backdrop) backdrop.style.display = 'none';
+    this.notificationSystem.muted = false;
+    if (this.pendingRecording) {
+      this.notificationSystem.show('Recording discarded', 'info');
+      infoLog('Recording discarded by user');
+    }
+    this.cleanup();
   }
 
   /**
@@ -319,7 +424,7 @@ export class VideoRecorder {
     const url = URL.createObjectURL(recording.blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `drum-painter-${recording.id}.webm`;
+    a.download = `drum-painter-${recording.id}.${VideoRecorder.extensionFor(recording.blob.type)}`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -379,6 +484,19 @@ export class VideoRecorder {
     }
 
     this.relayCanvas = null;
+    this.captureRect = null;
+    this.pendingRecording = null;
+
+    // Ensure notifications are unblocked
+    this.notificationSystem.muted = false;
+
+    // Restore Save button in case it's still in the disabled/loading state
+    const saveBtn = document.getElementById('save-recording-save-btn');
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.style.opacity = '';
+      saveBtn.style.cursor = '';
+    }
 
     // Reset state
     this.recordedChunks = [];
@@ -391,11 +509,18 @@ export class VideoRecorder {
    * Called each frame from the draw loop when cropping is active.
    */
   relayFrame(sourceCanvas) {
-    if (!this.relayCanvas || !sourceCanvas) return;
-    const ctx = this.relayCanvas.getContext('2d');
-    const w = this.relayCanvas.width;
-    const h = this.relayCanvas.height;
-    ctx.drawImage(sourceCanvas, 0, 0, w, h, 0, 0, w, h);
+    if (!this.relayCanvas || !sourceCanvas || !this.captureRect) return;
+    if (!this.relayCtx || this.relayCtx.canvas !== this.relayCanvas) {
+      this.relayCtx = this.relayCanvas.getContext('2d');
+    }
+    const ctx = this.relayCtx;
+    const { sx, sy, sw, sh, includeOverlay } = this.captureRect;
+    ctx.drawImage(sourceCanvas, sx, sy, sw, sh, 0, 0, this.relayCanvas.width, this.relayCanvas.height);
+    // For layouts that include the bottom panel (e.g. staff), composite the overlay
+    // on top so the metronome and deviation graph appear in the recording.
+    if (includeOverlay && this.relayOverlay) {
+      ctx.drawImage(this.relayOverlay, sx, sy, sw, sh, 0, 0, this.relayCanvas.width, this.relayCanvas.height);
+    }
   }
 
   /**

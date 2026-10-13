@@ -5,7 +5,7 @@
  */
 
 import * as constants from '../config/constants.js';
-import { debugLog, debugWarn, debugError, infoLog } from '../utils/debug.js';
+import { debugLog, debugWarn } from '../utils/debug.js';
 
 export class VisualStyleManager {
   constructor() {
@@ -14,6 +14,14 @@ export class VisualStyleManager {
 
     // Reference to texture cache (will be set externally)
     this.brushTextureCache = null;
+
+    // Style generation counter - part of the texture cache key, so changing a
+    // parameter invalidates cached textures lazily (old entries age out via LRU)
+    this.generation = 0;
+
+    // Debounced memory cleanup after a burst of parameter changes (knob sweep)
+    this.cleanupDelayMs = 500;
+    this._cleanupTimer = null;
 
     // Define parameter mappings: paramKey -> { constant, min, max }
     this.parameterMappings = {
@@ -106,33 +114,54 @@ export class VisualStyleManager {
     const value = mapping.min + normalizedValue * (mapping.max - mapping.min);
 
     // Update each constant this parameter controls
+    let changed = false;
     for (const constantName of mapping.constants) {
-      this.constantOverrides[constantName] = value;
-      debugLog(`🎨 Visual Style: ${mapping.description} = ${value.toFixed(2)} (${constantName})`);
+      if (this.constantOverrides[constantName] !== value) {
+        this.constantOverrides[constantName] = value;
+        changed = true;
+        debugLog(`🎨 Visual Style: ${mapping.description} = ${value.toFixed(2)} (${constantName})`);
+      }
     }
 
-    // Clear texture cache to force regeneration with new values
-    this.invalidateTextureCache();
+    // Invalidate textures so new hits regenerate with the new values
+    if (changed) {
+      this.invalidateTextureCache();
+    }
   }
 
   /**
    * Get the current value of a constant (override or default)
    */
   getConstant(constantName) {
-    if (this.constantOverrides.hasOwnProperty(constantName)) {
+    if (Object.prototype.hasOwnProperty.call(this.constantOverrides, constantName)) {
       return this.constantOverrides[constantName];
     }
     return constants[constantName];
   }
 
   /**
-   * Clear texture cache to force regeneration
+   * Invalidate cached textures so they regenerate with current values.
+   * Cheap and safe to call on every MIDI CC message: bumps the generation
+   * counter (part of the cache key) and schedules a debounced cleanup of
+   * stale textures once changes settle.
    */
   invalidateTextureCache() {
-    if (this.brushTextureCache) {
-      this.brushTextureCache.clearCache();
-      debugLog('🗑️ Texture cache cleared');
+    this.generation++;
+
+    if (this._cleanupTimer !== null) {
+      clearTimeout(this._cleanupTimer);
     }
+    this._cleanupTimer = setTimeout(() => {
+      this._cleanupTimer = null;
+      const cache = this.brushTextureCache;
+      if (!cache) return;
+      if (typeof cache.evictStaleGenerations === 'function') {
+        cache.evictStaleGenerations(this.generation);
+      } else {
+        cache.clearCache();
+      }
+      debugLog('🗑️ Stale textures cleared');
+    }, this.cleanupDelayMs);
   }
 
   /**
