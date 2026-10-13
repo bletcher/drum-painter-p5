@@ -350,7 +350,7 @@ window.setup = async function() {
 
     if (statusIndicator) {
       // Green = connected, Red = no MIDI, Yellow = checking
-      statusIndicator.style.background = connected ? '#10b981' : (message.includes('No') ? '#ef4444' : '#fbbf24');
+      statusIndicator.style.background = connected ? '#10b981' : (/No|blocked/.test(message) ? '#ef4444' : '#fbbf24');
     }
 
     if (deviceNameEl) {
@@ -514,6 +514,20 @@ window.setup = async function() {
 
   // Setup MIDI devices modal
   initMidiDevicesModal(() => midiManager.connectedDevices);
+
+  // If MIDI access was refused (blocked or dismissed permission prompt),
+  // clicking the status box asks again instead of opening the device list
+  document.getElementById('midi-status')?.addEventListener('click', async (e) => {
+    if (midiManager.midiReady || !navigator.requestMIDIAccess) return;
+    e.stopImmediatePropagation();
+    if (await midiManager.setup()) {
+      migrateDrumMappingsToStableKeys();
+      populateMidiOutputSelect(midiManager.getOutputDevices());
+      notificationSystem.show('MIDI connected', 'success');
+    } else {
+      notificationSystem.show('Still blocked. Allow "MIDI devices" in the site settings (icon left of the address bar), then reload.', 'warning');
+    }
+  }, true);
 
   // Load saved settings before MIDI connects, so device migrations and
   // reconnect handling work on the user's real mappings

@@ -271,7 +271,8 @@ export class MidiManager {
   onMIDIFailure(error) {
     debugError('MIDI Access failed:', error);
     if (this.onMidiStatusChange) {
-      this.onMidiStatusChange(false, 'MIDI: Access failed');
+      // Usually the browser's permission prompt was blocked or dismissed
+      this.onMidiStatusChange(false, 'MIDI blocked: click to retry');
     }
     // Show user-visible error notification with helpful suggestions
     if (window.notificationSystem) {

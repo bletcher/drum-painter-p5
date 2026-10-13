@@ -652,6 +652,7 @@ input[type="radio"] {
   max-height: calc(100vh - 20px);
   max-height: calc(100dvh - 20px);
   overflow-y: auto;
+  overflow-x: hidden; /* overflow-y: auto would otherwise make x scrollable too */
   overscroll-behavior: contain;
   padding: 12px 14px 14px;
   border: 1px solid var(--border-soft);
