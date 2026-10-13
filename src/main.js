@@ -6,7 +6,6 @@
 import {
   PAINT_CANVAS_WIDTH,
   PAINT_CANVAS_HEIGHT,
-  BG_COLORS,
   BLEND_MODE_NAMES,
   SCROLLBAR_WIDTH,
   SCROLLBAR_TRACK_PADDING,
@@ -15,21 +14,18 @@ import {
   CANVAS_FIT_SCALE,
   VIEWPORT_MARGIN_BOTTOM,
   VIEWPORT_MARGIN_TOP,
-  AUTO_SCROLL_PADDING,
   SCROLL_MAX_PADDING,
   MODE_DISPLAY_FRAMES,
   MODE_OVERLAY_TEXT_SIZE,
-  UI_DEBOUNCE_SHORT,
-  UI_NOTIFICATION_DURATION,
-  URL_REVOKE_DELAY,
   CLICK_PAINT_VELOCITY_MAP_MIN,
   CLICK_PAINT_VELOCITY_MAP_MAX,
   CLICK_PAINT_SPEED_MAX
 } from './config/constants.js';
-import { DRUM_KIT_CONFIG, generateFactorySettings } from './config/drumKit.js';
+import { DRUM_KIT_CONFIG, generateFactorySettings, createDrumSettings } from './config/drumKit.js';
+import './styles/app.css';
 import { FreeformMode } from './modes/FreeformMode.js';
-import { TimelineMode } from './modes/TimelineMode.js';
-import { MidiManager } from './midi/MidiManager.js';
+import { TimelineMode, TIME_BASED_LAYOUTS } from './modes/TimelineMode.js';
+import { MidiManager, normalizeCC } from './midi/MidiManager.js';
 import { StateManager } from './state/StateManager.js';
 import { NotificationSystem } from './ui/Notification.js';
 import { DrumCustomizationPanel } from './ui/DrumCustomizationPanel.js';
@@ -44,10 +40,21 @@ import { visualStyleManager } from './canvas/VisualStyleManager.js';
 import { getBrushTextureCache } from './canvas/BrushTextureCache.js';
 import { debugLog, debugWarn, debugError, infoLog } from './utils/debug.js';
 import { checkBrowserCompatibility } from './utils/browserCompat.js';
-import { showUserFriendlyError, formatErrorMessage } from './utils/errorMessages.js';
+import { showUserFriendlyError } from './utils/errorMessages.js';
 import { DarkModeManager } from './utils/darkMode.js';
 import { SessionRecorder } from './session/SessionRecorder.js';
 import { PostProcessing } from './effects/PostProcessing.js';
+import { validateSettings } from './state/validateSettings.js';
+import { initRecordingsUI, toggleVideoRecording } from './app/recordingsUI.js';
+import { initSessionUI } from './app/sessionUI.js';
+import { initMidiDevicesModal, closeMidiDevicesModal } from './app/midiDevicesModal.js';
+import { KitSetupWizard } from './features/KitSetupWizard.js';
+import { LatencyCalibrator } from './features/LatencyCalibrator.js';
+import { KeyboardPads } from './features/KeyboardPads.js';
+import { DemoGroove } from './features/DemoGroove.js';
+import './styles/features.css';
+import { initPanels } from './ui/panels.js';
+import { initAccessibility } from './ui/a11y.js';
 
 // ===== GLOBAL STATE =====
 let paintCanvas;
@@ -83,26 +90,19 @@ let timelineControls;
 let videoRecorder;
 let audioVideoMerger;
 
-// Sync preview modal state
-const syncPreview = {
-  recordingId: null,
-  videoUrl: null,
-  audioFile: null,
-  audioUrl: null,
-  offsetMs: 0,
-  isPlaying: false,
-  syncInterval: null,
-};
 let debugPanel;
 let darkModeManager;
 let sessionRecorder;
 let postProcessing;
 let overlayGfx = null; // p5.Graphics off-screen buffer for bottom panel drawing
 let overlayCanvas = null; // Raw HTML canvas overlay – visible but not captured by video recording
+let overlayHasContent = true; // Whether the overlay needs clearing when leaving time-based layouts
+let kitSetupWizard = null;
+let keyboardPads = null;
 
-// DOM elements
-let midiStatusEl;
-let controlsEl;
+// Higher densities quadruple fill and memory cost for no visible gain here
+const MAX_PIXEL_DENSITY = 2;
+
 
 // Initialize paint modes
 const freeformMode = new FreeformMode();
@@ -144,6 +144,7 @@ function getAppState() {
       metronomeEnabled: chronicleMode.metronomeEnabled,
       midiLatencyMs: chronicleMode.midiLatencyMs,
       showGrid: chronicleMode.showGrid,
+      gridColor: chronicleMode.gridColor,
       showDeviationGraph: chronicleMode.showDeviationGraph,
       deviationGraphMode: chronicleMode.deviationGraphMode,
       deviationGraphWidth: chronicleMode.deviationGraphWidth,
@@ -163,7 +164,10 @@ function getAppState() {
     recordOutputPortId: midiManager ? midiManager.recordOutputPortId : null,
     recordOutputNote: midiManager ? midiManager.recordOutputNote : 36,
     recordOutputChannel: midiManager ? midiManager.recordOutputChannel : 1,
-    sendClockEnabled: midiManager ? midiManager.sendClockEnabled : false
+    sendClockEnabled: midiManager ? midiManager.sendClockEnabled : false,
+    videoQuality: videoRecorder ? videoRecorder.currentQuality : 'medium',
+    videoFormat: videoRecorder ? videoRecorder.currentFormat : 'auto',
+    lastPaletteDrumIds: customizationPanel ? customizationPanel.lastPaletteDrumIds : null
   };
 }
 
@@ -171,6 +175,9 @@ function getAppState() {
 
 // Using global mode for now (easier for testing)
 window.setup = async function() {
+  const density = Math.min(MAX_PIXEL_DENSITY, displayDensity());
+  pixelDensity(density);
+
   // Create display canvas
   let canvas = createCanvas(windowWidth, windowHeight);
   canvas.parent(document.body);
@@ -180,6 +187,9 @@ window.setup = async function() {
 
   // Create offscreen painting canvas
   paintCanvas = createGraphics(PAINT_CANVAS_WIDTH, PAINT_CANVAS_HEIGHT);
+  paintCanvas.pixelDensity(density);
+  window.PAINT_CANVAS_DEFAULT_HEIGHT = PAINT_CANVAS_HEIGHT;
+  window.PAINT_CANVAS_DEFAULT_DENSITY = density;
   paintCanvas.background(currentBgColor);
   paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
 
@@ -208,6 +218,16 @@ window.setup = async function() {
   overlayCanvas.style.zIndex = '1';
   document.body.appendChild(overlayCanvas);
 
+  // Handle for debugging in the browser console and automated tests
+  window.__drumPainter = {
+    chronicleMode,
+    freeformMode,
+    get drumSettings() { return drumSettings; },
+    get midiManager() { return midiManager; },
+    get hitQueueLength() { return hitQueue.length; },
+    setMode: (type) => { currentModeType = type; }
+  };
+
   // Expose canvases globally
   window.displayCanvas = canvas;
   window.paintCanvas = paintCanvas;
@@ -222,11 +242,11 @@ window.setup = async function() {
   };
 
   // Cache DOM elements
-  midiStatusEl = document.getElementById('midi-status');
-  controlsEl = document.getElementById('controls');
 
   // Apply centralized theme to HTML elements
   applyAllThemes();
+  initPanels();
+  initAccessibility();
 
   // Check browser compatibility for MIDI support
   const midiSupported = checkBrowserCompatibility();
@@ -250,7 +270,7 @@ window.setup = async function() {
   visualStyleManager.setBrushTextureCache(getBrushTextureCache());
 
   // Initialize MIDI manager with paint callback
-  midiManager = new MidiManager((note, velocity, deviceId) => handlePaint(note, velocity, deviceId));
+  midiManager = new MidiManager(handlePaint);
 
   // Initialize customization panel
   customizationPanel = new DrumCustomizationPanel(drumSettings, midiManager, stateManager, notificationSystem, chronicleMode, darkModeManager);
@@ -263,12 +283,28 @@ window.setup = async function() {
   // displayCanvas) so it never appears in the video. A relay canvas also crops the
   // grey panel area from the bottom of the recording.
   videoRecorder = new VideoRecorder(window.displayCanvas, notificationSystem);
-  videoRecorder.getCaptureHeight = () => {
+  // Wire the overlay canvas so staff-mode recordings composite the bottom panel
+  videoRecorder.relayOverlay = overlayGfx.canvas;
+  videoRecorder.getCaptureRect = () => {
     if (currentModeType !== 'timeline') return null;
-    const panelHeight = chronicleMode.getPotentialBottomPanelHeight();
-    if (panelHeight <= 0) return null;
-    // Return physical pixel height (p5 canvas uses pixelDensity)
-    return Math.round((height - panelHeight) * pixelDensity());
+    const pd = pixelDensity();
+    const canvasW = Math.round(width * pd);
+    const canvasH = Math.round(height * pd);
+    const panelH_px = Math.round(chronicleMode.getPotentialBottomPanelHeight() * pd);
+    const usableH = canvasH - panelH_px;
+
+    const isCircular = ['spiral', 'rings', 'petals', 'polygon'].includes(chronicleMode.layout);
+    if (isCircular) {
+      // Square crop centered on the painting area — excludes side margins and bottom panel
+      const squareSize = Math.min(canvasW, usableH);
+      const sx = Math.round((canvasW - squareSize) / 2);
+      return { sx, sy: 0, sw: squareSize, sh: squareSize, includeOverlay: false };
+    } else {
+      // Staff: full canvas including the bottom panel. The relay composites overlayGfx
+      // on top so the metronome and deviation graph appear in the recording.
+      if (usableH >= canvasH) return null;
+      return { sx: 0, sy: 0, sw: canvasW, sh: canvasH, includeOverlay: true };
+    }
   };
   videoRecorder.onRecordingStart = () => {
     if (!midiManager) return;
@@ -284,12 +320,10 @@ window.setup = async function() {
     }
     midiManager.sendRecordTriggerNote(false);
   };
-  setupVideoRecorderUI();
 
-  // Initialize audio/video merger
+  // Initialize audio/video merger and the recording UI
   audioVideoMerger = new AudioVideoMerger(notificationSystem);
-  setupRecordingsUI();
-  setupSyncPreview();
+  initRecordingsUI({ videoRecorder, audioVideoMerger, notificationSystem, stateManager });
 
   // Initialize timeline controls (pass videoRecorder for integration)
   timelineControls = new TimelineControls(chronicleMode, notificationSystem, videoRecorder);
@@ -298,6 +332,12 @@ window.setup = async function() {
     if (midiManager) midiManager.updateClockBpm(bpm);
   };
   timelineControls.initialize();
+
+  // MIDI clock follows tempo changes (automation or edits during a take)
+  chronicleMode.onTempoChange = (bpm) => {
+    if (midiManager) midiManager.updateClockBpm(bpm);
+    updateClockInfoDisplay();
+  };
 
   // Initialize debug panel
   debugPanel = new DebugPanel(drumSettings, midiManager);
@@ -321,40 +361,45 @@ window.setup = async function() {
     window.midiDevicesList = devices;
   };
 
-  // Set MIDI activity callback
-  midiManager.onMidiActivity = (channel, note, velocity, deviceId) => {
-    const channelEl = document.getElementById('midi-channel');
-    const noteEl = document.getElementById('midi-note');
-    const velocityEl = document.getElementById('midi-velocity');
-    const deviceNameEl = document.getElementById('midi-device-name');
-    const activityLight = document.getElementById('midi-activity-light');
+  // Set MIDI activity callback. Messages can arrive hundreds of times a second
+  // (hi-hat pedal CC, rolls), so just remember the latest and update the
+  // readout once per animation frame.
+  let pendingActivity = null;
+  let activityFrameRequested = false;
+  let activityLightTimer = null;
+  const activityEls = {
+    channel: document.getElementById('midi-channel'),
+    note: document.getElementById('midi-note'),
+    velocity: document.getElementById('midi-velocity'),
+    deviceName: document.getElementById('midi-device-name'),
+    light: document.getElementById('midi-activity-light')
+  };
 
-    if (channelEl) {
-      channelEl.textContent = channel;
-    }
+  function renderMidiActivity() {
+    activityFrameRequested = false;
+    const { channel, note, velocity, deviceId } = pendingActivity;
+    if (activityEls.channel) activityEls.channel.textContent = channel;
+    if (note !== null && activityEls.note) activityEls.note.textContent = note;
+    if (velocity !== null && activityEls.velocity) activityEls.velocity.textContent = velocity;
 
-    if (note !== null && noteEl) {
-      noteEl.textContent = note;
-    }
-
-    if (velocity !== null && velocityEl) {
-      velocityEl.textContent = velocity;
-    }
-
-    // Update device name to show which device sent this message
-    if (deviceId && deviceNameEl) {
+    // Show which device sent this message
+    if (deviceId && activityEls.deviceName) {
       const device = midiManager.connectedDevices.find(d => d.id === deviceId);
-      if (device) {
-        deviceNameEl.textContent = device.name;
-      }
+      if (device) activityEls.deviceName.textContent = device.name;
     }
 
-    // Flash activity light
-    if (activityLight) {
-      activityLight.style.opacity = '1';
-      setTimeout(() => {
-        activityLight.style.opacity = '0';
-      }, 100);
+    if (activityEls.light) {
+      activityEls.light.style.opacity = '1';
+      clearTimeout(activityLightTimer);
+      activityLightTimer = setTimeout(() => { activityEls.light.style.opacity = '0'; }, 100);
+    }
+  }
+
+  midiManager.onMidiActivity = (channel, note, velocity, deviceId) => {
+    pendingActivity = { channel, note, velocity, deviceId };
+    if (!activityFrameRequested) {
+      activityFrameRequested = true;
+      requestAnimationFrame(renderMidiActivity);
     }
   };
 
@@ -415,16 +460,7 @@ window.setup = async function() {
   };
 
   // Record trigger callback — fires when the assigned pad is hit
-  midiManager.onRecordTrigger = () => {
-    if (!videoRecorder.isRecording) {
-      videoRecorder.startRecording().then(success => {
-        if (success) updateVideoRecordingUI(true);
-      });
-    } else {
-      videoRecorder.stopRecording();
-      updateVideoRecordingUI(false);
-    }
-  };
+  midiManager.onRecordTrigger = toggleVideoRecording;
 
   // MIDI output port change callback — repopulate selector when devices change
   midiManager.onOutputDevicesChanged = (outputs) => {
@@ -476,32 +512,21 @@ window.setup = async function() {
     });
   }
 
-  // Setup MIDI
-  midiManager.setup().then(() => {
-    // Migrate drum ID changes (rack_tom -> snare_rim)
-    migrateDrumIdChanges();
-
-    // After MIDI is set up, migrate old drum mappings to use stable device keys
-    migrateDrumMappingsToStableKeys();
-
-    // Check for duplicate note mappings and warn user
-    checkForDuplicateNoteMappings();
-
-    // Populate MIDI output selector now that MIDI is ready
-    populateMidiOutputSelect(midiManager.getOutputDevices());
-  });
-
   // Setup MIDI devices modal
-  setupMidiDevicesModal();
+  initMidiDevicesModal(() => midiManager.connectedDevices);
 
-  // Save initial canvas state
-  stateManager.saveCanvasState(paintCanvas);
-
-  // Try to load saved settings
-  debugLog('🔄 Attempting to load saved settings...');
+  // Load saved settings before MIDI connects, so device migrations and
+  // reconnect handling work on the user's real mappings
+  const isFirstRun = !stateManager.hasSavedSettings();
   await loadSavedSettings();
-  debugLog('Current drumSettings after initialization:', drumSettings);
-  debugLog('🔍 After loadSavedSettings - chronicleMode.metronomeEnabled:', chronicleMode.metronomeEnabled);
+
+  // Setup MIDI
+  const midiAvailable = await midiManager.setup();
+  migrateDrumIdChanges();
+  // Upgrade old mappings to stable device keys (survive reconnects)
+  migrateDrumMappingsToStableKeys();
+  checkForDuplicateNoteMappings();
+  populateMidiOutputSelect(midiManager.getOutputDevices());
 
   // Always regenerate timeline lanes after loading settings
   // This ensures custom drums are available in timeline mode even if we start in freeform
@@ -509,6 +534,11 @@ window.setup = async function() {
 
   // Initialize UI controls
   initializeUI();
+
+  // Any UI interaction may change what the canvas shows
+  for (const type of ['input', 'change', 'click', 'pointerup', 'keyup']) {
+    document.addEventListener(type, requestRedraw, true);
+  }
   debugLog('🔍 After initializeUI - chronicleMode.metronomeEnabled:', chronicleMode.metronomeEnabled);
 
   // Activate the current mode (important for initializing mode-specific state)
@@ -552,10 +582,119 @@ window.setup = async function() {
     }
   });
 
-  debugLog('🎨 Drum Painter - Modular Version');
-  debugLog('📦 Current mode:', currentModeType, '- Style/Layout:', currentModeType === 'freeform' ? freeformMode.style : chronicleMode.layout);
-  debugLog('🥁 Drum kit:', DRUM_KIT_CONFIG.map(d => d.name));
+  initFeatures();
+  showWelcome(isFirstRun, midiAvailable);
+
+  // Optional developer tools
+  const debugBtn = document.getElementById('debug-btn');
+  if (debugBtn && new URLSearchParams(location.search).has('debug')) {
+    debugBtn.hidden = false;
+  }
+  const versionEl = document.getElementById('app-version');
+  if (versionEl) versionEl.textContent = `v${__APP_VERSION__}`;
 };
+
+/**
+ * Drums in kit order, for Kit Setup / keyboard pads / demo
+ */
+function getKitDrums() {
+  return drumOrder
+    .filter(id => drumSettings[id])
+    .map(id => ({ id, name: drumSettings[id].name, color: drumSettings[id].color, midiNote: drumSettings[id].midiNote }));
+}
+
+/**
+ * Kit Setup wizard, latency calibration, keyboard pads and demo beat
+ */
+function initFeatures() {
+  kitSetupWizard = new KitSetupWizard({
+    getDrums: getKitDrums,
+    setHitListener,
+    describeDevice: (deviceId) => midiManager.connectedDevices.find(d => d.id === deviceId)?.name || '',
+    assign: (drumId, note, deviceId) => {
+      // A pad can only belong to one drum: unmap it from any other drum first
+      const stableKey = midiManager.getStableDeviceKey(deviceId);
+      for (const [id, drum] of Object.entries(drumSettings)) {
+        if (id !== drumId && drum.midiNote === note &&
+            (!drum.midiDeviceStable || drum.midiDeviceStable === stableKey)) {
+          drum.midiNote = null;
+        }
+      }
+      Object.assign(drumSettings[drumId], { midiNote: note, midiDevice: deviceId, midiDeviceStable: stableKey });
+    },
+    onFinish: () => {
+      customizationPanel.build();
+      stateManager.saveNow();
+      notificationSystem.show('Kit mapping saved', 'success');
+    }
+  });
+  document.getElementById('kit-setup-btn')?.addEventListener('click', () => kitSetupWizard.open());
+
+  const latencyInput = document.getElementById('midi-latency');
+  const calibrator = new LatencyCalibrator({
+    setHitListener,
+    getOffset: () => chronicleMode.midiLatencyMs,
+    applyOffset: (ms) => {
+      chronicleMode.midiLatencyMs = ms;
+      if (latencyInput) latencyInput.value = ms;
+      stateManager.scheduleAutoSave();
+      notificationSystem.show(`Timing offset set to ${ms} ms`, 'success');
+    }
+  });
+  document.getElementById('calibrate-latency-btn')?.addEventListener('click', () => calibrator.open());
+
+  const padsBtn = document.getElementById('keyboard-pads-btn');
+  keyboardPads = new KeyboardPads({
+    getDrums: getKitDrums,
+    onHit: queueHit,
+    onToggle: (enabled) => {
+      padsBtn?.setAttribute('aria-pressed', String(enabled));
+      notificationSystem.show(enabled
+        ? 'Keyboard pads on: A S D F G H J K L ; (Shift = accent, ` or Esc to stop)'
+        : 'Keyboard pads off');
+    }
+  });
+  padsBtn?.addEventListener('click', () => keyboardPads.toggle());
+
+  const demoBtn = document.getElementById('demo-btn');
+  const demo = new DemoGroove({
+    getDrums: getKitDrums,
+    onHit: queueHit,
+    getTimeline: () => (currentModeType === 'timeline' ? chronicleMode : null),
+    getBpm: () => chronicleMode.bpm
+  });
+  demoBtn?.addEventListener('click', () => {
+    const playing = demo.toggle();
+    demoBtn.setAttribute('aria-pressed', String(playing));
+    demoBtn.textContent = playing ? '■ Stop demo' : '▶ Demo beat';
+  });
+
+  document.getElementById('show-shortcuts-btn')?.addEventListener('click', () => window.toggleShortcutsPanel?.());
+}
+
+/**
+ * First-run / no-MIDI guidance
+ */
+function showWelcome(isFirstRun, midiAvailable) {
+  const devices = midiManager.connectedDevices;
+  if (!midiAvailable) {
+    // The browser-support banner already explains this
+    return;
+  }
+  if (devices.length === 0) {
+    notificationSystem.show(
+      'No MIDI kit found. Plug one in, or try the keyboard pads.',
+      'info',
+      { actionLabel: 'Keyboard pads', onAction: () => keyboardPads.toggle(true) }
+    );
+  } else if (isFirstRun) {
+    notificationSystem.show(
+      `Connected to ${devices[0].name}. Hit some drums! If a pad doesn't paint, run Kit Setup.`,
+      'success',
+      { actionLabel: 'Kit Setup', onAction: () => kitSetupWizard.open() }
+    );
+  }
+}
 
 // ===== UI INITIALIZATION =====
 
@@ -599,7 +738,7 @@ function initializeUI() {
     const isFreeform = currentModeType === 'freeform';
 
     // Check if current layout is time-based (staff/spiral/rings/petals/polygon) - these need timeline controls
-    const isTimeBased = ['staff', 'spiral', 'rings', 'petals', 'polygon'].includes(chronicleMode.layout);
+    const isTimeBased = TIME_BASED_LAYOUTS.includes(chronicleMode.layout);
 
     // Show/hide appropriate selectors
     if (timelineLayoutSelector) {
@@ -647,7 +786,7 @@ function initializeUI() {
         updateModeUI();
 
         // Show different notification based on layout type
-        const isTimeBased = ['staff', 'spiral', 'rings', 'petals', 'polygon'].includes(chronicleMode.layout);
+        const isTimeBased = TIME_BASED_LAYOUTS.includes(chronicleMode.layout);
         notificationSystem.show(isTimeBased ? 'Timeline Mode (time-based)' : 'Timeline Mode (point-based)');
         stateManager.scheduleAutoSave();
       }
@@ -713,6 +852,7 @@ function initializeUI() {
 
   // Initialize UI state
   updateModeUI();
+  window.updateModeUI = updateModeUI;
 
   // Blend mode selector dropdown
   const blendSelect = document.getElementById('blend-select');
@@ -746,44 +886,11 @@ function initializeUI() {
 
   if (bgColorPicker) {
     bgColorPicker.value = currentBgColor;
-    bgColorPicker.addEventListener('change', (e) => {
-      currentBgColor = e.target.value;
-
-      // Temporarily reset blend mode to normal for clearing
-      paintCanvas.blendMode(BLEND);
-      paintCanvas.background(currentBgColor);
-      // Restore the current blend mode
-      paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
-
-      window.currentBgColor = currentBgColor; // Update global
-      debugLog(`Background Color: ${currentBgColor}`);
-      notificationSystem.show(`Background: ${currentBgColor}`);
-
-      // Save state for undo
-      stateManager.saveCanvasState(paintCanvas);
-      stateManager.scheduleAutoSave();
-    });
+    bgColorPicker.addEventListener('change', (e) => setBackgroundColor(e.target.value));
   }
 
   if (bgColorReset) {
-    bgColorReset.addEventListener('click', () => {
-      currentBgColor = '#ffffff';
-      if (bgColorPicker) bgColorPicker.value = currentBgColor;
-
-      // Temporarily reset blend mode to normal for clearing
-      paintCanvas.blendMode(BLEND);
-      paintCanvas.background(currentBgColor);
-      // Restore the current blend mode
-      paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
-
-      window.currentBgColor = currentBgColor; // Update global
-      debugLog(`Background Color reset to white`);
-      notificationSystem.show(`Background: white`);
-
-      // Save state for undo
-      stateManager.saveCanvasState(paintCanvas);
-      stateManager.scheduleAutoSave();
-    });
+    bgColorReset.addEventListener('click', () => setBackgroundColor('#ffffff'));
   }
 
   // Dark mode toggle
@@ -800,7 +907,7 @@ function initializeUI() {
   }
 
   // Session recording controls
-  setupSessionRecordingUI();
+  initSessionUI(sessionRecorder);
 
   // Global size slider
   const globalSizeSlider = document.getElementById('global-size');
@@ -866,14 +973,11 @@ function initializeUI() {
   const spiralResetBtn = document.getElementById('spiral-reset-btn');
   if (spiralResetBtn) {
     spiralResetBtn.addEventListener('click', () => {
-      // Reset spiral settings - note: spiral mode is now a Chronicle layout
-      chronicleMode.startTime = Date.now();
-      // Temporarily reset blend mode to normal for clearing
-      paintCanvas.blendMode(BLEND);
-      paintCanvas.background(currentBgColor);
-      // Restore the current blend mode
-      paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
-      notificationSystem.show('Spiral Reset');
+      // Restart the spiral's clock from the center
+      chronicleMode.restartClock();
+      stateManager.saveCanvasState(paintCanvas);
+      fillBackground();
+      notificationSystem.show('Spiral reset', 'info', { actionLabel: 'Undo', onAction: undoCanvas });
     });
   }
 
@@ -887,6 +991,7 @@ function initializeUI() {
         const isHidden = content.style.display === 'none';
         content.style.display = isHidden ? 'block' : 'none';
         arrow.style.transform = isHidden ? 'rotate(90deg)' : 'rotate(0deg)';
+        recOptionsHeader.setAttribute('aria-expanded', String(isHidden));
       }
     });
   }
@@ -925,126 +1030,6 @@ function initializeUI() {
     });
   }
 
-  // Quick Action buttons
-  const shortcutToggleUI = document.getElementById('shortcut-toggle-ui');
-  if (shortcutToggleUI) {
-    shortcutToggleUI.addEventListener('click', () => {
-      showUI = !showUI;
-      controlsEl.style.display = showUI ? 'block' : 'none';
-    });
-  }
-
-  const shortcutFullscreen = document.getElementById('shortcut-fullscreen');
-  if (shortcutFullscreen) {
-    shortcutFullscreen.addEventListener('click', () => {
-      let fs = fullscreen();
-      fullscreen(!fs);
-    });
-  }
-
-  const shortcutClear = document.getElementById('shortcut-clear');
-  if (shortcutClear) {
-    shortcutClear.addEventListener('click', () => {
-      if (confirm('Clear the entire canvas?')) {
-        paintCanvas.background(currentBgColor);
-        getCurrentMode().clear({ paintCanvas, currentBgColor });
-        notificationSystem.show('Canvas cleared');
-      }
-    });
-  }
-
-  const shortcutSaveImage = document.getElementById('shortcut-save-image');
-  if (shortcutSaveImage) {
-    shortcutSaveImage.addEventListener('click', () => {
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-      const filename = `drum-painter-${timestamp}.png`;
-      paintCanvas.save(filename);
-      notificationSystem.show(`Image saved: ${filename}`);
-    });
-  }
-
-  const shortcutUndo = document.getElementById('shortcut-undo');
-  if (shortcutUndo) {
-    shortcutUndo.addEventListener('click', () => {
-      if (window.historyManager && window.historyManager.undo()) {
-        notificationSystem.show('Undo');
-      }
-    });
-  }
-
-  const shortcutRedo = document.getElementById('shortcut-redo');
-  if (shortcutRedo) {
-    shortcutRedo.addEventListener('click', () => {
-      if (window.historyManager && window.historyManager.redo()) {
-        notificationSystem.show('Redo');
-      }
-    });
-  }
-
-  const shortcutRecord = document.getElementById('shortcut-record');
-  if (shortcutRecord) {
-    shortcutRecord.addEventListener('click', () => {
-      if (!videoRecorder.isRecording) {
-        videoRecorder.startRecording().then(success => {
-          if (success) {
-            updateVideoRecordingUI(true);
-          }
-        });
-      } else {
-        videoRecorder.stopRecording();
-        updateVideoRecordingUI(false);
-      }
-    });
-  }
-
-  const shortcutSaveSettings = document.getElementById('shortcut-save-settings');
-  if (shortcutSaveSettings) {
-    shortcutSaveSettings.addEventListener('click', () => {
-      // Simulate D key press
-      const event = new KeyboardEvent('keydown', { key: 'd' });
-      window.dispatchEvent(event);
-    });
-  }
-
-  const shortcutBlendMode = document.getElementById('shortcut-blend-mode');
-  if (shortcutBlendMode) {
-    shortcutBlendMode.addEventListener('click', () => {
-      currentBlendMode = (currentBlendMode + 1) % BLEND_MODES.length;
-      paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
-      window.currentBlendMode = currentBlendMode;
-      const blendSelect = document.getElementById('blend-select');
-      if (blendSelect) blendSelect.value = currentBlendMode.toString();
-      notificationSystem.show(`Blend: ${BLEND_MODE_NAMES[currentBlendMode]}`);
-    });
-  }
-
-  const shortcutArrows = document.getElementById('shortcut-arrows');
-  if (shortcutArrows) {
-    shortcutArrows.addEventListener('click', () => {
-      if (window.toggleShortcutsPanel) {
-        window.toggleShortcutsPanel();
-      }
-    });
-  }
-
-  const shortcutDrums = document.getElementById('shortcut-drums');
-  if (shortcutDrums) {
-    shortcutDrums.addEventListener('click', () => {
-      if (window.toggleShortcutsPanel) {
-        window.toggleShortcutsPanel();
-      }
-    });
-  }
-
-  const shortcutHelp = document.getElementById('shortcut-help');
-  if (shortcutHelp) {
-    shortcutHelp.addEventListener('click', () => {
-      if (window.toggleShortcutsPanel) {
-        window.toggleShortcutsPanel();
-      }
-    });
-  }
-
   // Close customization button
   const closeBtn = document.getElementById('close-customize-btn');
   const backdrop = document.getElementById('customization-backdrop');
@@ -1073,22 +1058,29 @@ function initializeUI() {
     });
   }
 
+  // Apply Palette button - opens the palette sub-view in the customization panel
+  const applyPaletteBtn = document.getElementById('apply-palette-btn');
+  if (applyPaletteBtn) {
+    applyPaletteBtn.addEventListener('click', () => {
+      customizationPanel.openPaletteView();
+    });
+  }
+
   // Reset to factory defaults button
   const resetBtn = document.getElementById('reset-factory-btn');
   if (resetBtn) {
     resetBtn.addEventListener('click', () => {
-      if (confirm('Reset all settings to factory defaults?')) {
-        // Reset to factory settings
+      if (confirm('Reset all drum settings to factory defaults?')) {
         const factorySettings = generateFactorySettings();
         for (const drumId in factorySettings) {
-          Object.assign(drumSettings[drumId], factorySettings[drumId]);
+          if (drumSettings[drumId]) Object.assign(drumSettings[drumId], factorySettings[drumId]);
         }
         globalSizeMultiplier = 1.0;
         currentBlendMode = 0;
+        window.currentBlendMode = currentBlendMode;
         currentBgColor = '#ffffff';
-        paintCanvas.background(currentBgColor);
-        paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
-        window.currentBlendMode = currentBlendMode; // Update global
+        fillBackground();
+        syncControlsToState();
 
         customizationPanel.build(); // Rebuild UI
         stateManager.saveNow(); // Persist reset to localStorage
@@ -1097,23 +1089,8 @@ function initializeUI() {
     });
   }
 
-  // Clear canvas button (in customization panel footer)
-  const clearCanvasBtn = document.getElementById('clear-canvas-btn');
-  if (clearCanvasBtn) {
-    clearCanvasBtn.addEventListener('click', () => {
-      if (confirm('Clear the entire canvas? This cannot be undone.')) {
-        paintCanvas.blendMode(BLEND);
-        paintCanvas.background(currentBgColor);
-        paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
-        window.currentBgColor = currentBgColor;
-        strokeCount = 0;
-        particles = [];
-        getCurrentMode().clear({ paintCanvas, currentBgColor });
-        stateManager.saveCanvasState(paintCanvas);
-        notificationSystem.show('Canvas cleared', 'success');
-      }
-    });
-  }
+  // Clear canvas button
+  document.getElementById('clear-canvas-btn')?.addEventListener('click', () => clearCanvas());
 
   // Export to file button
   const exportBtn = document.getElementById('export-file-btn');
@@ -1146,84 +1123,16 @@ function initializeUI() {
       if (!file) return;
 
       try {
-        const state = await stateManager.importFromFile(file);
-
-        // Validate version
-        if (!state.version) {
-          throw new Error('Invalid settings file: missing version');
+        const raw = await stateManager.importFromFile(file);
+        const { state, warnings } = validateSettings(raw);
+        if (!state || (!state.drumSettings && !state.timelineSettings && !state.globalSettings)) {
+          throw new Error('This doesn\'t look like a Drum Painter settings file');
         }
-
-        // Load custom drum kit config if available
-        if (state.drumKitConfig && Array.isArray(state.drumKitConfig)) {
-          // Clear and reload config
-          DRUM_KIT_CONFIG.length = 0;
-          state.drumKitConfig.forEach(drum => DRUM_KIT_CONFIG.push(drum));
-        }
-
-        // Apply drum settings
-        if (state.drumSettings) {
-          for (const drumId in state.drumSettings) {
-            if (drumSettings[drumId]) {
-              Object.assign(drumSettings[drumId], state.drumSettings[drumId]);
-            } else {
-              // New drum from imported file
-              drumSettings[drumId] = state.drumSettings[drumId];
-            }
-          }
-        }
-
-        // Clean up orphaned drums from DRUM_KIT_CONFIG
-        const orphanedDrums = [];
-        for (let i = DRUM_KIT_CONFIG.length - 1; i >= 0; i--) {
-          const drumId = DRUM_KIT_CONFIG[i].id;
-          if (!drumSettings[drumId]) {
-            debugWarn(`⚠️ Removing orphaned drum: ${drumId}`);
-            orphanedDrums.push(drumId);
-            DRUM_KIT_CONFIG.splice(i, 1);
-          }
-        }
-
-        // Apply global settings
-        if (state.globalSettings) {
-          if (state.globalSettings.sizeMultiplier !== undefined) {
-            globalSizeMultiplier = state.globalSettings.sizeMultiplier;
-          }
-          if (state.globalSettings.blendMode !== undefined) {
-            currentBlendMode = state.globalSettings.blendMode;
-            paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
-            window.currentBlendMode = currentBlendMode; // Update global
-          }
-          if (state.globalSettings.bgColor !== undefined) {
-            // Handle both old integer format and new hex string format
-            if (typeof state.globalSettings.bgColor === 'number') {
-              // Convert old integer index to hex color
-              const oldColors = ['#ffffff', '#000000', '#202020', '#f0f0f0', '#c8c8c8'];
-              currentBgColor = oldColors[state.globalSettings.bgColor] || '#ffffff';
-            } else {
-              currentBgColor = state.globalSettings.bgColor;
-            }
-            // Temporarily reset blend mode to normal for clearing
-            paintCanvas.blendMode(BLEND);
-            paintCanvas.background(currentBgColor);
-            paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
-          }
-        }
-
-        // Load bank mode settings
-        if (state.bankModeSettings && midiManager) {
-          midiManager.loadState(state.bankModeSettings);
-          updateActiveDrumIndicator();
-        }
-
-        // Rebuild UI
-        customizationPanel.build();
-
-        infoLog('✓ Settings imported from file');
-        notificationSystem.show('Imported successfully!');
+        applyImportedSettings(state);
+        notificationSystem.show(warnings.length ? `Imported (${warnings[0]})` : 'Settings imported', warnings.length ? 'warning' : 'success');
       } catch (error) {
         debugError('Error importing settings:', error);
         showUserFriendlyError(notificationSystem, 'FILE_PARSE_ERROR', error);
-        alert(formatErrorMessage('FILE_PARSE_ERROR', error));
       }
 
       // Reset input so same file can be imported again
@@ -1302,15 +1211,8 @@ function initializeUI() {
       e.stopPropagation(); // Prevent closing the guide
       const targetLevel = tab.dataset.level;
 
-      // Update active tab styling (directly manipulate inline styles)
-      guideTabs.forEach(t => {
-        t.style.background = 'transparent';
-        t.style.color = '#666';
-        t.style.borderBottom = '3px solid transparent';
-      });
-      tab.style.background = '#667eea';
-      tab.style.color = 'white';
-      tab.style.borderBottom = '3px solid #667eea';
+      // Active tab styling comes from CSS ([aria-selected="true"])
+      guideTabs.forEach(t => t.setAttribute('aria-selected', String(t === tab)));
 
       // Show corresponding content (use display property)
       guideContents.forEach(content => {
@@ -1327,516 +1229,70 @@ function initializeUI() {
   window.toggleUserGuide = toggleUserGuide;
   window.hideUserGuide = hideUserGuide;
 
-  // Projects System
+  // Projects: named snapshots of all settings, stored in the browser
   const projectNameInput = document.getElementById('project-name-input');
   const saveProjectBtn = document.getElementById('save-project-btn');
   const loadProjectBtn = document.getElementById('load-project-btn');
   const deleteProjectBtn = document.getElementById('delete-project-btn');
   const projectsList = document.getElementById('projects-list');
 
-  // Load projects list on startup
   function refreshProjectsList() {
     if (!projectsList) return;
-
-    const projects = getAllProjects();
-    projectsList.innerHTML = '<option value="">Select a project...</option>';
-
-    Object.keys(projects).forEach(name => {
-      const option = document.createElement('option');
-      option.value = name;
-      const timestamp = new Date(projects[name].timestamp);
-      option.textContent = `${name} (${timestamp.toLocaleDateString()})`;
-      projectsList.appendChild(option);
-    });
-  }
-
-  function getAllProjects() {
-    const projects = {};
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key.startsWith('drum-painter-project-')) {
-        const projectName = key.replace('drum-painter-project-', '');
-        try {
-          projects[projectName] = JSON.parse(localStorage.getItem(key));
-        } catch (e) {
-          debugError(`Failed to parse project: ${projectName}`, e);
-        }
-      }
+    const projects = stateManager.listProjects();
+    projectsList.replaceChildren(new Option('Select a project...', ''));
+    for (const [name, project] of Object.entries(projects)) {
+      const date = project.timestamp ? new Date(project.timestamp).toLocaleDateString() : '';
+      projectsList.appendChild(new Option(date ? `${name} (${date})` : name, name));
     }
-    return projects;
   }
 
-  if (saveProjectBtn && projectNameInput) {
-    saveProjectBtn.addEventListener('click', () => {
-      const projectName = projectNameInput.value.trim();
-      if (!projectName) {
-        notificationSystem.show('Please enter a project name', 'warning');
+  saveProjectBtn?.addEventListener('click', () => {
+    const projectName = projectNameInput.value.trim().slice(0, 60);
+    if (!projectName) {
+      notificationSystem.show('Please enter a project name', 'warning');
+      return;
+    }
+    stateManager.saveProject(projectName, getAppState());
+    notificationSystem.show(`Project "${projectName}" saved!`, 'success');
+    projectNameInput.value = '';
+    refreshProjectsList();
+  });
+
+  loadProjectBtn?.addEventListener('click', () => {
+    const projectName = projectsList.value;
+    if (!projectName) {
+      notificationSystem.show('Please select a project', 'warning');
+      return;
+    }
+    try {
+      const { state } = validateSettings(stateManager.loadProject(projectName));
+      if (!state) {
+        notificationSystem.show('Project not found', 'error');
         return;
       }
+      applyImportedSettings(state);
+      notificationSystem.show(`Project "${projectName}" loaded!`, 'success');
+    } catch (error) {
+      debugError('Error loading project:', error);
+      showUserFriendlyError(notificationSystem, 'PROJECT_LOAD_ERROR', error);
+    }
+  });
 
-      // Ensure window.drumSettings is synced
-      window.drumSettings = drumSettings;
-
-      const projectData = {
-        drumSettings,
-        globalSizeMultiplier,
-        currentBlendMode,
-        currentBgColor,
-        currentModeType,
-        freeformStyle: freeformMode.style,
-        chronicleLayout: chronicleMode.layout,
-        bankModeSettings: midiManager.getState(),
-        timelineSettings: {
-          bpm: chronicleMode.bpm,
-          subdivision: chronicleMode.subdivision,
-          beatsPerMeasure: chronicleMode.beatsPerMeasure,
-          metronomeEnabled: chronicleMode.metronomeEnabled,
-          midiLatencyMs: chronicleMode.midiLatencyMs,
-          showGrid: chronicleMode.showGrid,
-          showDeviationGraph: chronicleMode.showDeviationGraph,
-          deviationGraphMode: chronicleMode.deviationGraphMode,
-          rowSpacing: chronicleMode.rowSpacing
-        },
-        timestamp: new Date().toISOString()
-      };
-
-      localStorage.setItem(`drum-painter-project-${projectName}`, JSON.stringify(projectData));
-      notificationSystem.show(`Project "${projectName}" saved!`, 'success');
-      projectNameInput.value = '';
+  deleteProjectBtn?.addEventListener('click', () => {
+    const projectName = projectsList.value;
+    if (!projectName) {
+      notificationSystem.show('Please select a project', 'warning');
+      return;
+    }
+    if (confirm(`Delete project "${projectName}"?`)) {
+      stateManager.deleteProject(projectName);
+      notificationSystem.show(`Project "${projectName}" deleted`, 'info');
       refreshProjectsList();
-    });
-  }
-
-  if (loadProjectBtn && projectsList) {
-    loadProjectBtn.addEventListener('click', () => {
-      const projectName = projectsList.value;
-      if (!projectName) {
-        notificationSystem.show('Please select a project', 'warning');
-        return;
-      }
-
-      try {
-        const projectData = JSON.parse(localStorage.getItem(`drum-painter-project-${projectName}`));
-        if (!projectData) {
-          notificationSystem.show('Project not found', 'error');
-          return;
-        }
-
-        // Load drum settings
-        if (projectData.drumSettings) {
-          Object.assign(drumSettings, projectData.drumSettings);
-          window.drumSettings = drumSettings;
-        }
-
-        // Load global settings
-        if (projectData.globalSizeMultiplier !== undefined) {
-          globalSizeMultiplier = projectData.globalSizeMultiplier;
-          const globalSizeSlider = document.getElementById('global-size');
-          const globalSizeVal = document.getElementById('global-size-val');
-          if (globalSizeSlider) globalSizeSlider.value = globalSizeMultiplier;
-          if (globalSizeVal) globalSizeVal.textContent = `${globalSizeMultiplier.toFixed(1)}x`;
-        }
-
-        if (projectData.currentBlendMode !== undefined) {
-          currentBlendMode = projectData.currentBlendMode;
-          paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
-          window.currentBlendMode = currentBlendMode;
-          const blendSelect = document.getElementById('blend-select');
-          if (blendSelect) blendSelect.value = currentBlendMode.toString();
-        }
-
-        if (projectData.currentBgColor !== undefined) {
-          // Handle both old integer format and new hex string format
-          if (typeof projectData.currentBgColor === 'number') {
-            // Convert old integer index to hex color
-            const oldColors = ['#ffffff', '#000000', '#202020', '#f0f0f0', '#c8c8c8'];
-            currentBgColor = oldColors[projectData.currentBgColor] || '#ffffff';
-          } else {
-            currentBgColor = projectData.currentBgColor;
-          }
-          paintCanvas.blendMode(BLEND);
-          paintCanvas.background(currentBgColor);
-          paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
-          window.currentBgColor = currentBgColor;
-          const bgColorPicker = document.getElementById('bg-color-picker');
-          if (bgColorPicker) bgColorPicker.value = currentBgColor;
-        }
-
-        if (projectData.currentMode !== undefined) {
-          switchMode(projectData.currentMode);
-        }
-
-        // Load bank mode settings
-        if (projectData.bankModeSettings && midiManager) {
-          midiManager.loadState(projectData.bankModeSettings);
-        }
-
-        // Load timeline settings
-        if (projectData.timelineSettings && chronicleMode) {
-          if (projectData.timelineSettings.bpm !== undefined) {
-            chronicleMode.bpm = projectData.timelineSettings.bpm;
-          }
-          if (projectData.timelineSettings.subdivision !== undefined) {
-            chronicleMode.subdivision = projectData.timelineSettings.subdivision;
-          }
-          if (projectData.timelineSettings.beatsPerMeasure !== undefined) {
-            chronicleMode.beatsPerMeasure = projectData.timelineSettings.beatsPerMeasure;
-          }
-          if (projectData.timelineSettings.metronomeEnabled !== undefined) {
-            chronicleMode.metronomeEnabled = projectData.timelineSettings.metronomeEnabled;
-          }
-          if (projectData.timelineSettings.midiLatencyMs !== undefined) {
-            chronicleMode.midiLatencyMs = projectData.timelineSettings.midiLatencyMs;
-          }
-          if (projectData.timelineSettings.showGrid !== undefined) {
-            chronicleMode.showGrid = projectData.timelineSettings.showGrid;
-          }
-          if (projectData.timelineSettings.showDeviationGraph !== undefined) {
-            chronicleMode.showDeviationGraph = projectData.timelineSettings.showDeviationGraph;
-          }
-          if (projectData.timelineSettings.deviationGraphMode !== undefined) {
-            chronicleMode.deviationGraphMode = projectData.timelineSettings.deviationGraphMode;
-          }
-          if (projectData.timelineSettings.deviationGraphWidth !== undefined) {
-            chronicleMode.deviationGraphWidth = projectData.timelineSettings.deviationGraphWidth;
-          }
-          if (projectData.timelineSettings.deviationGraphHeight !== undefined) {
-            chronicleMode.deviationGraphHeight = projectData.timelineSettings.deviationGraphHeight;
-          }
-          if (projectData.timelineSettings.rowSpacing !== undefined) {
-            chronicleMode.rowSpacing = projectData.timelineSettings.rowSpacing;
-          }
-          if (projectData.timelineSettings.warmupMeasures !== undefined) {
-            chronicleMode.warmupMeasures = projectData.timelineSettings.warmupMeasures;
-          }
-          if (projectData.timelineSettings.measuresPerStaffPreference !== undefined) {
-            chronicleMode.measuresPerStaffPreference = projectData.timelineSettings.measuresPerStaffPreference;
-          }
-          // Tempo automation settings
-          if (projectData.timelineSettings.tempoAutomationEnabled !== undefined) {
-            chronicleMode.tempoAutomationEnabled = projectData.timelineSettings.tempoAutomationEnabled;
-          }
-          if (projectData.timelineSettings.tempoAutomationBpmChange !== undefined) {
-            chronicleMode.tempoAutomationBpmChange = projectData.timelineSettings.tempoAutomationBpmChange;
-          }
-          if (projectData.timelineSettings.tempoAutomationBars !== undefined) {
-            chronicleMode.tempoAutomationBars = projectData.timelineSettings.tempoAutomationBars;
-          }
-          if (projectData.timelineSettings.tempoAutomationMaxBpm !== undefined) {
-            chronicleMode.tempoAutomationMaxBpm = projectData.timelineSettings.tempoAutomationMaxBpm;
-          }
-          if (projectData.timelineSettings.tempoAutomationDirection !== undefined) {
-            chronicleMode.tempoAutomationDirection = projectData.timelineSettings.tempoAutomationDirection;
-          }
-          if (projectData.timelineSettings.tempoAutomationMinBpm !== undefined) {
-            chronicleMode.tempoAutomationMinBpm = projectData.timelineSettings.tempoAutomationMinBpm;
-          }
-          // Sync UI with loaded settings
-          if (timelineControls) {
-            timelineControls.syncUI();
-          }
-        }
-
-        // Rebuild UI
-        customizationPanel.build();
-        updateActiveDrumIndicator();
-
-        notificationSystem.show(`Project "${projectName}" loaded!`, 'success');
-      } catch (error) {
-        debugError('Error loading project:', error);
-        showUserFriendlyError(notificationSystem, 'PROJECT_LOAD_ERROR', error);
-      }
-    });
-  }
-
-  if (deleteProjectBtn && projectsList) {
-    deleteProjectBtn.addEventListener('click', () => {
-      const projectName = projectsList.value;
-      if (!projectName) {
-        notificationSystem.show('Please select a project', 'warning');
-        return;
-      }
-
-      if (confirm(`Delete project "${projectName}"?`)) {
-        localStorage.removeItem(`drum-painter-project-${projectName}`);
-        notificationSystem.show(`Project "${projectName}" deleted`, 'info');
-        refreshProjectsList();
-      }
-    });
-  }
+    }
+  });
 
   // Initialize projects list
   refreshProjectsList();
-}
-
-/**
- * Setup MIDI Devices Modal
- */
-function setupMidiDevicesModal() {
-  const midiStatus = document.getElementById('midi-status');
-  const backdrop = document.getElementById('midi-devices-backdrop');
-  const closeBtn = document.getElementById('close-midi-devices-btn');
-
-  // Open modal when clicking MIDI status
-  if (midiStatus) {
-    midiStatus.addEventListener('click', () => {
-      openMidiDevicesModal();
-    });
-
-    // Hover effect
-    midiStatus.addEventListener('mouseenter', () => {
-      midiStatus.style.background = '#e9ecef';
-    });
-
-    midiStatus.addEventListener('mouseleave', () => {
-      midiStatus.style.background = '#f8f9fa';
-    });
-  }
-
-  // Close modal
-  if (closeBtn) {
-    closeBtn.addEventListener('click', closeMidiDevicesModal);
-  }
-
-  if (backdrop) {
-    backdrop.addEventListener('click', (e) => {
-      if (e.target === backdrop) {
-        closeMidiDevicesModal();
-      }
-    });
-  }
-}
-
-/**
- * Open MIDI devices modal
- */
-function openMidiDevicesModal() {
-  const backdrop = document.getElementById('midi-devices-backdrop');
-  const devicesList = document.getElementById('midi-devices-list');
-
-  if (!backdrop || !devicesList) return;
-
-  // Populate devices list - prefer direct midiManager access
-  const devices = midiManager?.connectedDevices || window.midiDevicesList || [];
-  debugLog('🎹 Opening MIDI devices modal, found devices:', devices);
-
-  if (devices.length === 0) {
-    devicesList.innerHTML = `
-      <div style="text-align: center; padding: 20px; opacity: 0.7;">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-bottom: 12px; opacity: 0.5;">
-          <path d="M6 9H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2h-2"/>
-          <path d="M6 9V21"/>
-          <path d="M18 9V21"/>
-        </svg>
-        <div style="font-size: 14px;">No MIDI devices connected</div>
-      </div>
-    `;
-  } else {
-    devicesList.innerHTML = devices.map((device, index) => `
-      <div style="
-        background: rgba(255, 255, 255, 0.1);
-        border-radius: 8px;
-        padding: 16px;
-        margin-bottom: ${index < devices.length - 1 ? '12px' : '0'};
-        border: 1px solid rgba(255, 255, 255, 0.2);
-      ">
-        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M6 9H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2h-2"/>
-            <path d="M6 9V21"/>
-            <path d="M18 9V21"/>
-          </svg>
-          <div style="font-weight: bold; font-size: 14px;">${device.name}</div>
-        </div>
-        <div style="font-size: 12px; opacity: 0.8; display: flex; flex-direction: column; gap: 4px; margin-left: 28px;">
-          <div>Manufacturer: ${device.manufacturer}</div>
-          <div>State: ${device.state === 'connected' ? '✓ Connected' : device.state}</div>
-          <div style="font-size: 11px; opacity: 0.6; margin-top: 4px;">ID: ${device.id}</div>
-        </div>
-      </div>
-    `).join('');
-  }
-
-  backdrop.style.display = 'flex';
-}
-
-/**
- * Close MIDI devices modal
- */
-function closeMidiDevicesModal() {
-  const backdrop = document.getElementById('midi-devices-backdrop');
-  if (backdrop) {
-    backdrop.style.display = 'none';
-  }
-}
-
-/**
- * Setup Session Recording UI
- */
-function setupSessionRecordingUI() {
-  const recordBtn = document.getElementById('session-record-btn');
-  const stopBtn = document.getElementById('session-stop-btn');
-  const exportBtn = document.getElementById('session-export-btn');
-  const clearBtn = document.getElementById('session-clear-btn');
-  const statusEl = document.getElementById('session-status');
-
-  if (!recordBtn || !stopBtn || !exportBtn || !clearBtn || !statusEl) {
-    debugWarn('Session recording UI elements not found');
-    return;
-  }
-
-  // Update UI based on recording status
-  function updateUI() {
-    const status = sessionRecorder.getStatus();
-    const stats = sessionRecorder.getStats();
-
-    if (status.isRecording) {
-      // Recording in progress
-      recordBtn.disabled = true;
-      recordBtn.style.cursor = 'not-allowed';
-      recordBtn.style.background = '#f0f0f0';
-
-      stopBtn.disabled = false;
-      stopBtn.style.cursor = 'pointer';
-      stopBtn.style.background = 'white';
-      stopBtn.style.fontWeight = 'bold';
-
-      exportBtn.disabled = true;
-      clearBtn.disabled = true;
-
-      statusEl.textContent = `Recording... ${status.eventCount} events (${status.duration.toFixed(1)}s)`;
-      statusEl.style.color = '#c00';
-      statusEl.style.fontWeight = 'bold';
-    } else if (stats.hasData) {
-      // Has recorded data
-      recordBtn.disabled = false;
-      recordBtn.style.cursor = 'pointer';
-      recordBtn.style.background = 'white';
-      recordBtn.style.fontWeight = 'bold';
-
-      stopBtn.disabled = true;
-      stopBtn.style.cursor = 'not-allowed';
-      stopBtn.style.background = '#f0f0f0';
-
-      exportBtn.disabled = false;
-      exportBtn.style.cursor = 'pointer';
-      exportBtn.style.background = 'white';
-
-      clearBtn.disabled = false;
-      clearBtn.style.cursor = 'pointer';
-      clearBtn.style.background = 'white';
-
-      statusEl.textContent = `${stats.totalEvents} events recorded (${stats.duration.toFixed(1)}s)`;
-      statusEl.style.color = '#060';
-      statusEl.style.fontWeight = 'normal';
-    } else {
-      // Ready to record
-      recordBtn.disabled = false;
-      recordBtn.style.cursor = 'pointer';
-      recordBtn.style.background = 'white';
-      recordBtn.style.fontWeight = 'bold';
-
-      stopBtn.disabled = true;
-      stopBtn.style.cursor = 'not-allowed';
-      stopBtn.style.background = '#f0f0f0';
-
-      exportBtn.disabled = true;
-      exportBtn.style.cursor = 'not-allowed';
-      exportBtn.style.background = '#f0f0f0';
-
-      clearBtn.disabled = true;
-      clearBtn.style.cursor = 'not-allowed';
-      clearBtn.style.background = '#f0f0f0';
-
-      statusEl.textContent = 'Ready to record';
-      statusEl.style.color = '#666';
-      statusEl.style.fontWeight = 'normal';
-    }
-  }
-
-  // Record button
-  recordBtn.addEventListener('click', () => {
-    sessionRecorder.startRecording();
-    updateUI();
-  });
-
-  // Stop button
-  stopBtn.addEventListener('click', () => {
-    sessionRecorder.stopRecording();
-    updateUI();
-  });
-
-  // Export button
-  exportBtn.addEventListener('click', () => {
-    sessionRecorder.exportToFile();
-  });
-
-  // Clear button
-  clearBtn.addEventListener('click', () => {
-    if (confirm('Clear session data? This cannot be undone.')) {
-      sessionRecorder.clearSession();
-      updateUI();
-    }
-  });
-
-  // Update UI during recording (refresh every 100ms)
-  setInterval(() => {
-    if (sessionRecorder.getStatus().isRecording) {
-      updateUI();
-    }
-  }, 100);
-
-  // Initial UI update
-  updateUI();
-}
-
-/**
- * Setup Video Recorder UI
- */
-function setupVideoRecorderUI() {
-  const recordBtn = document.getElementById('video-record-btn');
-  const recordIcon = document.getElementById('video-record-icon');
-  const recordText = document.getElementById('video-record-text');
-  const recordingStatus = document.getElementById('video-recording-status');
-  const qualitySelect = document.getElementById('video-quality');
-
-  // Check if recording is supported
-  if (!VideoRecorder.isSupported()) {
-    if (recordBtn) {
-      recordBtn.disabled = true;
-      recordBtn.style.opacity = '0.5';
-      recordBtn.style.cursor = 'not-allowed';
-      recordText.textContent = 'Not Supported';
-    }
-    debugWarn('⚠️ Video recording not supported in this browser');
-    return;
-  }
-
-  // Quality selector
-  if (qualitySelect) {
-    qualitySelect.addEventListener('change', (e) => {
-      videoRecorder.setQuality(e.target.value);
-    });
-  }
-
-  // Record button
-  if (recordBtn) {
-    recordBtn.addEventListener('click', () => {
-      if (!videoRecorder.isRecording) {
-        // Start recording
-        videoRecorder.startRecording().then(success => {
-          if (success) {
-            updateVideoRecordingUI(true);
-          }
-        });
-      } else {
-        // Stop recording
-        videoRecorder.stopRecording();
-        updateVideoRecordingUI(false);
-      }
-    });
-  }
-
 }
 
 /**
@@ -1878,506 +1334,6 @@ function populateMidiOutputSelect(outputs) {
       select.value = midiManager.recordOutputPortId;
     }
   }
-}
-
-function updateVideoRecordingUI(isRecording) {
-  const recordBtn = document.getElementById('video-record-btn');
-  const recordIcon = document.getElementById('video-record-icon');
-  const recordText = document.getElementById('video-record-text');
-  const recordingStatus = document.getElementById('video-recording-status');
-
-  if (isRecording) {
-    // Recording state
-    if (recordBtn) {
-      recordBtn.style.background = '#7f1d1d';
-    }
-    if (recordIcon) {
-      recordIcon.textContent = '■';
-    }
-    if (recordText) {
-      recordText.textContent = 'Stop Recording';
-    }
-    if (recordingStatus) {
-      recordingStatus.style.display = 'block';
-    }
-  } else {
-    // Stopped state
-    if (recordBtn) {
-      recordBtn.style.background = '#dc2626';
-    }
-    if (recordIcon) {
-      recordIcon.textContent = '●';
-    }
-    if (recordText) {
-      recordText.textContent = 'Start Recording';
-    }
-    if (recordingStatus) {
-      recordingStatus.style.display = 'none';
-    }
-  }
-}
-
-/**
- * Setup Recordings UI and event listeners
- */
-function setupRecordingsUI() {
-  // Event listeners for recording events
-  window.addEventListener('recording-saved', () => {
-    updateRecordingsList();
-  });
-
-  window.addEventListener('recording-deleted', () => {
-    updateRecordingsList();
-  });
-
-  window.addEventListener('recordings-cleared', () => {
-    updateRecordingsList();
-  });
-
-  // Clear all recordings button
-  const clearAllBtn = document.getElementById('clear-recordings-btn');
-  if (clearAllBtn) {
-    clearAllBtn.addEventListener('click', () => {
-      if (confirm('Are you sure you want to clear all recordings?')) {
-        videoRecorder.clearAllRecordings();
-      }
-    });
-  }
-
-  // Initial update
-  updateRecordingsList();
-}
-
-/**
- * Update the recordings list UI
- */
-function updateRecordingsList() {
-  const recordingsList = document.getElementById('recordings-list');
-  if (!recordingsList) return;
-
-  const recordings = videoRecorder.getRecordings();
-
-  if (recordings.length === 0) {
-    recordingsList.innerHTML = `
-      <div style="font-size: 10px; color: #999; text-align: center; padding: 20px;">
-        No recordings yet
-      </div>
-    `;
-    return;
-  }
-
-  recordingsList.innerHTML = recordings.map((recording, index) => `
-    <div class="recording-item" data-recording-id="${recording.id}" style="
-      background: rgba(255, 255, 255, 0.05);
-      border-radius: 6px;
-      padding: 10px;
-      margin-bottom: ${index < recordings.length - 1 ? '8px' : '0'};
-      border: 1px solid rgba(255, 255, 255, 0.1);
-    ">
-      <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
-        <div style="flex: 1;">
-          <div style="font-size: 11px; font-weight: bold; margin-bottom: 4px;">
-            Recording #${recordings.length - index}
-          </div>
-          <div style="font-size: 10px; opacity: 0.7; display: flex; flex-direction: column; gap: 2px;">
-            <div>${recording.timestamp.toLocaleTimeString()}</div>
-            <div>${recording.duration}s • ${recording.size}MB • ${recording.quality}</div>
-          </div>
-        </div>
-        <button class="delete-recording-btn" data-recording-id="${recording.id}"
-          style="padding: 4px 8px; font-size: 10px; background: #dc2626; color: white; border: none; border-radius: 3px; cursor: pointer; opacity: 0.8;"
-          title="Delete recording">
-          Delete
-        </button>
-      </div>
-      <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-        <button class="download-recording-btn" data-recording-id="${recording.id}"
-          style="padding: 6px 10px; font-size: 10px; background: #059669; color: white; border: none; border-radius: 3px; cursor: pointer; flex: 1; min-width: 80px;">
-          Download Video
-        </button>
-        <button class="sync-merge-btn" data-recording-id="${recording.id}"
-          style="padding: 6px 10px; font-size: 10px; background: #7c3aed; color: white; border: none; border-radius: 3px; cursor: pointer; flex: 1; min-width: 80px;">
-          Sync &amp; Merge
-        </button>
-      </div>
-      <div id="merge-progress-${recording.id}" style="display: none; margin-top: 8px;">
-        <div style="font-size: 10px; margin-bottom: 4px; color: #3b82f6;">
-          <span id="merge-status-${recording.id}">Merging...</span>
-          <span id="merge-percent-${recording.id}"></span>
-        </div>
-        <div style="background: rgba(255, 255, 255, 0.1); height: 4px; border-radius: 2px; overflow: hidden;">
-          <div id="merge-progress-bar-${recording.id}" style="background: #3b82f6; height: 100%; width: 0%; transition: width 0.3s;"></div>
-        </div>
-      </div>
-    </div>
-  `).join('');
-
-  // Attach event listeners to buttons
-  recordingsList.querySelectorAll('.download-recording-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const id = parseInt(btn.dataset.recordingId);
-      videoRecorder.downloadRecording(id);
-    });
-  });
-
-  recordingsList.querySelectorAll('.delete-recording-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const id = parseInt(btn.dataset.recordingId);
-      if (confirm('Delete this recording?')) {
-        videoRecorder.deleteRecording(id);
-      }
-    });
-  });
-
-  // Sync & Merge button — opens sync preview modal
-  recordingsList.querySelectorAll('.sync-merge-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const id = parseInt(btn.dataset.recordingId);
-      openSyncPreview(id);
-    });
-  });
-}
-
-// ===== SYNC PREVIEW MODAL =====
-
-/**
- * Open the sync preview modal for a given recording
- */
-function openSyncPreview(recordingId) {
-  const recording = videoRecorder.getRecordings().find(r => r.id === recordingId);
-  if (!recording) return;
-
-  // Store recording id and create video object URL
-  syncPreview.recordingId = recordingId;
-  syncPreview.videoUrl = URL.createObjectURL(recording.blob);
-  syncPreview.audioFile = null;
-  syncPreview.audioUrl = null;
-  syncPreview.offsetMs = 0;
-  syncPreview.isPlaying = false;
-  if (syncPreview.syncInterval) {
-    clearInterval(syncPreview.syncInterval);
-    syncPreview.syncInterval = null;
-  }
-
-  // Set up video element
-  const video = document.getElementById('sync-preview-video');
-  video.src = syncPreview.videoUrl;
-  video.currentTime = 0;
-
-  // Reset audio element
-  const audio = document.getElementById('sync-preview-audio');
-  audio.src = '';
-
-  // Reset UI
-  document.getElementById('sync-preview-audio-name').textContent = 'No audio file loaded';
-  document.getElementById('sync-preview-offset').value = 0;
-  document.getElementById('sync-preview-offset-display').textContent = '0.0s';
-  document.getElementById('sync-preview-play-btn').textContent = '▶ Play';
-  document.getElementById('sync-preview-merge-btn').disabled = true;
-  document.getElementById('sync-preview-merge-btn').style.opacity = '0.5';
-  document.getElementById('sync-preview-merge-progress').style.display = 'none';
-  document.getElementById('sync-preview-merge-bar').style.width = '0%';
-  document.getElementById('sync-preview-merge-status').textContent = 'Merging...';
-  document.getElementById('sync-preview-merge-percent').textContent = '';
-
-  // Show modal
-  const backdrop = document.getElementById('sync-preview-backdrop');
-  backdrop.style.display = 'flex';
-}
-
-/**
- * Close the sync preview modal and clean up resources
- */
-function closeSyncPreview() {
-  const video = document.getElementById('sync-preview-video');
-  const audio = document.getElementById('sync-preview-audio');
-
-  // Pause playback
-  video.pause();
-  audio.pause();
-
-  // Clear sync interval
-  if (syncPreview.syncInterval) {
-    clearInterval(syncPreview.syncInterval);
-    syncPreview.syncInterval = null;
-  }
-
-  // Revoke object URLs
-  if (syncPreview.videoUrl) {
-    URL.revokeObjectURL(syncPreview.videoUrl);
-    syncPreview.videoUrl = null;
-  }
-  if (syncPreview.audioUrl) {
-    URL.revokeObjectURL(syncPreview.audioUrl);
-    syncPreview.audioUrl = null;
-  }
-
-  // Clear src to release resources
-  video.src = '';
-  audio.src = '';
-
-  // Reset state
-  syncPreview.recordingId = null;
-  syncPreview.audioFile = null;
-  syncPreview.offsetMs = 0;
-  syncPreview.isPlaying = false;
-
-  // Hide modal
-  document.getElementById('sync-preview-backdrop').style.display = 'none';
-}
-
-/**
- * Apply current offset to audio position (while playing or paused)
- */
-function applySyncOffset() {
-  const video = document.getElementById('sync-preview-video');
-  const audio = document.getElementById('sync-preview-audio');
-  if (!audio.src || !audio.duration) return;
-
-  const offsetSec = syncPreview.offsetMs / 1000;
-  const desiredAudioTime = video.currentTime - offsetSec;
-
-  if (desiredAudioTime < 0) {
-    // Audio hasn't started yet in the timeline
-    audio.pause();
-    audio.currentTime = 0;
-  } else if (desiredAudioTime <= audio.duration) {
-    audio.currentTime = desiredAudioTime;
-    if (syncPreview.isPlaying) audio.play().catch(() => {});
-  }
-}
-
-/**
- * Drift correction — called every 100ms while playing
- */
-function driftCorrect() {
-  const video = document.getElementById('sync-preview-video');
-  const audio = document.getElementById('sync-preview-audio');
-  if (video.paused || !audio.src || !audio.duration) return;
-
-  const offsetSec = syncPreview.offsetMs / 1000;
-  const desiredAudioTime = video.currentTime - offsetSec;
-
-  if (desiredAudioTime < 0) {
-    // Audio not started yet — keep it paused at 0
-    if (!audio.paused) audio.pause();
-    return;
-  }
-
-  // Audio should be playing — start it if paused
-  if (audio.paused && syncPreview.isPlaying) {
-    audio.currentTime = desiredAudioTime;
-    audio.play().catch(() => {});
-    return;
-  }
-
-  // Correct drift if more than 150ms
-  const drift = Math.abs(audio.currentTime - desiredAudioTime);
-  if (drift > 0.15) {
-    audio.currentTime = desiredAudioTime;
-  }
-}
-
-/**
- * Set up sync preview modal event listeners (called once on app init)
- */
-function setupSyncPreview() {
-  // Close button & Cancel button
-  document.getElementById('sync-preview-close-btn').addEventListener('click', closeSyncPreview);
-  document.getElementById('sync-preview-cancel-btn').addEventListener('click', closeSyncPreview);
-
-  // Close on backdrop click (outside modal)
-  document.getElementById('sync-preview-backdrop').addEventListener('click', (e) => {
-    if (e.target === document.getElementById('sync-preview-backdrop')) {
-      closeSyncPreview();
-    }
-  });
-
-  // ESC key
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && document.getElementById('sync-preview-backdrop').style.display === 'flex') {
-      closeSyncPreview();
-    }
-  });
-
-  // Audio file input
-  document.getElementById('sync-preview-audio-input').addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    syncPreview.audioFile = file;
-
-    // Revoke old audio URL if any
-    if (syncPreview.audioUrl) {
-      URL.revokeObjectURL(syncPreview.audioUrl);
-    }
-    syncPreview.audioUrl = URL.createObjectURL(file);
-
-    const audio = document.getElementById('sync-preview-audio');
-    audio.src = syncPreview.audioUrl;
-
-    // Show filename
-    document.getElementById('sync-preview-audio-name').textContent = file.name;
-
-    // Enable merge button
-    document.getElementById('sync-preview-merge-btn').disabled = false;
-    document.getElementById('sync-preview-merge-btn').style.opacity = '1';
-
-    // Pre-seek to correct position for current offset
-    audio.addEventListener('loadedmetadata', () => {
-      applySyncOffset();
-    }, { once: true });
-
-    // Reset file input so same file can be reloaded
-    e.target.value = '';
-  });
-
-  // Offset slider
-  const offsetSlider = document.getElementById('sync-preview-offset');
-  const offsetDisplay = document.getElementById('sync-preview-offset-display');
-  offsetSlider.addEventListener('input', () => {
-    syncPreview.offsetMs = parseInt(offsetSlider.value);
-    const sec = (syncPreview.offsetMs / 1000).toFixed(1);
-    offsetDisplay.textContent = syncPreview.offsetMs > 0 ? `+${sec}s` : `${sec}s`;
-    applySyncOffset();
-  });
-
-  // Play / Pause button
-  const playBtn = document.getElementById('sync-preview-play-btn');
-  playBtn.addEventListener('click', () => {
-    const video = document.getElementById('sync-preview-video');
-    const audio = document.getElementById('sync-preview-audio');
-
-    if (!syncPreview.isPlaying) {
-      // Apply offset and start both
-      syncPreview.isPlaying = true;
-      applySyncOffset();
-      video.play().catch(() => {});
-
-      // Start drift correction loop
-      syncPreview.syncInterval = setInterval(driftCorrect, 100);
-      playBtn.textContent = '⏸ Pause';
-    } else {
-      // Pause both
-      syncPreview.isPlaying = false;
-      video.pause();
-      audio.pause();
-      clearInterval(syncPreview.syncInterval);
-      syncPreview.syncInterval = null;
-      playBtn.textContent = '▶ Play';
-    }
-  });
-
-  // Reset button
-  document.getElementById('sync-preview-reset-btn').addEventListener('click', () => {
-    const video = document.getElementById('sync-preview-video');
-    const audio = document.getElementById('sync-preview-audio');
-
-    syncPreview.isPlaying = false;
-    clearInterval(syncPreview.syncInterval);
-    syncPreview.syncInterval = null;
-
-    video.pause();
-    audio.pause();
-    video.currentTime = 0;
-
-    // Seek audio to correct starting position
-    if (audio.src && audio.duration) {
-      const offsetSec = syncPreview.offsetMs / 1000;
-      audio.currentTime = Math.max(0, -offsetSec);
-    }
-
-    document.getElementById('sync-preview-play-btn').textContent = '▶ Play';
-  });
-
-  // Video ended — stop sync
-  document.getElementById('sync-preview-video').addEventListener('ended', () => {
-    const audio = document.getElementById('sync-preview-audio');
-    syncPreview.isPlaying = false;
-    audio.pause();
-    clearInterval(syncPreview.syncInterval);
-    syncPreview.syncInterval = null;
-    document.getElementById('sync-preview-play-btn').textContent = '▶ Play';
-  });
-
-  // Merge button
-  document.getElementById('sync-preview-merge-btn').addEventListener('click', async () => {
-    if (!syncPreview.audioFile || syncPreview.recordingId === null) return;
-
-    const recording = videoRecorder.getRecordings().find(r => r.id === syncPreview.recordingId);
-    if (!recording) return;
-
-    // Pause playback during merge
-    const video = document.getElementById('sync-preview-video');
-    const audio = document.getElementById('sync-preview-audio');
-    video.pause();
-    audio.pause();
-    syncPreview.isPlaying = false;
-    clearInterval(syncPreview.syncInterval);
-    syncPreview.syncInterval = null;
-    document.getElementById('sync-preview-play-btn').textContent = '▶ Play';
-
-    // Show progress UI
-    const mergeProgress = document.getElementById('sync-preview-merge-progress');
-    const mergeStatus = document.getElementById('sync-preview-merge-status');
-    const mergePercent = document.getElementById('sync-preview-merge-percent');
-    const mergeBar = document.getElementById('sync-preview-merge-bar');
-    mergeProgress.style.display = 'block';
-    mergeStatus.textContent = 'Merging...';
-    mergeStatus.style.color = '#89b4fa';
-    mergePercent.textContent = '';
-    mergeBar.style.width = '0%';
-
-    const mergeBtn = document.getElementById('sync-preview-merge-btn');
-    mergeBtn.disabled = true;
-    mergeBtn.style.opacity = '0.5';
-
-    try {
-      const mergedBlob = await audioVideoMerger.merge(
-        recording.blob,
-        syncPreview.audioFile,
-        (progress) => {
-          mergePercent.textContent = ` ${progress}%`;
-          mergeBar.style.width = `${progress}%`;
-        },
-        syncPreview.offsetMs
-      );
-
-      mergeStatus.textContent = 'Complete!';
-      mergePercent.textContent = '';
-      mergeBar.style.width = '100%';
-
-      // Auto-download
-      setTimeout(() => {
-        const url = URL.createObjectURL(mergedBlob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `drum-painter-merged-${recording.id}.mp4`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(url), URL_REVOKE_DELAY);
-
-        // Close modal after short delay
-        setTimeout(() => closeSyncPreview(), 1500);
-      }, 500);
-    } catch (error) {
-      debugError('Sync preview merge failed:', error);
-      mergeStatus.textContent = 'Merge failed';
-      mergeStatus.style.color = '#f38ba8';
-      showUserFriendlyError(notificationSystem, 'VIDEO_MERGE_ERROR', error);
-
-      // Re-enable merge button after delay
-      setTimeout(() => {
-        mergeProgress.style.display = 'none';
-        mergeBar.style.width = '0%';
-        mergeStatus.textContent = 'Merging...';
-        mergeStatus.style.color = '#89b4fa';
-        mergeBtn.disabled = false;
-        mergeBtn.style.opacity = '1';
-      }, 3000);
-    }
-  });
 }
 
 /**
@@ -2435,93 +1391,148 @@ function isMouseOverScrollbar(x, y, w, h) {
   return mouseX >= x && mouseX <= x + w && mouseY >= y && mouseY <= y + h;
 }
 
+// ===== RENDER LOOP =====
+
+// Hits are queued by the MIDI/keyboard handlers and painted at the start of the
+// next frame, so a burst of notes (flams, rolls) never blocks MIDI input. Each
+// hit carries its own timestamp, so deferring the drawing doesn't move it in time.
+const hitQueue = [];
+const MAX_QUEUED_HITS = 2000;
+
+// Skip redrawing when nothing on screen can have changed
+let needsRedraw = true;
+let lastRedrawTime = 0;
+const IDLE_REDRAW_MS = 500;
+
+function requestRedraw() {
+  needsRedraw = true;
+}
+window.requestRedraw = requestRedraw;
+
+function isTimeBasedLayout() {
+  return currentModeType === 'timeline' && TIME_BASED_LAYOUTS.includes(chronicleMode.layout);
+}
+
+/**
+ * True while something on screen is moving and must be redrawn every frame
+ */
+function isAnimating() {
+  return particles.length > 0 ||
+    hitQueue.length > 0 ||
+    frameCount < MODE_DISPLAY_FRAMES ||
+    (isTimeBasedLayout() && chronicleMode.recording) ||
+    !!videoRecorder?.isRecording ||
+    isDraggingScrollbar ||
+    chronicleMode.metronomeDragging ||
+    chronicleMode.deviationGraphDragging ||
+    chronicleMode.deviationGraphResizing;
+}
+
+/**
+ * Paint every queued hit
+ */
+function processHitQueue() {
+  if (hitQueue.length === 0) return;
+  const hits = hitQueue.splice(0, hitQueue.length);
+  for (const hit of hits) {
+    paintHit(hit);
+  }
+}
+
 window.draw = function() {
-  background(240);
+  processHitQueue();
 
-  // Calculate scaling and offset
-  let scaleFactor, displayWidth, displayHeight, offsetX, offsetY;
+  const now = performance.now();
+  if (!needsRedraw && !isAnimating() && now - lastRedrawTime < IDLE_REDRAW_MS) {
+    return;
+  }
+  needsRedraw = false;
+  lastRedrawTime = now;
 
-  // Check if we're in a time-based layout (staff or spiral)
-  const isTimeBased = currentModeType === 'timeline' && ['staff', 'spiral', 'rings', 'petals', 'polygon'].includes(chronicleMode.layout);
+  background(darkModeManager?.darkMode ? 24 : 240);
+
+  // Fit the painting to the window width; tall canvases scroll vertically
+  const isTimeBased = isTimeBasedLayout();
+  const scaleFactor = (width / paintCanvas.width) * CANVAS_FIT_SCALE;
+  const displayWidth = paintCanvas.width * scaleFactor;
+  const displayHeight = paintCanvas.height * scaleFactor;
+  const offsetX = (width - displayWidth) / 2;
+  let offsetY;
 
   if (isTimeBased) {
-    // Time-based layouts: scale based on width only, allow vertical scrolling
-    scaleFactor = (width / paintCanvas.width) * CANVAS_FIT_SCALE;
-    displayWidth = paintCanvas.width * scaleFactor;
-    displayHeight = paintCanvas.height * scaleFactor;
-    offsetX = (width - displayWidth) / 2;
-    offsetY = timelineScrollY; // Apply scroll offset
+    offsetY = timelineScrollY;
+  } else if (displayHeight <= height) {
+    // Canvas fits: center it
+    offsetY = (height - displayHeight) / 2;
+    timelineScrollY = 0;
   } else {
-    // Other modes: scale based on width, allow vertical scrolling if canvas is tall
-    scaleFactor = (width / paintCanvas.width) * CANVAS_FIT_SCALE;
-    displayWidth = paintCanvas.width * scaleFactor;
-    displayHeight = paintCanvas.height * scaleFactor;
-    offsetX = (width - displayWidth) / 2;
-
-    // If canvas fits in height, center it. Otherwise allow scrolling
-    if (displayHeight <= height) {
-      offsetY = (height - displayHeight) / 2;
-      timelineScrollY = 0; // Reset scroll when canvas fits
-    } else {
-      offsetY = timelineScrollY; // Use scroll offset for tall canvases
-    }
-  }
-
-  // Apply post-processing effects before displaying
-  if (postProcessing) {
-    postProcessing.apply(paintCanvas);
+    offsetY = timelineScrollY;
   }
 
   // Get bottom panel height for timeline mode (graph + metronome area)
   const bottomPanelHeight = isTimeBased ? chronicleMode.getBottomPanelHeight() : 0;
   const staffViewportHeight = height - bottomPanelHeight;
 
+  const ctx = drawingContext;
   if (isTimeBased && bottomPanelHeight > 0) {
     // Clip staff rendering to area above the bottom panel
-    drawingContext.save();
-    drawingContext.beginPath();
-    drawingContext.rect(0, 0, width, staffViewportHeight);
-    drawingContext.clip();
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, width, staffViewportHeight);
+    ctx.clip();
   }
 
-  // Draw the paint canvas
-  image(paintCanvas, offsetX, offsetY, displayWidth, displayHeight);
+  // Draw only the visible slice of the paint canvas — staff sessions can make it
+  // many screens tall
+  const srcTop = Math.max(0, -offsetY / scaleFactor);
+  const srcBottom = Math.min(paintCanvas.height, (staffViewportHeight - offsetY) / scaleFactor);
+  if (srcBottom > srcTop) {
+    const pd = paintCanvas.pixelDensity();
+    const sx = 0;
+    const sy = srcTop * pd;
+    const sw = paintCanvas.width * pd;
+    const sh = (srcBottom - srcTop) * pd;
+    const dy = offsetY + srcTop * scaleFactor;
+    const dh = (srcBottom - srcTop) * scaleFactor;
+    ctx.drawImage(paintCanvas.elt, sx, sy, sw, sh, offsetX, dy, displayWidth, dh);
+
+    if (postProcessing?.isActive) {
+      postProcessing.drawOver(ctx, paintCanvas.elt, sx, sy, sw, sh, offsetX, dy, displayWidth, dh);
+    }
+  }
 
   // Draw timeline guides OVER the canvas if in time-based layout
   if (isTimeBased) {
-    chronicleMode.drawLaneGuides(window, offsetX, offsetY, scaleFactor, paintCanvas);
+    chronicleMode.drawLaneGuides(window, offsetX, offsetY, scaleFactor, paintCanvas, staffViewportHeight);
   }
 
   if (isTimeBased && bottomPanelHeight > 0) {
-    // Restore clipping
-    drawingContext.restore();
+    ctx.restore();
   }
 
   // Bottom panel (metronome + deviation graph) goes on the overlay canvas, NOT on
   // displayCanvas, so it never appears in video recordings.
-  overlayGfx.clear();
-  if (isTimeBased && bottomPanelHeight > 0) {
-    overlayGfx.noStroke();
-    overlayGfx.fill(240);
-    overlayGfx.rect(0, staffViewportHeight, width, bottomPanelHeight);
-    overlayGfx.stroke(200);
-    overlayGfx.strokeWeight(1);
-    overlayGfx.line(0, staffViewportHeight, width, staffViewportHeight);
-  }
+  if (isTimeBased || overlayHasContent) {
+    overlayGfx.clear();
+    if (isTimeBased && bottomPanelHeight > 0) {
+      overlayGfx.noStroke();
+      overlayGfx.fill(240);
+      overlayGfx.rect(0, staffViewportHeight, width, bottomPanelHeight);
+      overlayGfx.stroke(200);
+      overlayGfx.strokeWeight(1);
+      overlayGfx.line(0, staffViewportHeight, width, staffViewportHeight);
+    }
 
-  if (isTimeBased) {
-    // Draw circular visual metronome on overlay (excluded from video)
-    chronicleMode.drawCircularMetronome(overlayGfx, width, height);
+    if (isTimeBased) {
+      chronicleMode.drawCircularMetronome(overlayGfx, width, height);
+      chronicleMode.drawDeviationGraph(overlayGfx, offsetX, offsetY, scaleFactor, drumSettings);
+    }
 
-    // Draw deviation graph on overlay (excluded from video)
-    chronicleMode.drawDeviationGraph(overlayGfx, offsetX, offsetY, scaleFactor, drumSettings);
-  }
-
-  // Copy the off-screen p5 buffer to the visible overlay HTML canvas
-  if (overlayCanvas) {
-    const ctx = overlayCanvas.getContext('2d');
-    ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-    ctx.drawImage(overlayGfx.canvas, 0, 0);
+    // Copy the off-screen p5 buffer to the visible overlay HTML canvas
+    const overlayCtx = overlayCanvas.getContext('2d');
+    overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+    overlayCtx.drawImage(overlayGfx.canvas, 0, 0);
+    overlayHasContent = isTimeBased;
   }
 
   if (isTimeBased) {
@@ -2550,6 +1561,8 @@ window.draw = function() {
   // Constrain scrollbar to staff area (above bottom panel)
   if (displayHeight > staffViewportHeight) {
     drawTimelineScrollbar(displayWidth, displayHeight, offsetX, staffViewportHeight);
+  } else {
+    window.scrollbarBounds = null;
   }
 
   // Update and draw particles
@@ -2561,24 +1574,10 @@ window.draw = function() {
     }
   }
 
-  // Update Timeline mode if active (time-based layouts) - handles metronome
-  const isTimeBasedNow = currentModeType === 'timeline' && ['staff', 'spiral', 'rings', 'petals', 'polygon'].includes(chronicleMode.layout);
-  if (isTimeBasedNow) {
-    const context = {
-      paintCanvas,
-      drumSettings,
-      globalSizeMultiplier,
-      particles,
-      strokeCount,
-      currentBgColor
-    };
-
-    chronicleMode.update(context);
+  // Backstop for the metronome scheduler (it normally runs on its own timer)
+  if (isTimeBased) {
+    chronicleMode.update({ paintCanvas });
   }
-
-  // Update and draw notification system
-  notificationSystem.update();
-  notificationSystem.draw(width, height);
 
   // Show mode name briefly
   if (frameCount < MODE_DISPLAY_FRAMES) {
@@ -2596,10 +1595,58 @@ window.draw = function() {
     const htmlCanvas = window.displayCanvas.elt || window.displayCanvas.canvas || window.displayCanvas;
     videoRecorder.relayFrame(htmlCanvas);
   }
-
 };
 
-window.keyPressed = function() {
+// Anything the user does might change what's on screen
+window.mouseMoved = requestRedraw;
+
+/**
+ * Show or hide all panels (H)
+ */
+function toggleUI() {
+  showUI = !showUI;
+  for (const id of ['controls', 'drum-settings']) {
+    const el = document.getElementById(id);
+    if (el) el.style.display = showUI ? 'block' : 'none';
+  }
+  // Close modal panels when hiding UI
+  if (!showUI) {
+    if (customizationPanel.isVisible) customizationPanel.toggle();
+    if (midiMappingPanel.isVisible) midiMappingPanel.toggle();
+  }
+}
+
+function cycleBlendMode() {
+  currentBlendMode = (currentBlendMode + 1) % BLEND_MODES.length;
+  paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
+  window.currentBlendMode = currentBlendMode;
+  const blendSelect = document.getElementById('blend-select');
+  if (blendSelect) blendSelect.value = currentBlendMode.toString();
+  notificationSystem.show(`Blend: ${BLEND_MODE_NAMES[currentBlendMode]}`);
+}
+
+function saveImage() {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+  const filename = `drum-painter-${timestamp}.png`;
+  paintCanvas.save(filename);
+  notificationSystem.show(`Saved: ${filename}`);
+}
+
+/**
+ * Step a <select> to the previous/next option and fire its change handler
+ */
+function stepSelect(id, direction) {
+  const select = document.getElementById(id);
+  if (!select) return;
+  const count = select.options.length;
+  select.selectedIndex = (select.selectedIndex + direction + count) % count;
+  select.dispatchEvent(new Event('change'));
+}
+
+window.keyPressed = function(event) {
+  requestRedraw();
+  const e = event || {};
+
   // Don't process keyboard shortcuts if user is typing in an input field
   const activeElement = document.activeElement;
   const isTypingInInput = activeElement && (
@@ -2608,296 +1655,112 @@ window.keyPressed = function() {
     activeElement.tagName === 'SELECT' ||
     activeElement.isContentEditable
   );
-
-  // Allow default behavior when typing in inputs (except for certain global shortcuts)
   if (isTypingInInput) {
-    // ESC - blur the input to allow closing panels
-    if (keyCode === 27) {
+    if (keyCode === ESCAPE) {
       activeElement.blur();
       return false;
     }
-    // Allow all other keys to work normally in inputs
     return true;
   }
 
-  // Don't process keyboard shortcuts if any panel is open (except H to hide UI)
-  const panelOpen = customizationPanel.isVisible || midiMappingPanel.isVisible;
+  const modifier = e.ctrlKey || e.metaKey;
 
-  // H - toggle UI (always allow this)
-  if (key === 'h' || key === 'H') {
-    showUI = !showUI;
-    if (controlsEl) {
-      controlsEl.style.display = showUI ? 'block' : 'none';
-    }
-    const drumSettingsEl = document.getElementById('drum-settings');
-    if (drumSettingsEl) {
-      drumSettingsEl.style.display = showUI ? 'block' : 'none';
-    }
-    const infoEl = document.getElementById('info');
-    if (infoEl) {
-      infoEl.style.display = showUI ? 'block' : 'none';
-    }
-    // Close modal panels when hiding UI
-    if (!showUI) {
-      if (customizationPanel.isVisible) customizationPanel.toggle();
-      if (midiMappingPanel.isVisible) midiMappingPanel.toggle();
+  // Ctrl/⌘+Z undo, Ctrl/⌘+Shift+Z or Ctrl+Y redo
+  if (modifier && (e.code === 'KeyZ' || e.code === 'KeyY')) {
+    if (e.code === 'KeyY' || e.shiftKey) {
+      redoCanvas();
+    } else {
+      undoCanvas();
     }
     return false;
   }
+  // Leave other browser shortcuts (Ctrl+R, Ctrl+C, …) alone
+  if (modifier || e.altKey) return true;
 
-  // ? - show keyboard shortcuts (always allow this)
-  if (key === '?' || key === '/') {
-    if (window.toggleShortcutsPanel) {
-      window.toggleShortcutsPanel();
-    }
-    return false;
-  }
-
-  // U - show user guide (always allow this)
-  if (key === 'u' || key === 'U') {
-    if (window.toggleUserGuide) {
-      window.toggleUserGuide();
-    }
-    return false;
-  }
-
-  // F - toggle fullscreen (always allow this)
-  if (key === 'f' || key === 'F') {
-    let fs = fullscreen();
-    fullscreen(!fs);
-    notificationSystem.show(fs ? 'Exited fullscreen' : 'Entered fullscreen');
-    return false;
-  }
-
-  // ESC - close modals and panels (always allow this)
-  if (keyCode === 27) { // ESC key
-    // Close user guide
-    if (window.hideUserGuide) {
-      window.hideUserGuide();
-    }
-    // Close shortcuts panel
-    if (window.hideShortcutsPanel) {
-      window.hideShortcutsPanel();
-    }
-    // Close MIDI devices modal
+  // ESC - close modals and panels
+  if (keyCode === ESCAPE) {
+    window.hideUserGuide?.();
+    window.hideShortcutsPanel?.();
     closeMidiDevicesModal();
+    if (customizationPanel.isVisible) customizationPanel.toggle();
+    if (midiMappingPanel.isVisible) midiMappingPanel.toggle();
+    return false;
+  }
+
+  // These work even with a panel open
+  if (key === 'h' || key === 'H') { toggleUI(); return false; }
+  if (key === '?' || key === '/') { window.toggleShortcutsPanel?.(); return false; }
+  if (key === 'u' || key === 'U') { window.toggleUserGuide?.(); return false; }
+  if (key === 'f' || key === 'F') {
+    const fs = fullscreen();
+    fullscreen(!fs);
     return false;
   }
 
   // Block all other keyboard shortcuts if a panel is open
-  if (panelOpen) {
-    return true; // Allow default behavior (typing in inputs)
+  if (customizationPanel.isVisible || midiMappingPanel.isVisible || kitSetupWizard?.isOpen) {
+    return true;
   }
 
   // Space - toggle video recording
   if (key === ' ') {
-    if (!videoRecorder.isRecording) {
-      // Start recording
-      videoRecorder.startRecording().then(success => {
-        if (success) {
-          updateVideoRecordingUI(true);
-        }
-      });
-    } else {
-      // Stop recording
-      videoRecorder.stopRecording();
-      updateVideoRecordingUI(false);
-    }
+    toggleVideoRecording();
     return false;
   }
 
-  // Backspace - clear canvas
-  if (keyCode === BACKSPACE) {
-    // Ask for confirmation before clearing
-    if (!confirm('Clear the entire canvas? This cannot be undone.')) {
+  // Backspace/Delete - clear canvas (undoable)
+  if (keyCode === BACKSPACE || keyCode === DELETE) {
+    clearCanvas();
+    return false;
+  }
+
+  switch (key) {
+    case 's': case 'S':
+      saveImage();
       return false;
-    }
-
-    // Temporarily reset blend mode to normal for clearing
-    paintCanvas.blendMode(BLEND);
-    paintCanvas.background(currentBgColor);
-    // Restore the current blend mode
-    paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
-
-    window.currentBgColor = currentBgColor; // Update global
-    strokeCount = 0;
-    particles = [];
-
-    // Clear mode-specific state
-    getCurrentMode().clear({ paintCanvas, currentBgColor });
-
-    // Save state for undo
-    stateManager.saveCanvasState(paintCanvas);
-
-    debugLog('Canvas cleared');
-    notificationSystem.show('Canvas cleared', 'success');
-    return false;
-  }
-
-  // S - save image
-  if (key === 's' || key === 'S') {
-    let filename = `drum-painting-${getCurrentMode().name.replace(/\s+/g, '-')}-${Date.now()}.png`;
-    paintCanvas.save(filename);
-    debugLog(`Saved: ${filename}`);
-    notificationSystem.show(`Saved: ${filename}`);
-    return false;
-  }
-
-  // D - save settings as default (immediate save)
-  if (key === 'd' || key === 'D') {
-    // Ensure window.drumSettings is synced before saving
-    window.drumSettings = drumSettings;
-
-    if (stateManager.saveNow()) {
-      infoLog('✓ Settings saved as default');
-      notificationSystem.show('Settings saved');
-    }
-    return false;
-  }
-
-  // Z - undo
-  if (key === 'z' || key === 'Z') {
-    if (stateManager.undo(paintCanvas)) {
-      notificationSystem.show('Undo');
-    }
-    return false;
-  }
-
-  // Y - redo
-  if (key === 'y' || key === 'Y') {
-    if (stateManager.redo(paintCanvas)) {
-      notificationSystem.show('Redo');
-    }
-    return false;
-  }
-
-  // B - cycle blend modes
-  if (key === 'b' || key === 'B') {
-    currentBlendMode = (currentBlendMode + 1) % BLEND_MODES.length;
-    paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
-    window.currentBlendMode = currentBlendMode;
-    const blendSelect = document.getElementById('blend-select');
-    if (blendSelect) blendSelect.value = currentBlendMode.toString();
-    notificationSystem.show(`Blend: ${BLEND_MODE_NAMES[currentBlendMode]}`);
-    return false;
-  }
-
-  // P - play/pause timeline (only for time-based layouts: staff, spiral)
-  if (key === 'p' || key === 'P') {
-    if (currentModeType === 'timeline' && (chronicleMode.layout === 'staff' || chronicleMode.layout === 'spiral')) {
-      if (timelineControls) {
-        timelineControls.toggleRecording();
-        notificationSystem.show(chronicleMode.recording ? 'Timeline started' : 'Timeline paused');
+    case 'd': case 'D':
+      if (stateManager.saveNow()) notificationSystem.show('Settings saved');
+      return false;
+    case 'b': case 'B':
+      cycleBlendMode();
+      return false;
+    case 'p': case 'P':
+      // Start/pause the timeline (time-based layouts)
+      if (isTimeBasedLayout() && timelineControls) {
+        if (chronicleMode.recording) {
+          timelineControls.handlePause();
+        } else {
+          timelineControls.handleStart(false);
+        }
       }
-    }
-    return false;
-  }
-
-  // C - clear timeline
-  if (key === 'c' || key === 'C') {
-    if (currentModeType === 'timeline') {
-      if (confirm('Clear the timeline? This cannot be undone.')) {
-        // Reset blend mode temporarily for clearing
-        paintCanvas.blendMode(BLEND);
-        paintCanvas.background(currentBgColor);
-        paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
-
-        window.currentBgColor = currentBgColor;
-        strokeCount = 0;
-        particles = [];
-
-        // Clear timeline state
-        chronicleMode.clear({ paintCanvas, currentBgColor });
-
-        // Save state for undo
-        stateManager.saveCanvasState(paintCanvas);
-
-        notificationSystem.show('Timeline cleared', 'success');
-      }
-    }
-    return false;
+      return false;
+    case 'c': case 'C':
+      if (currentModeType === 'timeline') clearCanvas('Timeline cleared');
+      return false;
   }
 
   // Arrow keys - navigate modes and styles/layouts
-  if (keyCode === LEFT_ARROW || keyCode === RIGHT_ARROW) {
-    // Left/Right: Toggle between Freeform and Timeline
-    const freeformRadio = document.getElementById('mode-type-freeform');
-    const timelineRadio = document.getElementById('mode-type-timeline');
-
-    if (keyCode === LEFT_ARROW && currentModeType !== 'freeform') {
-      // Switch to Freeform
-      if (freeformRadio) {
-        freeformRadio.click();
-        notificationSystem.show('Mode: Freeform');
-      }
-    } else if (keyCode === RIGHT_ARROW && currentModeType === 'freeform') {
-      // Switch to Timeline
-      if (timelineRadio) {
-        timelineRadio.click();
-        notificationSystem.show('Mode: Timeline');
-      }
-    }
+  if (keyCode === LEFT_ARROW && currentModeType !== 'freeform') {
+    document.getElementById('mode-type-freeform')?.click();
     return false;
   }
-
+  if (keyCode === RIGHT_ARROW && currentModeType === 'freeform') {
+    document.getElementById('mode-type-timeline')?.click();
+    return false;
+  }
   if (keyCode === UP_ARROW || keyCode === DOWN_ARROW) {
-    // Up/Down: Cycle through styles (Freeform) or layouts (Timeline)
-    if (currentModeType === 'freeform') {
-      const styleSelect = document.getElementById('freeform-style-select');
-      if (styleSelect) {
-        const options = Array.from(styleSelect.options);
-        const currentIndex = options.findIndex(opt => opt.value === freeformMode.style);
-        let newIndex;
-
-        if (keyCode === UP_ARROW) {
-          newIndex = currentIndex > 0 ? currentIndex - 1 : options.length - 1;
-        } else {
-          newIndex = currentIndex < options.length - 1 ? currentIndex + 1 : 0;
-        }
-
-        styleSelect.selectedIndex = newIndex;
-        styleSelect.dispatchEvent(new Event('change'));
-        notificationSystem.show(`Style: ${options[newIndex].text.split('—')[0].trim()}`);
-      }
-    } else {
-      const layoutSelect = document.getElementById('timeline-layout-select');
-      if (layoutSelect) {
-        const options = Array.from(layoutSelect.options);
-        const currentIndex = options.findIndex(opt => opt.value === chronicleMode.layout);
-        let newIndex;
-
-        if (keyCode === UP_ARROW) {
-          newIndex = currentIndex > 0 ? currentIndex - 1 : options.length - 1;
-        } else {
-          newIndex = currentIndex < options.length - 1 ? currentIndex + 1 : 0;
-        }
-
-        layoutSelect.selectedIndex = newIndex;
-        layoutSelect.dispatchEvent(new Event('change'));
-        notificationSystem.show(`Layout: ${options[newIndex].text.split('—')[0].trim()}`);
-      }
-    }
+    const direction = keyCode === UP_ARROW ? -1 : 1;
+    stepSelect(currentModeType === 'freeform' ? 'freeform-style-select' : 'timeline-layout-select', direction);
     return false;
   }
 
   // 1-9 - select drum in customization panel
   if (key >= '1' && key <= '9') {
-    const drumIndex = parseInt(key) - 1;
-    if (drumIndex < DRUM_KIT_CONFIG.length) {
-      const drumId = DRUM_KIT_CONFIG[drumIndex].id;
-
-      // If customization panel is open, select the drum
-      if (customizationPanel.isVisible) {
-        customizationPanel.selectDrum(drumId);
-        notificationSystem.show(`Selected: ${DRUM_KIT_CONFIG[drumIndex].name}`);
-      } else {
-        // Open panel and select drum
-        customizationPanel.toggle();
-        setTimeout(() => {
-          customizationPanel.selectDrum(drumId);
-          notificationSystem.show(`Selected: ${DRUM_KIT_CONFIG[drumIndex].name}`);
-        }, 100);
-      }
+    const drumId = drumOrder[parseInt(key) - 1];
+    if (drumId && drumSettings[drumId]) {
+      if (!customizationPanel.isVisible) customizationPanel.toggle();
+      customizationPanel.selectDrum(drumId);
+      notificationSystem.show(`Selected: ${drumSettings[drumId].name}`);
     }
     return false;
   }
@@ -2906,6 +1769,7 @@ window.keyPressed = function() {
 };
 
 window.windowResized = function() {
+  requestRedraw();
   resizeCanvas(windowWidth, windowHeight);
   if (overlayGfx) {
     overlayGfx.resizeCanvas(windowWidth, windowHeight);
@@ -2924,53 +1788,136 @@ window.windowResized = function() {
  * Handle MIDI note painting
  * Called by MidiManager when a note is played
  */
-function handlePaint(note, velocity, deviceId) {
+function handlePaint(note, velocity, deviceId, timeStamp = performance.now()) {
   // Check if this device+note combination is mapped to a drum
   // Pass midiManager for smart device key matching
   const drumId = findDrumByMidiNote(note, deviceId, drumSettings, midiManager);
 
-  if (!drumId) {
-    // No mapping found - don't paint
-    const device = midiManager.connectedDevices.find(d => d.id === deviceId);
-    const deviceName = device ? device.name : deviceId;
-    debugLog(`⚠️ Unmapped MIDI: Note ${note} from ${deviceName} - not painting`);
+  // Latency calibration and kit setup listen to raw hits
+  if (hitListener && hitListener({ note, velocity, deviceId, drumId, timeStamp })) {
     return;
   }
 
-  const drumName = drumSettings[drumId]?.name || drumId;
-  debugLog(`🎵 Paint: Note ${note} (${drumName}), Vel ${velocity.toFixed(2)}`);
+  if (!drumId) {
+    reportUnmappedNote(note, deviceId);
+    return;
+  }
 
-  // Record session event if recording is active
+  queueHit({ note, velocity, deviceId, drumId, timeStamp });
+}
+
+/**
+ * Queue a hit for painting on the next frame
+ * @param {{note, velocity, deviceId, drumId, timeStamp}} hit
+ */
+function queueHit(hit) {
+  // Record session event with the precise hit time
   if (sessionRecorder) {
-    sessionRecorder.recordEvent(note, velocity, deviceId, drumId);
+    sessionRecorder.recordEvent(hit.note, hit.velocity, hit.deviceId, hit.drumId, hit.timeStamp);
   }
-
-  // Flash MIDI activity indicator
-  const activityLight = document.getElementById('midi-activity-light');
-  if (activityLight) {
-    activityLight.style.opacity = '1';
-    setTimeout(() => {
-      activityLight.style.opacity = '0';
-    }, 100);
+  if (hitQueue.length < MAX_QUEUED_HITS) {
+    hitQueue.push(hit);
   }
+}
 
-  // Create context for mode
+// Optional hook that sees every hit first; return true to consume it
+let hitListener = null;
+function setHitListener(fn) {
+  hitListener = fn;
+}
+
+/**
+ * Tell the user (at most every few seconds per note) when a pad isn't mapped
+ */
+const unmappedNoteWarnings = new Map();
+function reportUnmappedNote(note, deviceId) {
+  const now = performance.now();
+  const last = unmappedNoteWarnings.get(note) || 0;
+  if (now - last < 8000) return;
+  unmappedNoteWarnings.set(note, now);
+
+  const device = midiManager.connectedDevices.find(d => d.id === deviceId);
+  const deviceName = device ? device.name : 'your device';
+  notificationSystem.show(`Note ${note} from ${deviceName} isn't mapped to a drum`, 'warning', {
+    actionLabel: 'Set up kit',
+    onAction: () => kitSetupWizard?.open()
+  });
+}
+
+/**
+ * Fill the paint canvas with the background color (blend mode must be normal
+ * for the fill, then the user's blend mode is restored)
+ */
+function fillBackground() {
+  paintCanvas.blendMode(BLEND);
+  paintCanvas.background(currentBgColor);
+  paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
+  window.currentBgColor = currentBgColor;
+  needsRedraw = true;
+}
+
+/**
+ * Clear the painting. Undoable, so no confirmation dialog is needed.
+ * @param {string} message - Toast text
+ */
+function clearCanvas(message = 'Canvas cleared') {
+  stateManager.saveCanvasState(paintCanvas);
+  fillBackground();
+  strokeCount = 0;
+  particles = [];
+  getCurrentMode().clear({ paintCanvas, currentBgColor });
+  timelineControls?.updateButtonsUI();
+  timelineControls?.updateStatusText();
+  notificationSystem.show(message, 'success', { actionLabel: 'Undo', onAction: undoCanvas });
+}
+
+/**
+ * Change the background color (repaints the canvas; undoable)
+ */
+function setBackgroundColor(color) {
+  stateManager.saveCanvasState(paintCanvas);
+  currentBgColor = color;
+  fillBackground();
+  const picker = document.getElementById('bg-color-picker');
+  if (picker) picker.value = color;
+  notificationSystem.show(`Background: ${color}`, 'info', { actionLabel: 'Undo', onAction: undoCanvas });
+  stateManager.scheduleAutoSave();
+}
+
+function undoCanvas() {
+  if (stateManager.undo(paintCanvas)) {
+    needsRedraw = true;
+    notificationSystem.show('Undo');
+  } else {
+    notificationSystem.show('Nothing to undo');
+  }
+}
+
+function redoCanvas() {
+  if (stateManager.redo(paintCanvas)) {
+    needsRedraw = true;
+    notificationSystem.show('Redo');
+  }
+}
+
+/**
+ * Paint one hit with the current mode
+ */
+function paintHit({ note, velocity, deviceId, drumId, timeStamp }) {
   const context = {
     paintCanvas,
     drumSettings,
     globalSizeMultiplier,
     particles,
     strokeCount,
-    midiDeviceId: deviceId,  // Add device ID to context
-    debugPanel,  // Add debug panel to context so modes can record actual values
-    drumId,  // Add drumId to context so modes know which drum is being played
-    DRUM_KIT_CONFIG  // Add drum kit config for pattern calculations
+    midiDeviceId: deviceId,
+    debugPanel,
+    drumId,
+    DRUM_KIT_CONFIG,
+    currentBgColor,
+    hitTime: timeStamp // performance.now() time the drum was actually hit
   };
 
-  // Add currentBgColor to context
-  context.currentBgColor = currentBgColor;
-
-  // Paint with current mode
   try {
     getCurrentMode().paint(note, velocity, context);
     strokeCount++;
@@ -2978,6 +1925,7 @@ function handlePaint(note, velocity, deviceId) {
     debugError('Error painting:', error);
     showUserFriendlyError(notificationSystem, 'PAINT_ERROR', error);
   }
+  needsRedraw = true;
 }
 
 /**
@@ -2996,9 +1944,7 @@ function handleDirectModeCC(ccNumber, ccValue) {
 
       if (assignment.cc === ccNumber) {
         // Map CC value using detected range
-        const ccMin = assignment.ccMin || 0;
-        const ccMax = assignment.ccMax || 127;
-        const normalizedValue = (ccValue - ccMin) / (ccMax - ccMin);
+        const normalizedValue = normalizeCC(ccValue, assignment.ccMin ?? 0, assignment.ccMax ?? 127);
 
         // Update drum setting
         if (drumSettings[drumId] && drumSettings[drumId].midiCC && drumSettings[drumId].midiCC[paramKey]) {
@@ -3134,7 +2080,7 @@ function switchMode(oldModeIndex) {
   if (freeformStyleSelector) freeformStyleSelector.style.display = mapping.type === 'freeform' ? 'block' : 'none';
 
   // Check if layout is time-based for timeline controls
-  const isTimeBased = ['staff', 'spiral', 'rings', 'petals', 'polygon'].includes(mapping.layout);
+  const isTimeBased = TIME_BASED_LAYOUTS.includes(mapping.layout);
   const timelineControlsEl = document.getElementById('timeline-controls');
   if (timelineControlsEl) {
     timelineControlsEl.style.display = (mapping.type !== 'freeform' && isTimeBased) ? 'block' : 'none';
@@ -3147,354 +2093,200 @@ function switchMode(oldModeIndex) {
 }
 
 /**
- * Load saved settings from localStorage or default-settings.json
+ * Load saved settings: browser storage first, then the bundled default-settings.json
  */
 async function loadSavedSettings() {
-  // First try localStorage
-  let savedState = stateManager.loadDefault();
-
-  // If localStorage is empty, try loading from bundled default-settings.json
-  if (!savedState) {
-    savedState = await stateManager.loadFromFile();
-  }
-
-  if (!savedState) {
+  const raw = stateManager.loadDefault() || await stateManager.loadFromFile();
+  if (!raw) {
     debugLog('No saved settings found, using factory defaults');
     return;
   }
+  const { state, warnings } = validateSettings(raw);
+  warnings.forEach(w => debugWarn(w));
+  if (state) {
+    applySettings(state);
+    infoLog(`📁 Loaded settings from ${state.timestamp || 'defaults'}`);
+  }
+}
 
-  // Load custom drum kit config if available (must be done BEFORE loading drum settings)
-  if (savedState.drumKitConfig && Array.isArray(savedState.drumKitConfig)) {
-    // Clear and reload config
+// Background colors used to be stored as an index into this list
+const LEGACY_BG_COLORS = ['#ffffff', '#000000', '#202020', '#f0f0f0', '#c8c8c8'];
+
+/**
+ * Apply validated settings to the app. Used at startup, for imported files and
+ * for saved projects, so all three behave the same.
+ * @param {Object} savedState - Output of validateSettings()
+ */
+function applySettings(savedState) {
+  // Kit layout first: which drums exist
+  if (savedState.drumKitConfig?.length) {
     DRUM_KIT_CONFIG.length = 0;
     savedState.drumKitConfig.forEach(drum => DRUM_KIT_CONFIG.push(drum));
-    debugLog(`✓ Loaded drum kit config: ${DRUM_KIT_CONFIG.length} drums`);
   }
 
-  // Apply bank mode settings FIRST (before orphan cleanup that might auto-save)
-  if (savedState.bankModeSettings && midiManager) {
+  if (savedState.bankModeSettings) {
     midiManager.loadState(savedState.bankModeSettings);
-    debugLog('✓ Loaded bank mode settings (early)');
   }
 
-  // Apply drum settings (merge instead of replace to maintain references)
   if (savedState.drumSettings) {
-    debugLog('Loading drum settings from storage:', JSON.stringify(savedState.drumSettings, null, 2));
-    for (const drumId in savedState.drumSettings) {
-      if (drumSettings[drumId]) {
-        // Update existing drum
-        Object.assign(drumSettings[drumId], savedState.drumSettings[drumId]);
-        // Ensure midiDevice exists (for backwards compatibility with old saves)
-        if (drumSettings[drumId].midiDevice === undefined) {
-          drumSettings[drumId].midiDevice = null;
+    for (const [drumId, saved] of Object.entries(savedState.drumSettings)) {
+      if (!drumSettings[drumId]) {
+        // Custom drum: start from defaults so every field exists
+        const config = DRUM_KIT_CONFIG.find(d => d.id === drumId);
+        drumSettings[drumId] = createDrumSettings(config?.name || drumId, null, config?.defaultColor || '#888888');
+      }
+      const { midiCC, ...rest } = saved;
+      Object.assign(drumSettings[drumId], rest);
+      if (midiCC) {
+        for (const [param, mapping] of Object.entries(midiCC)) {
+          drumSettings[drumId].midiCC[param] = { ...(drumSettings[drumId].midiCC[param] || {}), ...mapping };
         }
-      } else {
-        // Add new custom drum that doesn't exist in factory settings
-        drumSettings[drumId] = savedState.drumSettings[drumId];
-        // Ensure midiDevice exists
-        if (drumSettings[drumId].midiDevice === undefined) {
-          drumSettings[drumId].midiDevice = null;
-        }
-        debugLog(`➕ Added custom drum from saved settings: ${drumId} (${savedState.drumSettings[drumId].name})`);
       }
     }
-    // Update global window.drumSettings reference
-    window.drumSettings = drumSettings;
-    debugLog('✓ Loaded drum settings');
-    debugLog('Current drum settings after load:', JSON.stringify(drumSettings, null, 2));
   }
 
-  // Load or migrate drumOrder
-  if (savedState.drumOrder && Array.isArray(savedState.drumOrder)) {
-    // New format: use saved drumOrder
-    drumOrder = savedState.drumOrder;
-    debugLog(`✓ Loaded drumOrder: ${drumOrder.length} drums`);
-  } else {
-    // Migration: generate drumOrder from DRUM_KIT_CONFIG (preserves user's drum order)
-    drumOrder = DRUM_KIT_CONFIG.map(d => d.id);
-    debugLog(`✓ Migrated drumOrder from config: ${drumOrder.length} drums`);
+  // Keep the kit list and the per-drum settings in agreement
+  for (let i = DRUM_KIT_CONFIG.length - 1; i >= 0; i--) {
+    if (!drumSettings[DRUM_KIT_CONFIG[i].id]) DRUM_KIT_CONFIG.splice(i, 1);
   }
-  // Update global reference
+  const validIds = new Set(DRUM_KIT_CONFIG.map(d => d.id));
+  for (const drumId of Object.keys(drumSettings)) {
+    if (!validIds.has(drumId)) delete drumSettings[drumId];
+  }
+
+  // Drum order (timeline lanes); add any drums the saved order is missing
+  const order = (savedState.drumOrder || []).filter(id => validIds.has(id));
+  DRUM_KIT_CONFIG.forEach(d => { if (!order.includes(d.id)) order.push(d.id); });
+  drumOrder = order;
   window.drumOrder = drumOrder;
 
-  // Load spiral settings BEFORE orphan cleanup (so auto-save has correct values)
-  if (savedState.spiralSettings && chronicleMode) {
-    if (savedState.spiralSettings.tightness !== undefined) {
-      chronicleMode.spiralSettings.tightness = savedState.spiralSettings.tightness;
-    }
-    if (savedState.spiralSettings.startRadius !== undefined) {
-      chronicleMode.spiralSettings.startRadius = savedState.spiralSettings.startRadius;
-    }
-    if (savedState.spiralSettings.syncToBPM !== undefined) {
-      chronicleMode.spiralSettings.syncToBPM = savedState.spiralSettings.syncToBPM;
-    }
-    if (savedState.spiralSettings.separateTracks !== undefined) {
-      chronicleMode.spiralSettings.separateTracks = savedState.spiralSettings.separateTracks;
-    }
-    if (savedState.spiralSettings.trackSpacing !== undefined) {
-      chronicleMode.spiralSettings.trackSpacing = savedState.spiralSettings.trackSpacing;
-    }
-    debugLog('✓ Loaded spiral settings (early)');
+  if (savedState.lastPaletteDrumIds && customizationPanel) {
+    customizationPanel.lastPaletteDrumIds = savedState.lastPaletteDrumIds;
   }
 
-  // Load timeline settings BEFORE orphan cleanup (so auto-save has correct values)
-  if (savedState.timelineSettings && chronicleMode) {
-    if (savedState.timelineSettings.bpm !== undefined) {
-      chronicleMode.bpm = savedState.timelineSettings.bpm;
-    }
-    if (savedState.timelineSettings.subdivision !== undefined) {
-      chronicleMode.subdivision = savedState.timelineSettings.subdivision;
-    }
-    if (savedState.timelineSettings.beatsPerMeasure !== undefined) {
-      chronicleMode.beatsPerMeasure = savedState.timelineSettings.beatsPerMeasure;
-    }
-    if (savedState.timelineSettings.metronomeEnabled !== undefined) {
-      debugLog('📦 Loading metronomeEnabled from savedState:', savedState.timelineSettings.metronomeEnabled);
-      chronicleMode.metronomeEnabled = savedState.timelineSettings.metronomeEnabled;
-      debugLog('📦 chronicleMode.metronomeEnabled is now:', chronicleMode.metronomeEnabled);
-    } else {
-      debugLog('⚠️ No metronomeEnabled in savedState.timelineSettings');
-    }
-    if (savedState.timelineSettings.midiLatencyMs !== undefined) {
-      chronicleMode.midiLatencyMs = savedState.timelineSettings.midiLatencyMs;
-    }
-    if (savedState.timelineSettings.showGrid !== undefined) {
-      chronicleMode.showGrid = savedState.timelineSettings.showGrid;
-    }
-    if (savedState.timelineSettings.showDeviationGraph !== undefined) {
-      chronicleMode.showDeviationGraph = savedState.timelineSettings.showDeviationGraph;
-    }
-    if (savedState.timelineSettings.deviationGraphMode !== undefined) {
-      chronicleMode.deviationGraphMode = savedState.timelineSettings.deviationGraphMode;
-    }
-    if (savedState.timelineSettings.deviationGraphWidth !== undefined) {
-      chronicleMode.deviationGraphWidth = savedState.timelineSettings.deviationGraphWidth;
-    }
-    if (savedState.timelineSettings.deviationGraphHeight !== undefined) {
-      chronicleMode.deviationGraphHeight = savedState.timelineSettings.deviationGraphHeight;
-    }
-    if (savedState.timelineSettings.rowSpacing !== undefined) {
-      chronicleMode.rowSpacing = savedState.timelineSettings.rowSpacing;
-    }
-    if (savedState.timelineSettings.warmupMeasures !== undefined) {
-      chronicleMode.warmupMeasures = savedState.timelineSettings.warmupMeasures;
-    }
-    if (savedState.timelineSettings.measuresPerStaffPreference !== undefined) {
-      chronicleMode.measuresPerStaffPreference = savedState.timelineSettings.measuresPerStaffPreference;
-    }
-    if (savedState.timelineSettings.layout !== undefined) {
-      chronicleMode.layout = savedState.timelineSettings.layout;
-    }
-    // Tempo automation settings
-    if (savedState.timelineSettings.tempoAutomationEnabled !== undefined) {
-      chronicleMode.tempoAutomationEnabled = savedState.timelineSettings.tempoAutomationEnabled;
-    }
-    if (savedState.timelineSettings.tempoAutomationBpmChange !== undefined) {
-      chronicleMode.tempoAutomationBpmChange = savedState.timelineSettings.tempoAutomationBpmChange;
-    }
-    if (savedState.timelineSettings.tempoAutomationBars !== undefined) {
-      chronicleMode.tempoAutomationBars = savedState.timelineSettings.tempoAutomationBars;
-    }
-    if (savedState.timelineSettings.tempoAutomationMaxBpm !== undefined) {
-      chronicleMode.tempoAutomationMaxBpm = savedState.timelineSettings.tempoAutomationMaxBpm;
-    }
-    if (savedState.timelineSettings.tempoAutomationDirection !== undefined) {
-      chronicleMode.tempoAutomationDirection = savedState.timelineSettings.tempoAutomationDirection;
-    }
-    if (savedState.timelineSettings.tempoAutomationMinBpm !== undefined) {
-      chronicleMode.tempoAutomationMinBpm = savedState.timelineSettings.tempoAutomationMinBpm;
-    }
-    debugLog('✓ Loaded timeline settings (early)');
+  if (savedState.spiralSettings) {
+    Object.assign(chronicleMode.spiralSettings, savedState.spiralSettings);
   }
 
-  // Clean up orphaned drums (two-way cleanup)
-
-  // 1. Remove drums from DRUM_KIT_CONFIG that don't have settings
-  for (let i = DRUM_KIT_CONFIG.length - 1; i >= 0; i--) {
-    const drumId = DRUM_KIT_CONFIG[i].id;
-    if (!drumSettings[drumId]) {
-      debugWarn(`⚠️ Removing orphaned drum from config: ${drumId}`);
-      DRUM_KIT_CONFIG.splice(i, 1);
+  if (savedState.timelineSettings) {
+    // Validated keys match TimelineMode's property names
+    const { midiLatencyMs, layout, ...timeline } = savedState.timelineSettings;
+    Object.assign(chronicleMode, timeline);
+    if (timeline.bpm) chronicleMode.baseBpm = timeline.bpm;
+    if (layout) chronicleMode.layout = layout;
+    if (midiLatencyMs !== undefined) {
+      // Before timing v2 this was a fudge factor for frame-locked clicks; the
+      // metronome is now sample-accurate, so old values would shift every hit
+      chronicleMode.midiLatencyMs = savedState.timingVersion >= 2 ? midiLatencyMs : 0;
     }
   }
 
-  // 2. Remove settings for drums that aren't in DRUM_KIT_CONFIG (more important!)
-  const validDrumIds = new Set(DRUM_KIT_CONFIG.map(d => d.id));
-  const orphanedSettings = [];
-  for (const drumId in drumSettings) {
-    if (!validDrumIds.has(drumId)) {
-      orphanedSettings.push(drumId);
+  const g = savedState.globalSettings;
+  if (g) {
+    if (g.sizeMultiplier !== undefined) globalSizeMultiplier = g.sizeMultiplier;
+    if (g.blendMode !== undefined) {
+      currentBlendMode = g.blendMode;
+      window.currentBlendMode = currentBlendMode;
     }
-  }
-
-  if (orphanedSettings.length > 0) {
-    debugWarn(`🗑️ Removing ${orphanedSettings.length} orphaned drum settings not in current config:`);
-    orphanedSettings.forEach(drumId => {
-      debugWarn(`  - ${drumId} (${drumSettings[drumId]?.name || 'unknown'})`);
-      delete drumSettings[drumId];
-    });
-
-    // Auto-save after cleanup
-    const appState = {
-      drumSettings,
-      globalSizeMultiplier,
-      currentBlendMode,
-      currentBgColor,
-      currentModeType,
-        freeformStyle: freeformMode.style,
-        chronicleLayout: chronicleMode.layout,
-      spiralSettings: {
-        tightness: chronicleMode.spiralSettings.tightness,
-  
-        startRadius: chronicleMode.spiralSettings.startRadius,
-        syncToBPM: chronicleMode.spiralSettings.syncToBPM,
-  
-        separateTracks: chronicleMode.spiralSettings.separateTracks,
-        trackSpacing: chronicleMode.spiralSettings.trackSpacing
-      },
-      timelineSettings: {
-        bpm: chronicleMode.bpm,
-        subdivision: chronicleMode.subdivision,
-        beatsPerMeasure: chronicleMode.beatsPerMeasure,
-        metronomeEnabled: chronicleMode.metronomeEnabled,
-        midiLatencyMs: chronicleMode.midiLatencyMs,
-        showGrid: chronicleMode.showGrid,
-        showDeviationGraph: chronicleMode.showDeviationGraph,
-        deviationGraphMode: chronicleMode.deviationGraphMode,
-        rowSpacing: chronicleMode.rowSpacing,
-        warmupMeasures: chronicleMode.warmupMeasures,
-        measuresPerStaffPreference: chronicleMode.measuresPerStaffPreference,
-        tempoAutomationEnabled: chronicleMode.tempoAutomationEnabled,
-        tempoAutomationBpmChange: chronicleMode.tempoAutomationBpmChange,
-        tempoAutomationBars: chronicleMode.tempoAutomationBars,
-        tempoAutomationMaxBpm: chronicleMode.tempoAutomationMaxBpm
-      },
-      bankModeSettings: midiManager.getState()
-    };
-    stateManager.saveAsDefault(appState);
-    infoLog(`✓ Cleaned up and saved settings`);
-  }
-
-  // Apply global settings
-  if (savedState.globalSettings) {
-    if (savedState.globalSettings.sizeMultiplier !== undefined) {
-      globalSizeMultiplier = savedState.globalSettings.sizeMultiplier;
-      // Update UI slider
-      const globalSizeSlider = document.getElementById('global-size');
-      const globalSizeVal = document.getElementById('global-size-val');
-      if (globalSizeSlider) globalSizeSlider.value = globalSizeMultiplier;
-      if (globalSizeVal) globalSizeVal.textContent = `${globalSizeMultiplier.toFixed(1)}x`;
-    }
-    if (savedState.globalSettings.blendMode !== undefined) {
-      currentBlendMode = savedState.globalSettings.blendMode;
-      paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
-      window.currentBlendMode = currentBlendMode; // Update global
-      // Update UI dropdown
-      const blendSelect = document.getElementById('blend-select');
-      if (blendSelect) blendSelect.value = currentBlendMode.toString();
-    }
-    if (savedState.globalSettings.bgColor !== undefined) {
-      // Handle both old integer format and new hex string format
-      if (typeof savedState.globalSettings.bgColor === 'number') {
-        // Convert old integer index to hex color
-        const oldColors = ['#ffffff', '#000000', '#202020', '#f0f0f0', '#c8c8c8'];
-        currentBgColor = oldColors[savedState.globalSettings.bgColor] || '#ffffff';
-      } else {
-        currentBgColor = savedState.globalSettings.bgColor;
-      }
-      // Temporarily reset blend mode to normal for clearing
+    if (g.bgColor !== undefined) {
+      currentBgColor = typeof g.bgColor === 'number' ? (LEGACY_BG_COLORS[g.bgColor] || '#ffffff') : g.bgColor;
+      window.currentBgColor = currentBgColor;
       paintCanvas.blendMode(BLEND);
       paintCanvas.background(currentBgColor);
-      paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
-      // Update global window reference
-      window.currentBgColor = currentBgColor;
-      // Update UI color picker
-      const bgColorPicker = document.getElementById('bg-color-picker');
-      if (bgColorPicker) bgColorPicker.value = currentBgColor;
     }
-    debugLog('✓ Loaded global settings');
+    paintCanvas.blendMode(BLEND_MODES[currentBlendMode]);
   }
 
-  // Update active drum indicator (bank mode settings already loaded earlier)
-  if (savedState.bankModeSettings && midiManager) {
-    updateActiveDrumIndicator(); // Update indicator if bank mode was saved as enabled
-  }
-
-  // Load paint mode (new two-tier structure)
+  // Paint mode
   if (savedState.currentModeType !== undefined) {
-    // Load new two-tier mode structure
-    currentModeType = savedState.currentModeType;
-
-    if (savedState.freeformStyle !== undefined) {
-      freeformMode.setStyle(savedState.freeformStyle);
-    }
-
-    if (savedState.chronicleLayout !== undefined) {
-      chronicleMode.layout = savedState.chronicleLayout;
-    }
-
-    // Sync UI elements - note that initializeUI hasn't been called yet, so we need to do this after
-    // For now, just set the mode type and we'll sync UI in initializeUI
-    debugLog('✓ Loaded paint mode (new structure):', currentModeType,
-                savedState.freeformStyle || 'default',
-                savedState.chronicleLayout || 'default');
+    currentModeType = ['timeline', 'staff', 'chronicle'].includes(savedState.currentModeType) ? 'timeline' : 'freeform';
+    if (savedState.freeformStyle) freeformMode.setStyle(savedState.freeformStyle);
+    if (savedState.chronicleLayout) chronicleMode.layout = savedState.chronicleLayout;
   } else if (savedState.currentMode !== undefined) {
-    // Legacy: Load old mode index and convert to new structure
-    switchMode(savedState.currentMode);
-    infoLog('✓ Loaded paint mode (legacy):', savedState.currentMode);
+    switchMode(savedState.currentMode); // Very old saves
   }
 
-  // Update spiral UI sliders/dropdowns (settings already loaded earlier)
-  if (savedState.spiralSettings && chronicleMode) {
-    if (savedState.spiralSettings.tightness !== undefined) {
-      const spiralTightnessSlider = document.getElementById('spiral-tightness');
-      const spiralTightnessVal = document.getElementById('spiral-tightness-val');
-      if (spiralTightnessSlider) spiralTightnessSlider.value = savedState.spiralSettings.tightness;
-      if (spiralTightnessVal) spiralTightnessVal.textContent = savedState.spiralSettings.tightness;
-    }
-    if (savedState.spiralSettings.separateTracks !== undefined) {
-      const spiralSeparateTracksCheckbox = document.getElementById('spiral-separate-tracks');
-      if (spiralSeparateTracksCheckbox) spiralSeparateTracksCheckbox.checked = savedState.spiralSettings.separateTracks;
-      const spiralTrackSpacingRow = document.getElementById('spiral-track-spacing-row');
-      if (spiralTrackSpacingRow) spiralTrackSpacingRow.style.display = savedState.spiralSettings.separateTracks ? 'flex' : 'none';
-    }
-    if (savedState.spiralSettings.trackSpacing !== undefined) {
-      const spiralTrackSpacingSlider = document.getElementById('spiral-track-spacing');
-      const spiralTrackSpacingDisplay = document.getElementById('spiral-track-spacing-display');
-      if (spiralTrackSpacingSlider) spiralTrackSpacingSlider.value = savedState.spiralSettings.trackSpacing;
-      if (spiralTrackSpacingDisplay) spiralTrackSpacingDisplay.textContent = savedState.spiralSettings.trackSpacing;
-    }
+  if (videoRecorder) {
+    if (savedState.videoQuality) videoRecorder.setQuality(savedState.videoQuality);
+    if (savedState.videoFormat) videoRecorder.setFormat(savedState.videoFormat);
   }
 
-  // Update timeline UI dropdowns (settings already loaded earlier)
-  if (savedState.timelineSettings && chronicleMode) {
-    if (savedState.timelineSettings.layout !== undefined) {
-      const timelineLayoutSelect = document.getElementById('timeline-layout');
-      if (timelineLayoutSelect) timelineLayoutSelect.value = savedState.timelineSettings.layout;
-    }
-  }
+  midiManager.recordOutputPortId = savedState.recordOutputPortId ?? midiManager.recordOutputPortId;
+  midiManager.recordOutputNote = savedState.recordOutputNote ?? midiManager.recordOutputNote;
+  midiManager.recordOutputChannel = savedState.recordOutputChannel ?? midiManager.recordOutputChannel;
+  midiManager.sendClockEnabled = savedState.sendClockEnabled ?? midiManager.sendClockEnabled;
 
-  // Restore MIDI output settings
-  if (midiManager) {
-    if (savedState.recordOutputPortId) midiManager.recordOutputPortId = savedState.recordOutputPortId;
-    if (savedState.recordOutputNote !== undefined) midiManager.recordOutputNote = savedState.recordOutputNote;
-    if (savedState.recordOutputChannel !== undefined) midiManager.recordOutputChannel = savedState.recordOutputChannel;
-    if (savedState.sendClockEnabled !== undefined) midiManager.sendClockEnabled = savedState.sendClockEnabled;
+  window.drumSettings = drumSettings;
+  chronicleMode.regenerateLanes(drumSettings, drumOrder);
+  syncControlsToState();
+}
+
+/**
+ * Apply settings from an imported file or a saved project while running
+ * @param {Object} state - Output of validateSettings()
+ */
+function applyImportedSettings(state) {
+  getCurrentMode().onDeactivate({ paintCanvas });
+  applySettings(state);
+  getCurrentMode().onActivate({ paintCanvas, drumSettings, drumOrder });
+  customizationPanel.build();
+  stateManager.saveNow();
+}
+
+/**
+ * Make every control in the page show the current settings
+ */
+function syncControlsToState() {
+  const setValue = (id, value) => {
+    const el = document.getElementById(id);
+    if (el && value !== undefined && value !== null) el.value = value;
+  };
+  const setChecked = (id, value) => {
+    const el = document.getElementById(id);
+    if (el) el.checked = !!value;
+  };
+
+  setValue('global-size', globalSizeMultiplier);
+  const sizeLabel = document.getElementById('global-size-val');
+  if (sizeLabel) sizeLabel.textContent = `${globalSizeMultiplier.toFixed(1)}x`;
+  setValue('blend-select', String(currentBlendMode));
+  setValue('bg-color-picker', currentBgColor);
+
+  // Mode and style/layout pickers
+  setChecked('mode-type-timeline', currentModeType === 'timeline');
+  setChecked('mode-type-freeform', currentModeType === 'freeform');
+  setValue('freeform-style-select', freeformMode.style);
+  setValue('timeline-layout-select', chronicleMode.layout);
+  window.updateModeUI?.();
+
+  // Spiral
+  const spiral = chronicleMode.spiralSettings;
+  setValue('spiral-tightness', spiral.tightness);
+  const tightness = document.getElementById('spiral-tightness-display');
+  if (tightness) tightness.textContent = spiral.tightness;
+  setChecked('spiral-separate-tracks', spiral.separateTracks);
+  const spacingRow = document.getElementById('spiral-track-spacing-row');
+  if (spacingRow) spacingRow.style.display = spiral.separateTracks ? 'flex' : 'none';
+  setValue('spiral-track-spacing', spiral.trackSpacing);
+  const spacing = document.getElementById('spiral-track-spacing-display');
+  if (spacing) spacing.textContent = spiral.trackSpacing;
+
+  // Recording
+  if (videoRecorder) {
+    setValue('video-quality', videoRecorder.currentQuality);
+    setValue('timeline-video-quality', videoRecorder.currentQuality);
+    setValue('timeline-video-format', videoRecorder.currentFormat);
   }
-  const noteInput = document.getElementById('record-output-note');
-  const channelInput = document.getElementById('record-output-channel');
-  const clockCheckbox = document.getElementById('record-output-clock');
+  setValue('record-output-note', midiManager.recordOutputNote);
+  setValue('record-output-channel', midiManager.recordOutputChannel);
+  setChecked('record-output-clock', midiManager.sendClockEnabled);
   const clockInfo = document.getElementById('record-output-clock-info');
-  if (noteInput && savedState.recordOutputNote !== undefined) noteInput.value = savedState.recordOutputNote;
-  if (channelInput && savedState.recordOutputChannel !== undefined) channelInput.value = savedState.recordOutputChannel;
-  if (clockCheckbox && savedState.sendClockEnabled !== undefined) {
-    clockCheckbox.checked = savedState.sendClockEnabled;
-    if (clockInfo) clockInfo.style.display = savedState.sendClockEnabled ? 'block' : 'none';
-    if (savedState.sendClockEnabled) updateClockInfoDisplay();
-  }
-  // Port select is populated async after MIDI setup — populateMidiOutputSelect() restores the value
+  if (clockInfo) clockInfo.style.display = midiManager.sendClockEnabled ? 'block' : 'none';
+  updateClockInfoDisplay();
+  if (midiManager.midiAccess) populateMidiOutputSelect(midiManager.getOutputDevices());
 
-  infoLog(`📁 Loaded settings from ${savedState.timestamp}`);
+  timelineControls?.syncUI();
+  updateActiveDrumIndicator();
 }
 
 /**
@@ -3507,68 +2299,21 @@ function migrateDrumIdChanges() {
   };
 
   let migrated = false;
-
   for (const [oldId, newId] of Object.entries(migrations)) {
     if (drumSettings[oldId] && !drumSettings[newId]) {
-      debugLog(`🔄 Migrating drum ID: ${oldId} -> ${newId}`);
-
-      // Copy all settings from old ID to new ID
       drumSettings[newId] = { ...drumSettings[oldId] };
-
-      // Delete old ID
       delete drumSettings[oldId];
 
-      // Update bank mode assignments if present
-      if (midiManager.bankPadAssignments && midiManager.bankPadAssignments[oldId]) {
+      if (midiManager.bankPadAssignments?.[oldId]) {
         midiManager.bankPadAssignments[newId] = midiManager.bankPadAssignments[oldId];
         delete midiManager.bankPadAssignments[oldId];
       }
-
       migrated = true;
     }
   }
 
   if (migrated) {
-    debugLog('✅ Drum ID migration complete');
-
-    // Save updated settings
-    const appState = {
-      drumSettings,
-      globalSizeMultiplier,
-      currentBlendMode,
-      currentBgColor,
-      currentModeType,
-        freeformStyle: freeformMode.style,
-        chronicleLayout: chronicleMode.layout,
-      spiralSettings: {
-        tightness: chronicleMode.spiralSettings.tightness,
-  
-        startRadius: chronicleMode.spiralSettings.startRadius,
-        syncToBPM: chronicleMode.spiralSettings.syncToBPM,
-  
-        separateTracks: chronicleMode.spiralSettings.separateTracks,
-        trackSpacing: chronicleMode.spiralSettings.trackSpacing
-      },
-      timelineSettings: {
-        bpm: chronicleMode.bpm,
-        subdivision: chronicleMode.subdivision,
-        beatsPerMeasure: chronicleMode.beatsPerMeasure,
-        metronomeEnabled: chronicleMode.metronomeEnabled,
-        midiLatencyMs: chronicleMode.midiLatencyMs,
-        showGrid: chronicleMode.showGrid,
-        showDeviationGraph: chronicleMode.showDeviationGraph,
-        deviationGraphMode: chronicleMode.deviationGraphMode,
-        rowSpacing: chronicleMode.rowSpacing,
-        warmupMeasures: chronicleMode.warmupMeasures,
-        measuresPerStaffPreference: chronicleMode.measuresPerStaffPreference,
-        tempoAutomationEnabled: chronicleMode.tempoAutomationEnabled,
-        tempoAutomationBpmChange: chronicleMode.tempoAutomationBpmChange,
-        tempoAutomationBars: chronicleMode.tempoAutomationBars,
-        tempoAutomationMaxBpm: chronicleMode.tempoAutomationMaxBpm
-      },
-      bankModeSettings: midiManager.getState()
-    };
-    stateManager.saveAsDefault(appState);
+    stateManager.saveNow();
   }
 }
 
@@ -3577,91 +2322,28 @@ function migrateDrumIdChanges() {
  * This upgrades legacy mappings that only have volatile device IDs
  */
 function migrateDrumMappingsToStableKeys() {
-  if (!midiManager || !midiManager.deviceRegistry) {
-    debugLog('⚠️ Cannot migrate: MIDI manager not ready');
-    return;
-  }
+  if (!midiManager?.deviceRegistry) return;
 
   let migratedCount = 0;
-  let ambiguousCount = 0;
-
   for (const drumId in drumSettings) {
     const drum = drumSettings[drumId];
 
-    // Check if drum has a volatile device ID but no stable key (needs migration)
+    // Has a volatile device ID but no stable key: needs migration
     if (drum.midiDevice && !drum.midiDeviceStable) {
-      // Try to find stable key for this volatile device ID
       const stableKey = midiManager.deviceRegistry.getStableKey(drum.midiDevice);
-
       if (stableKey) {
-        // Found it! Upgrade the mapping
         drum.midiDeviceStable = stableKey;
         migratedCount++;
-        debugLog(`🔄 Migrated ${drumId} to use stable key: ${stableKey}`);
       } else {
-        // Device ID not in current registry - might be disconnected or from old session
-        // Try to match by device name from connectedDevices (less reliable)
-        const connectedDevice = midiManager.connectedDevices.find(d => d.id === drum.midiDevice);
-        if (connectedDevice && connectedDevice.stableKey) {
-          drum.midiDeviceStable = connectedDevice.stableKey;
-          migratedCount++;
-          debugLog(`🔄 Migrated ${drumId} to use stable key (via connected devices): ${connectedDevice.stableKey}`);
-        } else {
-          ambiguousCount++;
-          debugLog(`⚠️ Cannot migrate ${drumId}: device ID ${drum.midiDevice} not found in registry`);
-          // Clear the obsolete device ID to allow note-only matching
-          drum.midiDevice = null;
-        }
+        // Port ID from an old session that no longer exists: allow any device
+        drum.midiDevice = null;
       }
     }
   }
 
   if (migratedCount > 0) {
     debugLog(`✅ Migrated ${migratedCount} drum mapping(s) to stable device keys`);
-    notificationSystem.show(`Upgraded ${migratedCount} drum mapping(s) to new device tracking`, 'success');
-
-    // Save updated settings to persist the migration
-    const appState = {
-      drumSettings,
-      globalSizeMultiplier,
-      currentBlendMode,
-      currentBgColor,
-      currentModeType,
-        freeformStyle: freeformMode.style,
-        chronicleLayout: chronicleMode.layout,
-      spiralSettings: {
-        tightness: chronicleMode.spiralSettings.tightness,
-  
-        startRadius: chronicleMode.spiralSettings.startRadius,
-        syncToBPM: chronicleMode.spiralSettings.syncToBPM,
-  
-        separateTracks: chronicleMode.spiralSettings.separateTracks,
-        trackSpacing: chronicleMode.spiralSettings.trackSpacing
-      },
-      timelineSettings: {
-        bpm: chronicleMode.bpm,
-        subdivision: chronicleMode.subdivision,
-        beatsPerMeasure: chronicleMode.beatsPerMeasure,
-        metronomeEnabled: chronicleMode.metronomeEnabled,
-        midiLatencyMs: chronicleMode.midiLatencyMs,
-        showGrid: chronicleMode.showGrid,
-        showDeviationGraph: chronicleMode.showDeviationGraph,
-        deviationGraphMode: chronicleMode.deviationGraphMode,
-        rowSpacing: chronicleMode.rowSpacing,
-        warmupMeasures: chronicleMode.warmupMeasures,
-        measuresPerStaffPreference: chronicleMode.measuresPerStaffPreference,
-        tempoAutomationEnabled: chronicleMode.tempoAutomationEnabled,
-        tempoAutomationBpmChange: chronicleMode.tempoAutomationBpmChange,
-        tempoAutomationBars: chronicleMode.tempoAutomationBars,
-        tempoAutomationMaxBpm: chronicleMode.tempoAutomationMaxBpm
-      },
-      bankModeSettings: midiManager.getState()
-    };
-    stateManager.saveAsDefault(appState);
-  }
-
-  if (ambiguousCount > 0) {
-    debugLog(`⚠️ ${ambiguousCount} drum(s) with unknown devices - set to "any device" mode`);
+    stateManager.saveNow();
   }
 }
 
@@ -3737,41 +2419,21 @@ function checkForDuplicateNoteMappings() {
 let prevMouseX = 0;
 let prevMouseY = 0;
 
-// Helper function to check if mouse is over any UI panel
+// True when the pointer is over any UI (panels, dialogs, toasts) rather than the canvas
 function isMouseOverPanel() {
-  const panels = [
-    document.getElementById('controls'),
-    document.getElementById('drum-settings'),
-    document.getElementById('customization-panel'),
-    document.getElementById('midi-mapping-panel'),
-    document.getElementById('shortcuts-panel'),
-    document.getElementById('shortcuts-backdrop'),
-    document.getElementById('user-guide-panel'),
-    document.getElementById('user-guide-backdrop')
-  ];
-
-  for (const panel of panels) {
-    if (!panel) continue;
-    // Skip if element is not visible
-    if (panel.style.display === 'none' || panel.style.display === '') continue;
-
-    const rect = panel.getBoundingClientRect();
-    if (mouseX >= rect.left && mouseX <= rect.right &&
-        mouseY >= rect.top && mouseY <= rect.bottom) {
-      return true;
-    }
-  }
-  return false;
+  const el = document.elementFromPoint(mouseX, mouseY);
+  return !!el && el !== window.displayCanvas.elt;
 }
 
 window.mousePressed = function() {
+  requestRedraw();
   // Don't interact if mouse is over any panel
   if (isMouseOverPanel()) {
     return;
   }
 
   // Handle metronome dragging in time-based layouts
-  const isTimeBased = currentModeType === 'timeline' && ['staff', 'spiral', 'rings', 'petals', 'polygon'].includes(chronicleMode.layout);
+  const isTimeBased = isTimeBasedLayout();
   if (isTimeBased && chronicleMode.handleMetronomeMousePressed(mouseX, mouseY)) {
     return; // Metronome was clicked, don't do anything else
   }
@@ -3817,8 +2479,9 @@ window.mousePressed = function() {
 };
 
 window.mouseDragged = function() {
+  requestRedraw();
   // Handle metronome dragging in time-based layouts
-  const isTimeBased = currentModeType === 'timeline' && ['staff', 'spiral', 'rings', 'petals', 'polygon'].includes(chronicleMode.layout);
+  const isTimeBased = isTimeBasedLayout();
   if (isTimeBased) {
     chronicleMode.handleMetronomeMouseDragged(mouseX, mouseY);
     chronicleMode.handleDeviationGraphMouseDragged(mouseX, mouseY);
@@ -3862,40 +2525,28 @@ window.mouseDragged = function() {
 
   // Calculate velocity based on mouse speed
   const speed = dist(mouseX, mouseY, prevMouseX, prevMouseY);
-  const testVelocity = constrain(map(speed, 0, CLICK_PAINT_SPEED_MAX, CLICK_PAINT_VELOCITY_MAP_MIN, CLICK_PAINT_VELOCITY_MAP_MAX), CLICK_PAINT_VELOCITY_MAP_MIN, CLICK_PAINT_VELOCITY_MAP_MAX);
-
-  // Use first drum for testing (bypass MIDI mapping check)
-  const drumId = DRUM_KIT_CONFIG[0].id;
-  const testNote = DRUM_KIT_CONFIG[0].defaultMidiNote;
-
-  console.log(`🖱️ Mouse dragged: speed=${speed.toFixed(2)}, vel=${testVelocity.toFixed(2)}, mode=${getCurrentMode().name}`);
-
-  // Create context for mode (direct paint, no MIDI mapping required)
-  const context = {
-    paintCanvas,
-    drumSettings,
-    globalSizeMultiplier,
-    particles,
-    strokeCount,
-    debugPanel,
-    drumId,
-    DRUM_KIT_CONFIG,
-    currentBgColor
-  };
-
-  // Paint directly with current mode
-  try {
-    getCurrentMode().paint(testNote, testVelocity, context);
-    strokeCount++;
-  } catch (error) {
-    debugError('Error painting with mouse:', error);
-    showUserFriendlyError(notificationSystem, 'PAINT_ERROR', error);
-  }
+  const velocity = constrain(map(speed, 0, CLICK_PAINT_SPEED_MAX, CLICK_PAINT_VELOCITY_MAP_MIN, CLICK_PAINT_VELOCITY_MAP_MAX), CLICK_PAINT_VELOCITY_MAP_MIN, CLICK_PAINT_VELOCITY_MAP_MAX);
+  paintWithMouse(velocity);
 
   // Update previous position
   prevMouseX = mouseX;
   prevMouseY = mouseY;
 };
+
+/**
+ * Mouse painting uses the first drum in the kit (handy for trying styles)
+ */
+function paintWithMouse(velocity) {
+  const drumId = drumOrder.find(id => drumSettings[id]);
+  if (!drumId) return;
+  queueHit({
+    note: drumSettings[drumId].midiNote,
+    velocity,
+    deviceId: 'mouse',
+    drumId,
+    timeStamp: performance.now()
+  });
+}
 
 window.mouseClicked = function() {
   // Don't interact if mouse is over any panel
@@ -3913,39 +2564,13 @@ window.mouseClicked = function() {
     return;
   }
 
-  // Single click for single stroke
-  const drumId = DRUM_KIT_CONFIG[0].id;
-  const testNote = DRUM_KIT_CONFIG[0].defaultMidiNote;
-  const testVelocity = 0.7; // Medium velocity for clicks
-
-  console.log(`🖱️ Mouse click: Note ${testNote}, Vel ${testVelocity.toFixed(2)}, Mode: ${getCurrentMode().name}`);
-
-  // Create context for mode (direct paint, no MIDI mapping required)
-  const context = {
-    paintCanvas,
-    drumSettings,
-    globalSizeMultiplier,
-    particles,
-    strokeCount,
-    debugPanel,
-    drumId,
-    DRUM_KIT_CONFIG,
-    currentBgColor
-  };
-
-  // Paint directly with current mode
-  try {
-    getCurrentMode().paint(testNote, testVelocity, context);
-    strokeCount++;
-  } catch (error) {
-    debugError('Error painting with mouse:', error);
-    showUserFriendlyError(notificationSystem, 'PAINT_ERROR', error);
-  }
+  paintWithMouse(0.7);
 };
 
 window.mouseReleased = function() {
+  requestRedraw();
   // Handle metronome release in time-based layouts
-  const isTimeBased = currentModeType === 'timeline' && ['staff', 'spiral', 'rings', 'petals', 'polygon'].includes(chronicleMode.layout);
+  const isTimeBased = isTimeBasedLayout();
   if (isTimeBased) {
     chronicleMode.handleMetronomeMouseReleased();
     chronicleMode.handleDeviationGraphMouseReleased();
@@ -3957,6 +2582,7 @@ window.mouseReleased = function() {
 
 // Mouse wheel handler for vertical scrolling
 window.mouseWheel = function(event) {
+  requestRedraw();
   // Calculate display dimensions
   const scaleFactor = (width / paintCanvas.width) * CANVAS_FIT_SCALE;
   const displayHeight = paintCanvas.height * scaleFactor;

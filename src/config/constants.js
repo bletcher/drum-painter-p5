@@ -158,7 +158,7 @@ export const BG_COLORS = [255, 0, 32, 240, 200]; // White, Black, Dark gray, Lig
 export const BG_COLOR_NAMES = ['White', 'Black', 'Dark Gray', 'Light Gray', 'Beige'];
 
 // ===== UNDO/REDO SETTINGS =====
-export const MAX_HISTORY = 2;
+export const MAX_HISTORY = 3; // Snapshots before clears/background changes (each is a full canvas copy)
 
 // ===== MIDI NOTE MAPPINGS =====
 /*export const MIDI_NOTES = {

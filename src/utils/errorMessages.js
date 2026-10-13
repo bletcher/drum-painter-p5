@@ -125,10 +125,11 @@ export const ERROR_MESSAGES = {
     title: 'Audio Merge Failed',
     message: 'Could not merge audio with video.',
     suggestions: [
-      'Make sure the audio file is a valid format (MP3, WAV, etc.)',
-      'Try a different audio file',
-      'Check browser console for detailed error',
-      'Large files may take longer - wait and try again'
+      'File size limit: audio + video must fit in browser memory — keep total under ~250 MB',
+      'WAV files are uncompressed and very large — convert to MP3 before merging',
+      'Make sure the audio file is a valid format (MP3, WAV, OGG, etc.)',
+      'Try a shorter recording or smaller audio file',
+      'Check browser console for detailed error'
     ]
   },
   VIDEO_SAVE_ERROR: {
